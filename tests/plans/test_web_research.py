@@ -103,7 +103,7 @@ def test_web_research_is_a_direct_tool_with_query(monkeypatch):
     assert out == "tóm tắt"
 
 
-def test_search_agent_uses_forced_tools_only_from_its_own_toolset(monkeypatch):
+def test_search_agent_runs_exactly_the_tool_it_is_bound_to(monkeypatch):
     picked = []
 
     def fake_ctx(names):
@@ -118,6 +118,5 @@ def test_search_agent_uses_forced_tools_only_from_its_own_toolset(monkeypatch):
     def run(text, **kw):
         return asyncio.run(agent_search.run_search_agent(text, [], None, **kw))
     run("món ăn nóng hợp ngày mưa", tools=["web_research"])
-    run("món ăn nóng hợp ngày mưa", tools=["open_app"])   # không thuộc search → bỏ, dùng từ khoá
-    run("món ăn ngon")                                     # luồng thường: không đổi
-    assert picked == [["web_research"], ["weather_search"], ["search_news"]]
+    assert picked == [["web_research"]]
+    assert "chưa được gắn tool" in run("món ăn ngon")      # agent tra cứu luôn có tool: thiếu là lỗi lập trình, không đoán

@@ -10,6 +10,12 @@ def test_load_missing_placeholder_raises_key_error():
         prompts.load("dream_wiki")
 
 
+def test_fallback_prompt_loads_without_persona_placeholders():
+    fallback = prompts.load("fallback", current_time="now")
+    assert "JARVIS" in fallback
+    assert "Không bịa" in fallback
+
+
 def test_cache_mechanism():
     prompts.clear_cache()
     c1 = prompts.load("classifier")

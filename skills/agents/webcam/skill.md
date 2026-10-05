@@ -1,6 +1,6 @@
 ---
 name: webcam
-title: Agent Webcam Live
+title: Agent Webcam
 aliases:
 - agent_webcam
 description: Xem hoặc dùng webcam, camera trực tiếp.

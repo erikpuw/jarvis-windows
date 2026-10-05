@@ -13,6 +13,7 @@ export type SettingsPageId =
   | "user"
   | "system"
   | "memory"
+  | "logs"
   | "agents"
   | "hooks"
   | "skills"
@@ -120,7 +121,6 @@ export interface StatusResponse {
   session_active?: boolean;
   memory_count?: number;
   messages_count?: number;
-  semantic_memory_count?: number;
   conversation_turn_count?: number;
   task_count?: number;
   server_port?: number;

@@ -23,10 +23,13 @@ export interface Orb {
   setAnalyser(a: AnalyserNode | null): void;
   pause(): void;
   resume(): void;
+  /** Off: stops drawing, hands the WebGL context back to the GPU and swaps the canvas for a flat 1x1 backdrop. On: builds it again on a fresh canvas. */
+  setEnabled(on: boolean): void;
   destroy(): void;
 }
 
-export function createOrb(canvas: HTMLCanvasElement): Orb {
+/** The scene itself (one WebGL context). `Orb.setEnabled` builds and destroys it. */
+function buildOrb(canvas: HTMLCanvasElement): Omit<Orb, "setEnabled"> {
   let destroyed = false;
   let paused = false;
   const N = 1000;
@@ -558,6 +561,49 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
       renderer.dispose();
+      renderer.forceContextLoss(); // a disposed renderer still holds its GL context until the canvas is collected
     },
+  };
+}
+
+export function createOrb(canvas: HTMLCanvasElement): Orb {
+  let current: HTMLCanvasElement = canvas;
+  let scene: Omit<Orb, "setEnabled"> | null = buildOrb(canvas);
+  let state: OrbState = "idle";
+  let analyser: AnalyserNode | null = null;
+  let paused = false; // pause()/resume() come from overlays; they must not wake an orb the user turned off
+  return {
+    setState(s) { state = s; scene?.setState(s); },
+    setAnalyser(a) { analyser = a; scene?.setAnalyser(a); },
+    pause() { paused = true; scene?.pause(); },
+    resume() { paused = false; scene?.resume(); },
+    setEnabled(on) {
+      if (on === (scene !== null)) return;
+      if (!on) {
+        scene!.destroy();
+        scene = null;
+        current.width = 0; // drop the drawing buffer first: no stale last frame left composited
+        current.height = 0;
+        // The canvas of a lost context can never get a new one, so it is replaced. Not removed: a fixed full-screen canvas always sat behind
+        // the page, and without it iOS Safari in standalone mode (added to the home screen) blurs the top edge. A 1x1 flat canvas stretched by
+        // CSS keeps that layer at no cost (nothing is drawn again).
+        const backdrop = current.cloneNode(false) as HTMLCanvasElement;
+        backdrop.width = 1;
+        backdrop.height = 1;
+        const g = backdrop.getContext("2d");
+        if (g) { g.fillStyle = "#050508"; g.fillRect(0, 0, 1, 1); }
+        current.replaceWith(backdrop);
+        current = backdrop;
+        return;
+      }
+      const fresh = current.cloneNode(false) as HTMLCanvasElement; // same id, class and style; the flat backdrop has a 2d context, so WebGL needs a new canvas
+      current.replaceWith(fresh);
+      current = fresh;
+      scene = buildOrb(fresh);
+      scene.setState(state);
+      scene.setAnalyser(analyser);
+      if (paused) scene.pause();
+    },
+    destroy() { scene?.destroy(); scene = null; },
   };
 }

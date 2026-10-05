@@ -53,7 +53,7 @@ def test_card_says_no_tool_runs_this_turn_and_no_promises():
 
 def test_card_still_lists_what_jarvis_can_do():
     card = _card().lower()
-    for concept in ("ứng dụng", "email", "thời tiết", "tin tức", "màn hình", "ghi chú", "nhạc"):
+    for concept in ("ứng dụng", "email", "thời tiết", "tin tức", "màn hình", "ghi chú", "nhạc", "pháp luật"):
         assert concept in card, concept
 
 

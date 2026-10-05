@@ -1,7 +1,7 @@
 // E2E: Settings và nhật ký trên điện thoại (390px) phải khoá theo chiều ngang như PC.
 //  - Trang "Thông tin" (README): không tràn ngang, bảng/khối mã cuộn TRONG khối của nó, trang không viền (PC = mobile).
 //  - Graphfy: vuốt bằng tay kéo xem được bản đồ rộng (không chặn cuộn của trình duyệt), nút kéo thả chỉ dành cho chuột.
-//  - Jarvis.log: một dòng dài không tạo thanh cuộn ngang, vuốt ngang không làm lệch khung.
+//  - Jarvis.log (tab Jarvis log của trang Nhật ký trong Settings, sau mật khẩu): một dòng dài không tạo thanh cuộn ngang, vuốt ngang không làm lệch khung.
 // Mọi /api và /ws bị mock; README thật lấy từ README.md. Chạy: PW=<module playwright> node frontend/e2e/settings-mobile.cjs   (cần `npm run dev` ở :5173)
 const { chromium } = require(process.env.PW || "playwright");
 const fs = require("fs"), path = require("path");
@@ -38,6 +38,9 @@ async function open(browser, opts) {
   await page.route("**/api/system/readme", (r) => r.fulfill({ json: { success: true, content: README } }));
   await page.route("**/api/graphfy", (r) => r.fulfill({ json: MAP }));
   await page.route("**/api/logs**", (r) => r.fulfill({ json: { success: true, logs: LOGS } }));
+  await page.route("**/api/memory-lock/status", (r) => r.fulfill({ json: { configured: true } }));
+  await page.route("**/api/memory-lock/unlock", (r) => r.fulfill({ json: { success: true, token: "t" } }));
+  await page.route("**/api/memory-lock/lock", (r) => r.fulfill({ json: { success: true } }));
   await page.goto(BASE);
   await page.waitForTimeout(1500);
   return { page, cdp: await ctx.newCDPSession(page) };
@@ -98,17 +101,19 @@ const swipe = async (cdp, x, y, dx, dy, steps = 12) => {
   check((await nodePos()) === before, "2c. mobile: vuốt bắt đầu trên một nút thì cuộn bản đồ, không kéo lệch nút", `${before} → ${await nodePos()}`);
   await g.page.context().close();
 
-  // ── Jarvis.log ──
+  // ── Jarvis.log (trang Nhật ký trong Settings, khóa mật khẩu) ──
   const l = await open(browser, MOBILE);
-  await l.page.evaluate(() => document.getElementById("btn-logs").click());
+  await openPage(l.page, "logs");
+  await l.page.fill("#logs-lock-input", "x"); await l.page.click("#logs-lock-btn");
+  await l.page.waitForTimeout(400); await l.page.click('#logs-category-nav [data-log-tab="jarvis"]');
   await l.page.waitForSelector(".log-line", { timeout: 4000 }).catch(() => {});
   await l.page.waitForTimeout(500);
-  const lg = await l.page.evaluate(() => { const c = document.querySelector(".log-content"); return { sw: c.scrollWidth, cw: c.clientWidth, ox: getComputedStyle(c).overflowX }; });
+  const lg = await l.page.evaluate(() => { const c = document.getElementById("logs-content"); return { sw: c.scrollWidth, cw: c.clientWidth, ox: getComputedStyle(c).overflowX }; });
   check(lg.sw <= lg.cw + 1 && lg.ox === "hidden", "3a. mobile: nhật ký — dòng dài tự xuống dòng, không có cuộn ngang", JSON.stringify(lg));
-  const px = await l.page.$eval(".log-viewer-panel", (p) => Math.round(p.getBoundingClientRect().x));
-  await swipe(l.cdp, 200, 400, -240, 0); await l.page.waitForTimeout(400);
-  const after = await l.page.evaluate(() => ({ panelX: Math.round(document.querySelector(".log-viewer-panel").getBoundingClientRect().x), cl: document.querySelector(".log-content").scrollLeft, doc: document.scrollingElement.scrollLeft }));
-  check(after.panelX === px && after.cl === 0 && after.doc === 0, "3b. mobile: vuốt ngang trên nhật ký không làm lệch khung hay nhảy khung hình", JSON.stringify({ before: px, after }));
+  const px = await l.page.$eval("#card-logs", (p) => Math.round(p.getBoundingClientRect().x));
+  await swipe(l.cdp, 200, 500, -240, 0); await l.page.waitForTimeout(400);
+  const after = await l.page.evaluate(() => ({ cardX: Math.round(document.getElementById("card-logs").getBoundingClientRect().x), cl: document.getElementById("logs-content").scrollLeft, doc: document.scrollingElement.scrollLeft }));
+  check(after.cardX === px && after.cl === 0 && after.doc === 0, "3b. mobile: vuốt ngang trên nhật ký không làm lệch khung hay nhảy khung hình", JSON.stringify({ before: px, after }));
   await l.page.context().close();
 
   await browser.close();

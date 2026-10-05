@@ -39,6 +39,14 @@ async def find_replay(clean_text: str, attachment_context) -> dict | None:
         log.warning("[ROUTER] Invalid learned workflow tool chain id=%s", c.get("id"))
         return None
     agent = _LEGACY_NAMES.get(c["agent"], c["agent"])
+    if agent == "search":  # agent search cũ đã tách: mỗi tool một agent (2026-10-03)
+        from engine.prompts import catalog
+        agent = catalog.tool_to_agent_map().get(chain[0], agent)
+    from engine.prompts import catalog
+    owners = catalog.tool_to_agent_map()
+    if any(owners.get(t, agent) != agent for t in chain):  # workflow cũ gộp tool của agent đã tách (security/system)
+        log.info("[ROUTER] Ignoring workflow id=%s: tools %s do not all belong to agent %s", c["id"], chain, agent)
+        return None
     return {"id": c["id"], "agent": agent, "tool_chain": chain}
 
 

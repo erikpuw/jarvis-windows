@@ -1,6 +1,6 @@
 ---
 name: get_vannien_data
-description: Tra cứu lịch vạn niên hôm nay (lịch âm, lịch dương, giờ hoàng đạo, mệnh ngày, tuổi xung khắc, hướng xuất hành tốt).
+description: Tra cứu lịch vạn niên hôm nay (lịch dương, ngày âm lịch kèm can chi, tiết khí, trực, giờ hoàng đạo, mệnh ngày, tuổi xung khắc, hướng xuất hành tốt).
 usage: '{"query": "từ khóa liên quan lịch âm hoặc lịch vạn niên"}'
 category: info
 tags: ["calendar", "lunar"]

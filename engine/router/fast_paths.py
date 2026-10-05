@@ -54,6 +54,47 @@ def jobs_mention(text: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
+_COMMAND_MENTION = re.compile(r"^@commands/([\w-]+)\.md(?![\w])[\s,:]*(.*)$", re.I | re.S)
+
+
+def command_mention(text: str) -> tuple[str, str] | None:
+    """'@commands/search_products.md máy giặt' -> ('search_products', 'máy giặt'). Tool lạ hoặc không phải @commands/ -> None."""
+    m = _COMMAND_MENTION.match(text or "")
+    if not m:
+        return None
+    from engine.prompts import catalog
+    tool = m.group(1).lower()
+    return (tool, m.group(2).strip()) if tool in catalog.tool_to_agent_map() else None
+
+
+_TOOL_NAMED = re.compile(
+    r"^\s*(?:(?:hãy|xin|vui\s+lòng|jarvis)[,\s]+)*(?:dùng|sử\s+dụng|chạy|thực\s+hiện|gọi|run)\s+(?:lại\s+)?"
+    r"(?:lệnh\s+|tool\s+|công\s+cụ\s+)?[`@/]*([a-z][a-z0-9_]*)", re.I)
+
+
+def tool_name_command(text: str) -> str | None:
+    """"Dùng lệnh check_system coi" -> 'check_system': ngài gọi đích danh một công cụ bằng động từ ra lệnh thì chạy đúng
+    công cụ đó, không để gate/classifier đoán (log 2026-10-04). Hai tên công cụ trong câu = mơ hồ -> None."""
+    m = _TOOL_NAMED.match(text or "")
+    if not m:
+        return None
+    from engine.prompts import catalog
+    tools = catalog.tool_to_agent_map()
+    tool = m.group(1).lower()
+    named = {w for w in re.findall(r"[a-z][a-z0-9_]*", text.lower()) if w in tools}
+    return tool if tool in tools and named == {tool} else None
+
+
+def forced_command(tool: str, value: str):
+    """Lệnh tường minh /tool hoặc @commands/tool.md -> chạy đúng agent của tool, không để classifier đoán."""
+    from engine.prompts import catalog
+    from engine.router.types import RouteDecision
+    agent = catalog.tool_to_agent_map().get(tool)
+    if not agent or not value:
+        return None
+    return RouteDecision("agent", value, "mention", agent=agent)
+
+
 _RAG_MENTION = re.compile(r"^@rag(?![\w])[\s,:]*(.*)$", re.I | re.S)
 
 

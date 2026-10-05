@@ -6,7 +6,7 @@ aliases:
 description: Kiểm tra an ninh mạng, quét cổng, giám sát firewall, nhật ký xâm nhập.
 tools:
 - name: check_security
-  label: kiểm tra an ninh
+  label: kiểm tra bảo mật
   offer: false
 ---
 

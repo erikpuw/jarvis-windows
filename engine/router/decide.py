@@ -3,7 +3,8 @@ import asyncio
 import logging
 
 from engine.router.fast_paths import (
-    VOICE_CONTROL, ask_reply, is_routing_complaint, jobs_mention, plan_mention, rag_mention, resolve_mention,
+    VOICE_CONTROL, ask_reply, command_mention, forced_command, is_routing_complaint, jobs_mention, plan_mention,
+    rag_mention, resolve_mention, tool_name_command,
 )
 from engine.router.gate import classify_bucket
 from engine.router.replay import find_replay
@@ -20,6 +21,17 @@ def _unlearn_last_route(text: str) -> bool:
 async def decide(text: str, ctx: TurnContext) -> RouteDecision:
     clean = (text or "").strip()
     att = ctx.attachment_context
+
+    slash = getattr(ctx.ws, "forced_command", None)  # đặt bởi handle_slash_message, dùng đúng một lượt
+    if slash:
+        ctx.ws.forced_command = None
+    cmd = (slash["tool"], slash["value"]) if slash else command_mention(clean)
+    if not cmd and att is None:
+        named = tool_name_command(clean)  # "Dùng lệnh check_system coi": gọi đích danh công cụ, không qua gate
+        cmd = (named, clean) if named else None
+    d = forced_command(*cmd) if cmd else None
+    if d:
+        return d
 
     goal = plan_mention(clean)  # "@plans <mục tiêu>": cửa vào duy nhất của chế độ mục tiêu (2026-09-27)
     if goal:

@@ -6,62 +6,62 @@
    "ok": true,
    "got": "general",
    "detail": "source=gate",
-   "tokens_in": 382,
+   "tokens_in": 413,
    "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 339.54069999981584,
+   "llm_ms": 509.8309999993944,
    "layer": "gate",
    "id": "chat-greet",
    "run": 0,
-   "ms": 370
+   "ms": 526
   },
   {
    "ok": true,
    "got": "general",
    "detail": "source=gate",
-   "tokens_in": 381,
+   "tokens_in": 412,
    "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 159.24710000035702,
+   "llm_ms": 172.27839999759453,
    "layer": "gate",
    "id": "chat-capability",
    "run": 0,
-   "ms": 162
+   "ms": 175
   },
   {
    "ok": true,
    "got": "general",
    "detail": "source=gate",
-   "tokens_in": 379,
+   "tokens_in": 410,
    "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 167.14259999935166,
+   "llm_ms": 160.00220000205445,
    "layer": "gate",
    "id": "chat-thanks",
    "run": 0,
-   "ms": 170
+   "ms": 163
   },
   {
    "ok": true,
    "got": "general",
    "detail": "source=gate",
-   "tokens_in": 398,
+   "tokens_in": 429,
    "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 180.5860999993456,
+   "llm_ms": 165.7859999977518,
    "layer": "gate",
    "id": "trap-dont-run",
    "run": 0,
-   "ms": 188
+   "ms": 168
   },
   {
    "ok": true,
    "got": "general",
    "detail": "source=gate",
-   "tokens_in": 398,
+   "tokens_in": 429,
    "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 175.5118000000948,
+   "llm_ms": 180.77839999750722,
    "layer": "gate",
    "id": "trap-taught",
    "run": 0,
@@ -71,259 +71,103 @@
    "ok": true,
    "got": "general",
    "detail": "source=gate",
-   "tokens_in": 384,
+   "tokens_in": 415,
    "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 172.53569999957108,
+   "llm_ms": 166.92870000042603,
    "layer": "gate",
    "id": "trap-threat",
-   "run": 0,
-   "ms": 177
-  },
-  {
-   "ok": true,
-   "got": "general",
-   "detail": "source=gate",
-   "tokens_in": 428,
-   "tokens_out": 2,
-   "llm_calls": 1,
-   "llm_ms": 190.88109999938752,
-   "layer": "gate",
-   "id": "trap-followup-project",
-   "run": 0,
-   "ms": 196
-  },
-  {
-   "ok": true,
-   "got": "general_knowledge",
-   "detail": "source=gate",
-   "tokens_in": 381,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 203.6284000005253,
-   "layer": "gate",
-   "id": "know-capital",
-   "run": 0,
-   "ms": 208
-  },
-  {
-   "ok": true,
-   "got": "general_knowledge",
-   "detail": "source=gate",
-   "tokens_in": 381,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 209.0892000005624,
-   "layer": "gate",
-   "id": "know-invent",
-   "run": 0,
-   "ms": 214
-  },
-  {
-   "ok": true,
-   "got": "general_knowledge",
-   "detail": "source=gate",
-   "tokens_in": 385,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 204.03060000080586,
-   "layer": "gate",
-   "id": "know-ww2",
-   "run": 0,
-   "ms": 209
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 388,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 181.75960000007763,
-   "layer": "gate",
-   "id": "news-filler",
-   "run": 0,
-   "ms": 187
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 380,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 162.7066000000923,
-   "layer": "gate",
-   "id": "news-terse",
-   "run": 0,
-   "ms": 171
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 440,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 181.4953000002788,
-   "layer": "gate",
-   "id": "news-after-email",
-   "run": 0,
-   "ms": 189
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 388,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 171.6164999998,
-   "layer": "gate",
-   "id": "price-aggregate",
-   "run": 0,
-   "ms": 178
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 440,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 184.31229999987409,
-   "layer": "gate",
-   "id": "price-after-email",
-   "run": 0,
-   "ms": 192
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 380,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 171.1512000001676,
-   "layer": "gate",
-   "id": "price-gold",
-   "run": 0,
-   "ms": 174
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 386,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 174.57689999992,
-   "layer": "gate",
-   "id": "weather-city",
-   "run": 0,
-   "ms": 180
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 386,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 160.1918000005753,
-   "layer": "gate",
-   "id": "email-check",
    "run": 0,
    "ms": 169
   },
   {
    "ok": true,
-   "got": "orchestrator",
+   "got": "general",
    "detail": "source=gate",
-   "tokens_in": 382,
-   "tokens_out": 4,
+   "tokens_in": 459,
+   "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 165.1164000004428,
+   "llm_ms": 168.59399999884772,
    "layer": "gate",
-   "id": "calendar-week",
-   "run": 0,
-   "ms": 170
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 376,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 176.0071999997308,
-   "layer": "gate",
-   "id": "desktop-open",
-   "run": 0,
-   "ms": 182
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 378,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 168.69880000012927,
-   "layer": "gate",
-   "id": "desktop-close",
-   "run": 0,
-   "ms": 174
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 386,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 172.06739999983256,
-   "layer": "gate",
-   "id": "notes-add",
-   "run": 0,
-   "ms": 179
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 381,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 160.66260000025068,
-   "layer": "gate",
-   "id": "notes-list",
+   "id": "trap-followup-project",
    "run": 0,
    "ms": 171
   },
   {
    "ok": true,
-   "got": "orchestrator",
+   "got": "general_knowledge",
    "detail": "source=gate",
-   "tokens_in": 381,
+   "tokens_in": 412,
    "tokens_out": 4,
    "llm_calls": 1,
-   "llm_ms": 178.4895000000688,
+   "llm_ms": 183.0757999996422,
    "layer": "gate",
-   "id": "media-play",
+   "id": "know-capital",
    "run": 0,
-   "ms": 183
+   "ms": 185
+  },
+  {
+   "ok": true,
+   "got": "general_knowledge",
+   "detail": "source=gate",
+   "tokens_in": 412,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 176.94570000094245,
+   "layer": "gate",
+   "id": "know-invent",
+   "run": 0,
+   "ms": 180
+  },
+  {
+   "ok": true,
+   "got": "general_knowledge",
+   "detail": "source=gate",
+   "tokens_in": 416,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 197.65040000129375,
+   "layer": "gate",
+   "id": "know-ww2",
+   "run": 0,
+   "ms": 200
   },
   {
    "ok": true,
    "got": "orchestrator",
    "detail": "source=gate",
-   "tokens_in": 380,
+   "tokens_in": 419,
    "tokens_out": 4,
    "llm_calls": 1,
-   "llm_ms": 166.7663000007451,
+   "llm_ms": 162.78850000162493,
    "layer": "gate",
-   "id": "vision-shot",
+   "id": "news-filler",
+   "run": 0,
+   "ms": 166
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 411,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 155.94640000199433,
+   "layer": "gate",
+   "id": "news-terse",
+   "run": 0,
+   "ms": 159
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 471,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 171.72800000116695,
+   "layer": "gate",
+   "id": "news-after-email",
    "run": 0,
    "ms": 175
   },
@@ -331,259 +175,298 @@
    "ok": true,
    "got": "orchestrator",
    "detail": "source=gate",
-   "tokens_in": 378,
+   "tokens_in": 419,
    "tokens_out": 4,
    "llm_calls": 1,
-   "llm_ms": 166.02359999978944,
+   "llm_ms": 180.08689999987837,
    "layer": "gate",
-   "id": "webcam-look",
-   "run": 0,
-   "ms": 172
-  },
-  {
-   "ok": false,
-   "got": "general",
-   "detail": "source=gate expected=['orchestrator']",
-   "tokens_in": 378,
-   "tokens_out": 2,
-   "llm_calls": 1,
-   "llm_ms": 163.33699999995588,
-   "layer": "gate",
-   "id": "project-check",
-   "run": 0,
-   "ms": 168
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 384,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 179.03130000013334,
-   "layer": "gate",
-   "id": "security-scan",
-   "run": 0,
-   "ms": 184
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 386,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 167.90880000007746,
-   "layer": "gate",
-   "id": "legal-labor",
-   "run": 0,
-   "ms": 174
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 386,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 179.67989999942802,
-   "layer": "gate",
-   "id": "vietlott-645",
-   "run": 0,
-   "ms": 187
-  },
-  {
-   "ok": true,
-   "got": "general",
-   "detail": "source=gate",
-   "tokens_in": 433,
-   "tokens_out": 2,
-   "llm_calls": 1,
-   "llm_ms": 179.63510000026872,
-   "layer": "gate",
-   "id": "chat-tts-retry",
-   "run": 0,
-   "ms": 186
-  },
-  {
-   "ok": true,
-   "got": "general",
-   "detail": "source=gate",
-   "tokens_in": 427,
-   "tokens_out": 2,
-   "llm_calls": 1,
-   "llm_ms": 180.2545000000464,
-   "layer": "gate",
-   "id": "chat-tts-retry-short",
-   "run": 0,
-   "ms": 186
-  },
-  {
-   "ok": true,
-   "got": "general",
-   "detail": "source=gate",
-   "tokens_in": 431,
-   "tokens_out": 2,
-   "llm_calls": 1,
-   "llm_ms": 174.93500000000495,
-   "layer": "gate",
-   "id": "chat-tts-listen",
-   "run": 0,
-   "ms": 181
-  },
-  {
-   "ok": true,
-   "got": "general",
-   "detail": "source=gate",
-   "tokens_in": 431,
-   "tokens_out": 2,
-   "llm_calls": 1,
-   "llm_ms": 176.26259999997274,
-   "layer": "gate",
-   "id": "chat-tts-opinion",
+   "id": "price-aggregate",
    "run": 0,
    "ms": 182
   },
   {
    "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 471,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 177.67540000204463,
+   "layer": "gate",
+   "id": "price-after-email",
+   "run": 0,
+   "ms": 180
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 411,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 158.60700000121142,
+   "layer": "gate",
+   "id": "price-gold",
+   "run": 0,
+   "ms": 161
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 417,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 133.08699999834062,
+   "layer": "gate",
+   "id": "weather-city",
+   "run": 0,
+   "ms": 135
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 417,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 148.88559999963036,
+   "layer": "gate",
+   "id": "email-check",
+   "run": 0,
+   "ms": 151
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 413,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 147.73880000211648,
+   "layer": "gate",
+   "id": "calendar-week",
+   "run": 0,
+   "ms": 150
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 407,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 148.8080999988597,
+   "layer": "gate",
+   "id": "desktop-open",
+   "run": 0,
+   "ms": 151
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 409,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 155.7825000018056,
+   "layer": "gate",
+   "id": "desktop-close",
+   "run": 0,
+   "ms": 158
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 417,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 161.4224999975704,
+   "layer": "gate",
+   "id": "notes-add",
+   "run": 0,
+   "ms": 164
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 412,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 146.90279999922495,
+   "layer": "gate",
+   "id": "notes-list",
+   "run": 0,
+   "ms": 149
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 412,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 177.252800000133,
+   "layer": "gate",
+   "id": "media-play",
+   "run": 0,
+   "ms": 179
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 411,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 177.7382000000216,
+   "layer": "gate",
+   "id": "vision-shot",
+   "run": 0,
+   "ms": 180
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 409,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 145.78160000019125,
+   "layer": "gate",
+   "id": "webcam-look",
+   "run": 0,
+   "ms": 148
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 409,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 188.10589999702643,
+   "layer": "gate",
+   "id": "project-check",
+   "run": 0,
+   "ms": 190
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 415,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 156.92810000109603,
+   "layer": "gate",
+   "id": "security-scan",
+   "run": 0,
+   "ms": 159
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 417,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 160.05829999994603,
+   "layer": "gate",
+   "id": "legal-labor",
+   "run": 0,
+   "ms": 162
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 417,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 150.86449999944307,
+   "layer": "gate",
+   "id": "vietlott-645",
+   "run": 0,
+   "ms": 153
+  },
+  {
+   "ok": true,
    "got": "general",
    "detail": "source=gate",
-   "tokens_in": 447,
+   "tokens_in": 464,
    "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 180.52729999999428,
+   "llm_ms": 165.67509999731556,
+   "layer": "gate",
+   "id": "chat-tts-retry",
+   "run": 0,
+   "ms": 168
+  },
+  {
+   "ok": true,
+   "got": "general",
+   "detail": "source=gate",
+   "tokens_in": 458,
+   "tokens_out": 2,
+   "llm_calls": 1,
+   "llm_ms": 144.31909999984782,
+   "layer": "gate",
+   "id": "chat-tts-retry-short",
+   "run": 0,
+   "ms": 146
+  },
+  {
+   "ok": true,
+   "got": "general",
+   "detail": "source=gate",
+   "tokens_in": 462,
+   "tokens_out": 2,
+   "llm_calls": 1,
+   "llm_ms": 157.2799000023224,
+   "layer": "gate",
+   "id": "chat-tts-listen",
+   "run": 0,
+   "ms": 159
+  },
+  {
+   "ok": true,
+   "got": "general",
+   "detail": "source=gate",
+   "tokens_in": 462,
+   "tokens_out": 2,
+   "llm_calls": 1,
+   "llm_ms": 154.8711000032199,
+   "layer": "gate",
+   "id": "chat-tts-opinion",
+   "run": 0,
+   "ms": 157
+  },
+  {
+   "ok": true,
+   "got": "general",
+   "detail": "source=gate",
+   "tokens_in": 478,
+   "tokens_out": 2,
+   "llm_calls": 1,
+   "llm_ms": 189.04200000179117,
    "layer": "gate",
    "id": "meta-where-is-the-problem",
    "run": 0,
-   "ms": 185
+   "ms": 191
   },
   {
    "ok": true,
    "got": "general",
    "detail": "source=gate",
-   "tokens_in": 446,
+   "tokens_in": 477,
    "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 189.68199999926583,
+   "llm_ms": 178.8851999990584,
    "layer": "gate",
    "id": "meta-agent-everywhere",
-   "run": 0,
-   "ms": 195
-  },
-  {
-   "ok": true,
-   "got": "general",
-   "detail": "source=gate",
-   "tokens_in": 465,
-   "tokens_out": 2,
-   "llm_calls": 1,
-   "llm_ms": 192.07939999978407,
-   "layer": "gate",
-   "id": "meta-quoted-sentence",
-   "run": 0,
-   "ms": 197
-  },
-  {
-   "ok": true,
-   "got": "general",
-   "detail": "source=gate",
-   "tokens_in": 448,
-   "tokens_out": 2,
-   "llm_calls": 1,
-   "llm_ms": 183.50069999996776,
-   "layer": "gate",
-   "id": "meta-how-to-learn",
-   "run": 0,
-   "ms": 188
-  },
-  {
-   "ok": true,
-   "got": "general",
-   "detail": "source=gate",
-   "tokens_in": 460,
-   "tokens_out": 2,
-   "llm_calls": 1,
-   "llm_ms": 191.3258999993559,
-   "layer": "gate",
-   "id": "meta-routing-strange",
-   "run": 0,
-   "ms": 196
-  },
-  {
-   "ok": true,
-   "got": "general",
-   "detail": "source=gate",
-   "tokens_in": 438,
-   "tokens_out": 2,
-   "llm_calls": 1,
-   "llm_ms": 198.35090000015043,
-   "layer": "gate",
-   "id": "meta-called-agents-again",
-   "run": 0,
-   "ms": 203
-  },
-  {
-   "ok": false,
-   "got": "general",
-   "detail": "source=gate expected=['orchestrator']",
-   "tokens_in": 425,
-   "tokens_out": 2,
-   "llm_calls": 1,
-   "llm_ms": 177.72950000016863,
-   "layer": "gate",
-   "id": "followup-search-more",
-   "run": 0,
-   "ms": 184
-  },
-  {
-   "ok": false,
-   "got": "general",
-   "detail": "source=gate expected=['orchestrator']",
-   "tokens_in": 427,
-   "tokens_out": 2,
-   "llm_calls": 1,
-   "llm_ms": 180.33289999948465,
-   "layer": "gate",
-   "id": "followup-search-again",
-   "run": 0,
-   "ms": 187
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 382,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 166.06169999977283,
-   "layer": "gate",
-   "id": "prefix-hien-thi",
-   "run": 0,
-   "ms": 170
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 379,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 166.4069999997082,
-   "layer": "gate",
-   "id": "prefix-hien-gia",
-   "run": 0,
-   "ms": 172
-  },
-  {
-   "ok": true,
-   "got": "orchestrator",
-   "detail": "source=gate",
-   "tokens_in": 381,
-   "tokens_out": 4,
-   "llm_calls": 1,
-   "llm_ms": 176.71209999934945,
-   "layer": "gate",
-   "id": "prefix-thanks-then-task",
    "run": 0,
    "ms": 181
   },
@@ -591,105 +474,222 @@
    "ok": true,
    "got": "general",
    "detail": "source=gate",
-   "tokens_in": 381,
+   "tokens_in": 496,
    "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 161.9140000002517,
+   "llm_ms": 176.61569999836502,
    "layer": "gate",
-   "id": "history-ask",
+   "id": "meta-quoted-sentence",
    "run": 0,
-   "ms": 168
+   "ms": 179
+  },
+  {
+   "ok": true,
+   "got": "general",
+   "detail": "source=gate",
+   "tokens_in": 479,
+   "tokens_out": 2,
+   "llm_calls": 1,
+   "llm_ms": 145.72950000001583,
+   "layer": "gate",
+   "id": "meta-how-to-learn",
+   "run": 0,
+   "ms": 148
+  },
+  {
+   "ok": true,
+   "got": "general",
+   "detail": "source=gate",
+   "tokens_in": 491,
+   "tokens_out": 2,
+   "llm_calls": 1,
+   "llm_ms": 187.90749999971013,
+   "layer": "gate",
+   "id": "meta-routing-strange",
+   "run": 0,
+   "ms": 190
+  },
+  {
+   "ok": true,
+   "got": "general",
+   "detail": "source=gate",
+   "tokens_in": 469,
+   "tokens_out": 2,
+   "llm_calls": 1,
+   "llm_ms": 158.0744999992021,
+   "layer": "gate",
+   "id": "meta-called-agents-again",
+   "run": 0,
+   "ms": 160
   },
   {
    "ok": true,
    "got": "orchestrator",
    "detail": "source=gate",
-   "tokens_in": 389,
+   "tokens_in": 456,
    "tokens_out": 4,
    "llm_calls": 1,
-   "llm_ms": 184.47530000048573,
+   "llm_ms": 179.91640000036568,
+   "layer": "gate",
+   "id": "followup-search-more",
+   "run": 0,
+   "ms": 183
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 458,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 172.2455999988597,
+   "layer": "gate",
+   "id": "followup-search-again",
+   "run": 0,
+   "ms": 175
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 413,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 162.08929999993416,
+   "layer": "gate",
+   "id": "prefix-hien-thi",
+   "run": 0,
+   "ms": 164
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 410,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 150.72970000255737,
+   "layer": "gate",
+   "id": "prefix-hien-gia",
+   "run": 0,
+   "ms": 153
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 412,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 158.72780000063358,
+   "layer": "gate",
+   "id": "prefix-thanks-then-task",
+   "run": 0,
+   "ms": 161
+  },
+  {
+   "ok": true,
+   "got": "general",
+   "detail": "source=gate",
+   "tokens_in": 412,
+   "tokens_out": 2,
+   "llm_calls": 1,
+   "llm_ms": 138.79309999902034,
+   "layer": "gate",
+   "id": "history-ask",
+   "run": 0,
+   "ms": 141
+  },
+  {
+   "ok": true,
+   "got": "orchestrator",
+   "detail": "source=gate",
+   "tokens_in": 420,
+   "tokens_out": 4,
+   "llm_calls": 1,
+   "llm_ms": 177.11920000147074,
    "layer": "gate",
    "id": "history-open",
    "run": 0,
-   "ms": 189
+   "ms": 179
   },
   {
    "ok": false,
    "got": "general",
    "detail": "source=gate expected=['orchestrator']",
-   "tokens_in": 387,
+   "tokens_in": 418,
    "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 270.349499999611,
+   "llm_ms": 149.58910000132164,
    "layer": "gate",
    "id": "dream-run",
    "run": 0,
-   "ms": 276
+   "ms": 152
   },
   {
    "ok": true,
    "got": "orchestrator",
    "detail": "source=gate",
-   "tokens_in": 380,
+   "tokens_in": 411,
    "tokens_out": 4,
    "llm_calls": 1,
-   "llm_ms": 252.95490000007703,
+   "llm_ms": 150.23110000038287,
    "layer": "gate",
    "id": "goose-open",
    "run": 0,
-   "ms": 257
+   "ms": 152
   },
   {
    "ok": true,
    "got": "orchestrator",
    "detail": "source=gate",
-   "tokens_in": 384,
+   "tokens_in": 415,
    "tokens_out": 4,
    "llm_calls": 1,
-   "llm_ms": 250.04830000034417,
+   "llm_ms": 160.89470000224537,
    "layer": "gate",
    "id": "multi-email-note",
    "run": 0,
-   "ms": 259
+   "ms": 163
   },
   {
    "ok": true,
    "got": "orchestrator",
    "detail": "source=gate",
-   "tokens_in": 439,
+   "tokens_in": 470,
    "tokens_out": 4,
    "llm_calls": 1,
-   "llm_ms": 238.38270000032935,
+   "llm_ms": 155.05599999960396,
    "layer": "gate",
    "id": "multi-price-note",
    "run": 0,
-   "ms": 241
+   "ms": 157
   },
   {
    "ok": true,
    "got": "orchestrator",
    "detail": "source=gate",
-   "tokens_in": 385,
+   "tokens_in": 416,
    "tokens_out": 4,
    "llm_calls": 1,
-   "llm_ms": 230.94010000022536,
+   "llm_ms": 159.43260000130977,
    "layer": "gate",
    "id": "multi-open-news",
    "run": 0,
-   "ms": 235
+   "ms": 162
   },
   {
    "ok": true,
    "got": "orchestrator",
    "detail": "source=gate",
-   "tokens_in": 384,
+   "tokens_in": 415,
    "tokens_out": 4,
    "llm_calls": 1,
-   "llm_ms": 217.9537000001801,
+   "llm_ms": 170.7341000001179,
    "layer": "gate",
    "id": "multi-weather-email",
    "run": 0,
-   "ms": 221
+   "ms": 173
   },
   {
    "ok": true,
@@ -702,691 +702,111 @@
    "layer": "gate",
    "id": "mention-email",
    "run": 0,
-   "ms": 35
+   "ms": 28
   },
   {
    "ok": true,
    "got": "general",
    "detail": "source=gate",
-   "tokens_in": 377,
+   "tokens_in": 408,
    "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 293.2866000001013,
+   "llm_ms": 145.9543000019039,
    "layer": "gate",
    "id": "howto-notepad-open",
    "run": 0,
-   "ms": 299
+   "ms": 148
   },
   {
    "ok": true,
    "got": "general",
    "detail": "source=gate",
-   "tokens_in": 380,
+   "tokens_in": 411,
    "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 298.09910000039963,
+   "llm_ms": 137.15489999958663,
    "layer": "gate",
    "id": "howto-screenshot-windows",
    "run": 0,
-   "ms": 303
+   "ms": 140
   },
   {
    "ok": true,
    "got": "general",
    "detail": "source=gate",
-   "tokens_in": 380,
+   "tokens_in": 411,
    "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 248.68830000013986,
+   "llm_ms": 148.58449999883305,
    "layer": "gate",
    "id": "howto-shutdown-fast",
    "run": 0,
-   "ms": 252
+   "ms": 151
   },
   {
    "ok": true,
    "got": "general",
    "detail": "source=gate",
-   "tokens_in": 383,
+   "tokens_in": 414,
    "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 255.4190999999264,
+   "llm_ms": 151.53750000172295,
    "layer": "gate",
    "id": "heldout-howto-brightness",
    "run": 0,
-   "ms": 259
+   "ms": 154
   },
   {
    "ok": true,
    "got": "general",
    "detail": "source=gate",
-   "tokens_in": 381,
+   "tokens_in": 412,
    "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 233.65370000010444,
+   "llm_ms": 149.25919999950565,
    "layer": "gate",
    "id": "heldout-howto-wallpaper",
    "run": 0,
-   "ms": 238
+   "ms": 151
   },
   {
    "ok": true,
    "got": "general",
    "detail": "source=gate",
-   "tokens_in": 386,
+   "tokens_in": 417,
    "tokens_out": 2,
    "llm_calls": 1,
-   "llm_ms": 223.96559999924648,
+   "llm_ms": 156.3172999995004,
    "layer": "gate",
    "id": "heldout-howto-vn-typing",
    "run": 0,
-   "ms": 227
+   "ms": 158
   },
   {
    "ok": true,
    "got": "orchestrator",
    "detail": "source=gate",
-   "tokens_in": 378,
+   "tokens_in": 409,
    "tokens_out": 4,
    "llm_calls": 1,
-   "llm_ms": 240.99779999960447,
+   "llm_ms": 179.6942000000854,
    "layer": "gate",
    "id": "control-notepad-cmd",
    "run": 0,
-   "ms": 244
+   "ms": 182
   },
   {
    "ok": true,
    "got": "orchestrator",
    "detail": "source=gate",
-   "tokens_in": 379,
+   "tokens_in": 410,
    "tokens_out": 4,
    "llm_calls": 1,
-   "llm_ms": 221.85970000009547,
+   "llm_ms": 135.70270000127493,
    "layer": "gate",
    "id": "control-screenshot-cmd",
    "run": 0,
-   "ms": 226
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "search",
-     "tin tức Nvidia RTX Spark"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1466,
-   "tokens_out": 17,
-   "llm_calls": 1,
-   "llm_ms": 1083.1716000002416,
-   "layer": "classifier",
-   "id": "news-filler",
-   "run": 0,
-   "ms": 1084
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "search",
-     "tin tức nvidia rtx spark"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1457,
-   "tokens_out": 18,
-   "llm_calls": 1,
-   "llm_ms": 444.54229999973904,
-   "layer": "classifier",
-   "id": "news-terse",
-   "run": 0,
-   "ms": 445
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "search",
-     "tin tức nổi bật về nvidia rtx spark"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1514,
-   "tokens_out": 21,
-   "llm_calls": 1,
-   "llm_ms": 548.7888000006933,
-   "layer": "classifier",
-   "id": "news-after-email",
-   "run": 0,
-   "ms": 549
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "search",
-     "giá tổng hợp hôm nay"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1466,
-   "tokens_out": 18,
-   "llm_calls": 1,
-   "llm_ms": 422.06609999993816,
-   "layer": "classifier",
-   "id": "price-aggregate",
-   "run": 0,
-   "ms": 422
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "search",
-     "giá tổng hợp hôm nay"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1514,
-   "tokens_out": 18,
-   "llm_calls": 1,
-   "llm_ms": 597.6936999995814,
-   "layer": "classifier",
-   "id": "price-after-email",
-   "run": 0,
-   "ms": 598
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "search",
-     "giá vàng hôm nay"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1458,
-   "tokens_out": 17,
-   "llm_calls": 1,
-   "llm_ms": 379.38609999946493,
-   "layer": "classifier",
-   "id": "price-gold",
-   "run": 0,
-   "ms": 380
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "search",
-     "thời tiết hôm nay ở Hồ Chí Minh"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1463,
-   "tokens_out": 21,
-   "llm_calls": 1,
-   "llm_ms": 479.2389000003823,
-   "layer": "classifier",
-   "id": "weather-city",
-   "run": 0,
-   "ms": 480
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "email",
-     "kiểm tra email mới"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1464,
-   "tokens_out": 17,
-   "llm_calls": 1,
-   "llm_ms": 478.47599999931845,
-   "layer": "classifier",
-   "id": "email-check",
-   "run": 0,
-   "ms": 479
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "email",
-     "tuần này tôi có lịch hẹn nào không?"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1460,
-   "tokens_out": 19,
-   "llm_calls": 1,
-   "llm_ms": 419.934600000488,
-   "layer": "classifier",
-   "id": "calendar-week",
-   "run": 0,
-   "ms": 420
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "desktop",
-     "mở Notepad"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1453,
-   "tokens_out": 15,
-   "llm_calls": 1,
-   "llm_ms": 1647.150600000714,
-   "layer": "classifier",
-   "id": "desktop-open",
-   "run": 0,
-   "ms": 1647
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "desktop",
-     "đóng Excel"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1455,
-   "tokens_out": 15,
-   "llm_calls": 1,
-   "llm_ms": 2012.4918999999863,
-   "layer": "classifier",
-   "id": "desktop-close",
-   "run": 0,
-   "ms": 2013
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "notes",
-     "ghi lại note: mai họp lúc 9 giờ với khách hàng"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1463,
-   "tokens_out": 25,
-   "llm_calls": 1,
-   "llm_ms": 836.0736000004181,
-   "layer": "classifier",
-   "id": "notes-add",
-   "run": 0,
-   "ms": 836
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "notes",
-     "xem danh sách ghi chú của tôi"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1458,
-   "tokens_out": 20,
-   "llm_calls": 1,
-   "llm_ms": 2785.4231999999683,
-   "layer": "classifier",
-   "id": "notes-list",
-   "run": 0,
-   "ms": 2786
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "media",
-     "mở bài nhạc lofi trên youtube"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1458,
-   "tokens_out": 20,
-   "llm_calls": 1,
-   "llm_ms": 516.3118000000395,
-   "layer": "classifier",
-   "id": "media-play",
-   "run": 0,
-   "ms": 517
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "vision",
-     "chụp màn hình cho tôi xem"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1457,
-   "tokens_out": 19,
-   "llm_calls": 1,
-   "llm_ms": 611.8721000002552,
-   "layer": "classifier",
-   "id": "vision-shot",
-   "run": 0,
-   "ms": 612
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "webcam",
-     "xem webcam"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1455,
-   "tokens_out": 16,
-   "llm_calls": 1,
-   "llm_ms": 377.2598999994443,
-   "layer": "classifier",
-   "id": "webcam-look",
-   "run": 0,
-   "ms": 377
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "project",
-     "kiểm tra dự án"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1455,
-   "tokens_out": 17,
-   "llm_calls": 1,
-   "llm_ms": 370.6458000006023,
-   "layer": "classifier",
-   "id": "project-check",
-   "run": 0,
-   "ms": 371
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "security",
-     "kiểm tra an ninh mạng và quét cổng"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1461,
-   "tokens_out": 21,
-   "llm_calls": 1,
-   "llm_ms": 429.56390000017564,
-   "layer": "classifier",
-   "id": "security-scan",
-   "run": 0,
-   "ms": 430
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "legal",
-     "bộ luật lao động quy định nghỉ phép năm bao nhiêu ngày"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1464,
-   "tokens_out": 25,
-   "llm_calls": 1,
-   "llm_ms": 478.11559999991005,
-   "layer": "classifier",
-   "id": "legal-labor",
-   "run": 0,
-   "ms": 478
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "vietlott",
-     "phân tích kết quả mega 6/45 gần đây"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1463,
-   "tokens_out": 27,
-   "llm_calls": 1,
-   "llm_ms": 536.1889000005249,
-   "layer": "classifier",
-   "id": "vietlott-645",
-   "run": 0,
-   "ms": 537
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "search",
-     "tra thêm đi"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1499,
-   "tokens_out": 17,
-   "llm_calls": 1,
-   "llm_ms": 1098.3914999997069,
-   "layer": "classifier",
-   "id": "followup-search-more",
-   "run": 0,
-   "ms": 1099
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "search",
-     "tìm thêm tin nữa đi"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1501,
-   "tokens_out": 17,
-   "llm_calls": 1,
-   "llm_ms": 644.509100000505,
-   "layer": "classifier",
-   "id": "followup-search-again",
-   "run": 0,
-   "ms": 645
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "email",
-     "hiển thị lịch hẹn tuần này giúp tôi"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1459,
-   "tokens_out": 19,
-   "llm_calls": 1,
-   "llm_ms": 513.7611999998626,
-   "layer": "classifier",
-   "id": "prefix-hien-thi",
-   "run": 0,
-   "ms": 514
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "search",
-     "giá vàng hôm nay"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1456,
-   "tokens_out": 17,
-   "llm_calls": 1,
-   "llm_ms": 763.9942000005249,
-   "layer": "classifier",
-   "id": "prefix-hien-gia",
-   "run": 0,
-   "ms": 764
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "email",
-     "kiểm tra email"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1458,
-   "tokens_out": 16,
-   "llm_calls": 1,
-   "llm_ms": 1030.74050000032,
-   "layer": "classifier",
-   "id": "prefix-thanks-then-task",
-   "run": 0,
-   "ms": 1031
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "history",
-     "lịch sử trò chuyện cũ của chúng ta hôm qua"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1466,
-   "tokens_out": 23,
-   "llm_calls": 1,
-   "llm_ms": 508.1301000000167,
-   "layer": "classifier",
-   "id": "history-open",
-   "run": 0,
-   "ms": 508
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "dream",
-     "dọn dẹp và tóm tắt hội thoại cũ"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1464,
-   "tokens_out": 23,
-   "llm_calls": 1,
-   "llm_ms": 700.668599999517,
-   "layer": "classifier",
-   "id": "dream-run",
-   "run": 0,
-   "ms": 701
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "goose",
-     "mở giao diện goose"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1457,
-   "tokens_out": 18,
-   "llm_calls": 1,
-   "llm_ms": 423.7100999998802,
-   "layer": "classifier",
-   "id": "goose-open",
-   "run": 0,
-   "ms": 424
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "email",
-     "kiểm tra email của tôi rồi ghi lại vào note"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1461,
-   "tokens_out": 21,
-   "llm_calls": 1,
-   "llm_ms": 558.5307000001194,
-   "layer": "classifier",
-   "id": "multi-email-note",
-   "run": 0,
-   "ms": 559
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "search",
-     "giá tổng hợp hôm nay"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1512,
-   "tokens_out": 18,
-   "llm_calls": 1,
-   "llm_ms": 594.1789999997127,
-   "layer": "classifier",
-   "id": "multi-price-note",
-   "run": 0,
-   "ms": 594
-  },
-  {
-   "ok": false,
-   "got": [
-    [
-     "desktop",
-     "mở Notepad"
-    ]
-   ],
-   "detail": "agents ['desktop'] != ['desktop', 'search']",
-   "tokens_in": 1462,
-   "tokens_out": 15,
-   "llm_calls": 1,
-   "llm_ms": 391.64119999986724,
-   "layer": "classifier",
-   "id": "multi-open-news",
-   "run": 0,
-   "ms": 392
-  },
-  {
-   "ok": true,
-   "got": [
-    [
-     "search",
-     "thời tiết"
-    ],
-    [
-     "email",
-     "email mới"
-    ]
-   ],
-   "detail": "",
-   "tokens_in": 1461,
-   "tokens_out": 28,
-   "llm_calls": 1,
-   "llm_ms": 699.2866999999023,
-   "layer": "classifier",
-   "id": "multi-weather-email",
-   "run": 0,
-   "ms": 700
+   "ms": 139
   }
  ]
 }

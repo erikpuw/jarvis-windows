@@ -1,6 +1,6 @@
 ---
 name: project
-title: Agent Project Health
+title: Agent Project
 aliases:
 - agent_project
 description: Kiểm tra project, quét lỗi cú pháp, báo cáo sức khỏe, lịch sử vá lỗi.

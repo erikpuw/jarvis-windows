@@ -55,6 +55,11 @@ async def build_chat_messages(kind: str, text: str, ctx) -> tuple[list[dict], st
         from engine.prompts import catalog
         reference_data["agent_names"] = catalog.agent_names_text()
 
+    # Kỹ năng gợi ý công cụ (Offer Skill) chỉ nạp on-demand khi ngài hỏi gợi ý / giải pháp
+    from engine.prompts.chat import _ASKS_FOR_OFFER
+    if route == "general" and _ASKS_FOR_OFFER.search(text or ""):
+        reference_data["offer_skill"] = True
+
     # Bài học hành vi giờ nằm trong khối <style> của system prompt (không phải reference)
     # recall_learnings đã bỏ; get_behaviour_rules được gọi trong build_chat_system_prompt
     # Không nạp kết quả agent gần nhất (2026-09-27): "[email] xem email → thành công" ở mọi lượt chat làm

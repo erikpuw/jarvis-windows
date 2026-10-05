@@ -210,9 +210,11 @@ def test_a5_vision_request_kwargs(monkeypatch):
         assert eb["reasoning_effort"] == "none"
         assert eb["chat_template_kwargs"]["enable_thinking"] == False
 
-        # Không có cứng 0.4/0.8/40 (số cũ) - bây giờ lấy từ profile
-        # Gemma mặc định: temp=1.0, top_p=0.95, top_k=64, min_p=0.0
-        assert vkw["temperature"] == 1.0
+        # Vision/OCR đọc chữ trong ảnh nên phải tất định: temp 0 (đo thực tế: temp 1.0 làm Gemma E4B
+        # đọc sai số/giờ hoặc trả rỗng) và không phạt lặp token (làm hỏng số/ký tự lặp trong văn bản gốc).
+        # top_p/top_k/min_p vẫn lấy từ profile (không có tác dụng khi temp=0).
+        assert vkw["temperature"] == 0.0
+        assert vkw["presence_penalty"] == 0.0
         assert vkw["top_p"] == 0.95
         assert eb["top_k"] == 64
         assert eb["min_p"] == 0.0

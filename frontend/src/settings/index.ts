@@ -4,7 +4,9 @@
  */
 import { apiGet, apiPost, escapeHtml, formatNumber, formatUptime } from "./api";
 import { buildSettingsHTML, SETTINGS_PAGES, APP_VERSION, type SettingsPageId } from "./pages";
-import { initMemoryCenter, loadMemoryList } from "./memory";
+import { initMemoryCenter } from "./memory";
+import { initLogsPage } from "./logs";
+import { enterLockable, lockAll } from "./lock";
 import { renderGraphfy, resetGraphfyLayout } from "./graphfy";
 import type {
   AgentItem, HookItem, SkillItem, PromptItem, CommandItem,
@@ -26,7 +28,6 @@ let container: HTMLElement | null = null;
 let isOpen = false;
 let currentPage: SettingsPageId = "overview";
 let healthTimer: number | null = null;
-let memoryLoadedOnce = false;
 let menuIcon: MorphIconElement | null = null;
 let sidebarToggleIcon: MorphIconElement | null = null;
 let isSidebarCollapsed = false;
@@ -271,7 +272,6 @@ async function loadStatus(): Promise<void> {
     setText("sysinfo-uptime", formatUptime(status.uptime_seconds));
     setText("sysinfo-port", String(status.server_port || 8340));
     setText("sysinfo-memory", formatNumber(status.memory_count));
-    setText("sysinfo-semantic", formatNumber(status.semantic_memory_count));
     setText("sysinfo-turns", formatNumber(status.conversation_turn_count));
     setText("sysinfo-tasks", formatNumber(status.task_count));
     setText("sysinfo-skills", formatNumber(status.skill_count));
@@ -779,6 +779,7 @@ async function loadReadme(): Promise<void> {
 // Navigation and Switch Page
 // ---------------------------------------------------------------------------
 function switchPage(id: SettingsPageId, remember = true): void {
+  const previous = currentPage;
   currentPage = id;
   document.querySelectorAll<HTMLElement>(".sd-page").forEach(p => {
     p.hidden = p.dataset.page !== id;
@@ -801,10 +802,9 @@ function switchPage(id: SettingsPageId, remember = true): void {
   if (id === "overview" || id === "system") startHealthPolling();
   else stopHealthPolling();
 
-  if (id === "memory" && !memoryLoadedOnce) {
-    memoryLoadedOnce = true;
-    void loadMemoryList();
-  }
+  // Memory Control, chat history and the system log are password-locked: leaving a page locks them again, opening one asks for the password
+  if (previous !== id) lockAll();
+  if (id === "memory" || id === "logs") void enterLockable(id);
   if (id === "agents") void loadAgents();
   if (id === "hooks") void loadHooks();
   if (id === "skills") void loadSkills();
@@ -839,6 +839,7 @@ function startHealthPolling(): void {
   void loadStatus();
   void loadDetailedHealth();
   healthTimer = window.setInterval(() => {
+    if (document.hidden) return; // nobody is looking: no connection checks
     void loadStatus();
     void loadDetailedHealth();
   }, HEALTH_POLL_INTERVAL_MS);
@@ -1266,6 +1267,7 @@ export function closeSettings(): void {
   exitSetupMode();
   stopHealthPolling();
   setDrawer(false);
+  lockAll();
   window.dispatchEvent(new CustomEvent("jarvis:overlay", { detail: { open: false } }));
 }
 
@@ -1329,6 +1331,7 @@ function ensureMounted(): void {
 
   // Initialize Memory Center and bind Actions
   initMemoryCenter(async () => { await loadStatus(); });
+  initLogsPage();
   bindActions();
 
   // Restore sidebar collapsed preference

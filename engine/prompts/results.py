@@ -10,6 +10,7 @@ _TOOL_SUMMARY_MODULES: dict[str, str] = {
     "get_epic_free_games": "engine.tools.search_engine",
     "get_market_data": "engine.tools.search_engine",
     "search_news": "engine.tools.search_engine",
+    "vietnam_data_lookup": "engine.tools.search_engine",
     "weather_search": "engine.tools.weather_engine",
     "search_products": "engine.tools.shop_engine",
     "read_note": "engine.tools.note_engine",

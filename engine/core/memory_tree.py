@@ -4,6 +4,7 @@ MemoryTree for Python — Quản lý bộ nhớ dài hạn dưới dạng thư m
 """
 
 import os
+import threading
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -12,6 +13,9 @@ log = logging.getLogger("jarvis.memory_tree")
 
 # Đường dẫn mặc định đến thư mục Wiki của Jarvis
 WIKI_DIR = Path(__file__).parent.parent.parent / "data" / "wiki"
+
+# Nhiều phiên cùng ghi nhật ký ngày: khóa việc kiểm tra tồn tại + ghi file để tiêu đề và liên kết tháng chỉ tạo một lần.
+_digest_lock = threading.Lock()
 
 def ensure_wiki_dirs():
     """Đảm bảo các thư mục lưu trữ wiki tồn tại."""
@@ -60,43 +64,44 @@ def save_daily_digest(
         f"- **JARVIS**: {response_text.strip()}\n\n"
     )
     
-    # Nếu file chưa tồn tại, tạo mới kèm theo tiêu đề và liên kết song phương Obsidian
-    file_exists = daily_file.exists()
     try:
-        with open(daily_file, "a", encoding="utf-8") as f:
-            if not file_exists:
-                f.write(f"# Nhật ký hoạt động ngày {today_str}\n")
-                f.write("Tags: #daily #activity\n\n")
-                daily_nav = []
-                if daily_note_path(yesterday.strftime("%Y-%m-%d")).exists():
-                    daily_nav.append(f"← [[{yesterday_link}|Ngày hôm trước]]")
-                daily_nav.append(f"[[{month_link}|Tổng quan tháng]]")
-                f.write(" | ".join(daily_nav) + "\n\n")
-            f.write(log_entry)
+        with _digest_lock:
+            # Nếu file chưa tồn tại, tạo mới kèm theo tiêu đề và liên kết song phương Obsidian
+            file_exists = daily_file.exists()
+            with open(daily_file, "a", encoding="utf-8") as f:
+                if not file_exists:
+                    f.write(f"# Nhật ký hoạt động ngày {today_str}\n")
+                    f.write("Tags: #daily #activity\n\n")
+                    daily_nav = []
+                    if daily_note_path(yesterday.strftime("%Y-%m-%d")).exists():
+                        daily_nav.append(f"← [[{yesterday_link}|Ngày hôm trước]]")
+                    daily_nav.append(f"[[{month_link}|Tổng quan tháng]]")
+                    f.write(" | ".join(daily_nav) + "\n\n")
+                f.write(log_entry)
 
-        day_link = f"[[daily/{month_key}/{today_str}|{today_str}]]"
-        if month_file.exists():
-            month_content = month_file.read_text(encoding="utf-8")
-        else:
-            previous_month = (now.replace(day=1) - timedelta(days=1)).strftime("%m-%Y")
-            previous_month_file = (
-                WIKI_DIR / "daily" / previous_month / f"Tháng {previous_month}.md"
-            )
-            month_nav = []
-            if previous_month_file.exists():
-                month_nav.append(
-                    f"← [[daily/{previous_month}/Tháng {previous_month}|Tháng trước]]"
+            day_link = f"[[daily/{month_key}/{today_str}|{today_str}]]"
+            if month_file.exists():
+                month_content = month_file.read_text(encoding="utf-8")
+            else:
+                previous_month = (now.replace(day=1) - timedelta(days=1)).strftime("%m-%Y")
+                previous_month_file = (
+                    WIKI_DIR / "daily" / previous_month / f"Tháng {previous_month}.md"
                 )
-            month_nav.append("[[topics/Công Cụ|Công cụ]]")
-            month_content = (
-                f"# Hội thoại tháng {month_key}\n"
-                f"Tags: #daily #monthly\n\n"
-                f"{' | '.join(month_nav)}\n\n"
-                "## Các ngày\n"
-            )
-        if day_link not in month_content:
-            month_content = month_content.rstrip() + f"\n- {day_link}\n"
-            month_file.write_text(month_content, encoding="utf-8")
+                month_nav = []
+                if previous_month_file.exists():
+                    month_nav.append(
+                        f"← [[daily/{previous_month}/Tháng {previous_month}|Tháng trước]]"
+                    )
+                month_nav.append("[[topics/Công Cụ|Công cụ]]")
+                month_content = (
+                    f"# Hội thoại tháng {month_key}\n"
+                    f"Tags: #daily #monthly\n\n"
+                    f"{' | '.join(month_nav)}\n\n"
+                    "## Các ngày\n"
+                )
+            if day_link not in month_content:
+                month_content = month_content.rstrip() + f"\n- {day_link}\n"
+                month_file.write_text(month_content, encoding="utf-8")
 
         log.info(f"Daily digest saved to {daily_file.relative_to(WIKI_DIR)}")
         

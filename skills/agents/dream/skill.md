@@ -1,6 +1,6 @@
 ---
 name: dream
-title: Agent Dream Cycle
+title: Agent Dream
 aliases:
 - agent_dream
 description: Dọn dẹp, tóm tắt hội thoại cũ và kích hoạt chu kỳ Dream.

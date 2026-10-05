@@ -5,9 +5,7 @@ from pathlib import Path
 _PROMPT_DIR = Path(__file__).resolve().parents[2] / "prompt"
 _CACHE: dict[str, str] = {}
 
-_DEFAULTS: dict[str, dict[str, str]] = {
-    "router_gate": {"attachment_option": ""},
-}
+_DEFAULTS: dict[str, dict[str, str]] = {}
 
 
 def _personalize(text: str) -> str:

@@ -43,8 +43,17 @@ _STYLE_MD_KEY_RE = re.compile(r"\(Từ `([^`]+)` trong Preferences\.md\)")
 _PREF_BULLET_KEY_RE = re.compile(r"^\s*-\s*\[`([^`]+)`\]")
 
 
+def _uses_style_md() -> bool:
+    """STYLE.md là nguồn giọng điệu cho Gemma và Bonsai."""
+    is_bonsai = os.getenv("BONSAI_MODEL", "false").lower() == "true"
+    is_gemma = os.getenv("CHANG_MODEL", "false").lower() == "true" and not is_bonsai
+    return is_bonsai or is_gemma
+
+
 def _style_md_keys() -> set[str]:
-    """Tập key `voice_style` đã lặp lại trong STYLE.md (bullet dạng "... (Từ `key` trong Preferences.md)")."""
+    """Key trong STYLE.md để khử trùng lặp Preferences cho Gemma và Bonsai."""
+    if not _uses_style_md():
+        return set()
     se_path = PROJECT_ROOT / "skills" / "self_evolution" / "STYLE.md"
     if not se_path.exists():
         return set()
@@ -59,7 +68,7 @@ def _style_md_keys() -> set[str]:
 def about_user_block() -> str:
     """<about_user> từ data/wiki/System/Preferences.md, hoặc "" — dùng chung cho chat và engine/plans/solver.
 
-    Bỏ các bullet mà key đã được STYLE.md nhắc lại (tránh tiêm 2 lần cùng một ý vào prompt)."""
+    Với Bonsai, bỏ bullet mà STYLE.md đã nhắc lại để tránh lặp ý."""
     pref_path = PROJECT_ROOT / "data" / "wiki" / "System" / "Preferences.md"
     if not pref_path.exists():
         return ""
@@ -106,10 +115,44 @@ def _get_time_str() -> str:
         f"Hôm nay là: {WEEKDAY_VI[dt.weekday()]}, ngày {dt.day} {MONTH_VI[dt.month]} năm {dt.year}\n"
         f"Bây giờ là: {dt.strftime('%H:%M')} ({offset_label})"
     )
+_ASKS_FOR_OFFER = re.compile(
+    r"(gợi ý|đề xuất|có cách nào|giúp tôi|làm sao để|làm thế nào để|có thể làm gì|lười quá|muốn nghe|muốn xem|thử lại)",
+    re.IGNORECASE,
+)
+_ASKS_FOR_CAPS = re.compile(
+    r"(làm được gì|có thể làm gì|chức năng|tính năng|khả năng|bạn biết làm gì|hệ thống làm được gì|trợ giúp gì)",
+    re.IGNORECASE,
+)
 
 
-def build_chat_system_prompt() -> str:
-    """Xây dựng Block 1: System prompt chuẩn duy nhất cho chat."""
+def load_offer_protocol() -> str:
+    """Nạp giao thức gợi ý công cụ từ skills/general_offer/SKILL.md an toàn."""
+    offer_path = PROJECT_ROOT / "skills" / "general_offer" / "SKILL.md"
+    if not offer_path.exists():
+        fallback_path = Path(__file__).resolve().parents[2] / "skills" / "general_offer" / "SKILL.md"
+        if fallback_path.exists():
+            offer_path = fallback_path
+        else:
+            return ""
+    try:
+        offer_skill = offer_path.read_text(encoding="utf-8").strip()
+        if offer_skill.startswith("---"):
+            parts = offer_skill.split("---", 2)
+            if len(parts) >= 3:
+                offer_skill = parts[2].strip()
+        return (
+            "<offer_protocol>\n"
+            + offer_skill.replace("{offerable_tools}", catalog.tool_list_text())
+            + "\n</offer_protocol>"
+        )
+    except Exception as e:
+        log.warning("Failed to load offer protocol: %s", e)
+        return ""
+
+
+def build_chat_system_prompt(include_offer: bool = True, include_caps: bool = True) -> str:
+    """Xây dựng Block 1: System prompt chuẩn duy nhất cho chat.
+    Khi include_offer=False: chat thường thuần túy, không chèn danh mục tool và offer_protocol."""
     static_p = persona.load_full_persona()
     parts = []
 
@@ -122,21 +165,30 @@ def build_chat_system_prompt() -> str:
     if static_p.get("user"):
         parts.append(f"<user_profile>\n{static_p['user']}\n</user_profile>")
 
-    parts.append(prompts.load("capabilities"))
-    parts.append(
-        prompts.load("offer_protocol", offerable_tools=catalog.tool_list_text())
-    )
-
-    # <style>: chỉ thị phong cách từ STYLE.md + bài học hành vi từ learning engine
-    style_parts = []
-    se_path = PROJECT_ROOT / "skills" / "self_evolution" / "STYLE.md"
-    if se_path.exists():
+    if include_caps:
         try:
-            se_content = se_path.read_text(encoding="utf-8").strip()
-            if se_content:
-                style_parts.append(se_content)
-        except Exception as se_err:
-            log.warning("Failed to read self_evolution STYLE.md: %s", se_err)
+            parts.append(prompts.load("capabilities"))
+        except Exception as ce:
+            log.warning("Failed to load capabilities: %s", ce)
+
+    if include_offer:
+        offer_block = load_offer_protocol()
+        if offer_block:
+            parts.append(offer_block)
+
+    # STYLE.md định hình giọng nói cho Gemma/Bonsai; bài học hành vi đã duyệt áp dụng mọi model.
+    is_bonsai = os.getenv("BONSAI_MODEL", "false").lower() == "true"
+    uses_style_md = _uses_style_md()
+    style_parts = []
+    if uses_style_md:
+        se_path = PROJECT_ROOT / "skills" / "self_evolution" / "STYLE.md"
+        if se_path.exists():
+            try:
+                se_content = se_path.read_text(encoding="utf-8").strip()
+                if se_content:
+                    style_parts.append(se_content)
+            except Exception as se_err:
+                log.warning("Failed to read self_evolution STYLE.md: %s", se_err)
 
     # Thêm bài học hành vi từ DB
     try:
@@ -179,7 +231,7 @@ def build_chat_system_prompt() -> str:
 
     parts.append(f"<current_time>\n{_get_time_str()}\n</current_time>")
 
-    if os.getenv("BONSAI_MODEL", "false").lower() == "true":
+    if is_bonsai:
         parts.append(prompts.load("style_lock"))
 
     if not static_p.get("identity") and not static_p.get("soul"):
@@ -197,16 +249,14 @@ def build_chat_history(
     raw_history: list[dict] = []
     try:
         from engine.core.memory import get_messages
+        from engine.core.session_context import get_session
 
-        raw_history = get_messages(limit=limit)
+        raw_history = get_messages(limit=limit, session_id=get_session())
     except Exception as e:
         log.warning("Failed to read messages from DB for chat history: %s", e)
         raw_history = list(fallback_history or [])[-limit:]
 
     return _history_messages(raw_history, user_text)
-
-
-
 
 def _history_messages(items: list, user_text: str) -> list[dict]:
     """Dựng lại thẻ cho lượt assistant; bỏ lượt user cuối nếu chính là câu hiện tại (đã lưu DB trước khi định tuyến)."""
@@ -244,6 +294,8 @@ def build_chat_messages(
     route: str = "general",
     action_declined: bool = False,
     reference_data: dict | None = None,
+    include_offer: bool | None = None,
+    include_caps: bool | None = None,
 ) -> list[dict]:
     """Ghép 5 khối message chuẩn cho chat theo spec 2026-09-25."""
     messages: list[dict] = []
@@ -252,7 +304,20 @@ def build_chat_messages(
 
     # Block 1: System prompt header. Tra cứu (general_knowledge) như một tool: persona ngắn,
     # không cần luật đề nghị, danh sách agent hay sở thích (2026-09-26).
-    sys_content = build_knowledge_system_prompt() if knowledge else build_chat_system_prompt()
+    if knowledge:
+        sys_content = build_knowledge_system_prompt()
+    else:
+        has_agent_results = bool(reference_data and "agent_results" in reference_data)
+        if include_offer is None:
+            has_offer_flag = bool(reference_data and reference_data.get("offer_skill"))
+            asks_for_offer = bool(_ASKS_FOR_OFFER.search(user_text or ""))
+            include_offer = has_offer_flag or asks_for_offer or has_agent_results
+
+        if include_caps is None:
+            asks_for_caps = bool(_ASKS_FOR_CAPS.search(user_text or ""))
+            include_caps = asks_for_caps or bool(reference_data and reference_data.get("include_caps")) or has_agent_results
+
+        sys_content = build_chat_system_prompt(include_offer=include_offer, include_caps=include_caps)
     messages.append({"role": "system", "content": sys_content})
 
     # Block 2: History (đọc từ DB hoặc fallback, dựng lại thẻ)
@@ -345,11 +410,9 @@ def build_chat_messages(
     _log_budget(route, messages, turn_status, ref_items)
     return messages
 
-
 def _est_tokens(text: str) -> int:
     # ponytail: ~3 ký tự/token tiếng Việt, cùng cách ước của test ngân sách; đổi sang tokenizer nếu cần số chính xác.
     return round(len(text or "") / 3)
-
 
 def _log_budget(route: str, messages: list[dict], turn_status: str, ref_items: list) -> None:
     """Context engineering: một dòng log số token từng khối mỗi lượt, để thấy prompt có phình không."""

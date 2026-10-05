@@ -2,6 +2,32 @@ import pytest
 from engine.prompts import chat
 
 
+def test_self_evolution_style_file_is_only_loaded_for_bonsai(monkeypatch, tmp_path):
+    from engine.prompts import chat
+
+    monkeypatch.setattr(chat, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(
+        chat.persona,
+        "load_full_persona",
+        lambda: {"identity": "JARVIS", "soul": "rules", "user": ""},
+    )
+    monkeypatch.setattr(chat, "about_user_block", lambda: "")
+    style_folder = tmp_path / "skills" / "self_evolution"
+    style_folder.mkdir(parents=True)
+    (style_folder / "STYLE.md").write_text("STYLE_ONLY_BONSAI_MARKER", encoding="utf-8")
+
+    monkeypatch.setenv("BONSAI_MODEL", "false")
+    monkeypatch.setenv("CHANG_MODEL", "false")
+    assert "STYLE_ONLY_BONSAI_MARKER" not in chat.build_chat_system_prompt()
+
+    monkeypatch.setenv("CHANG_MODEL", "true")
+    assert "STYLE_ONLY_BONSAI_MARKER" in chat.build_chat_system_prompt()
+
+    monkeypatch.setenv("CHANG_MODEL", "false")
+    monkeypatch.setenv("BONSAI_MODEL", "true")
+    assert "STYLE_ONLY_BONSAI_MARKER" in chat.build_chat_system_prompt()
+
+
 def test_chat_messages_order_and_five_blocks():
     history = [
         {"role": "user", "content": "chào bạn"},

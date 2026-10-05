@@ -22,7 +22,6 @@ import {
 const TYPE = "square" as const; // any key of botAvatarShapes: clover flower triangle square blob ghost circle drop star droid mech alien hexagon cat cloud pill pebble puddle
 const BOX = 32; // css px of the bot's square
 const dpr = Math.min(window.devicePixelRatio || 1, 3); // up to 3 (iPhone): at 2 the edges of a 32px sprite look jagged
-const touch = matchMedia("(pointer: coarse)").matches; // a 32px sprite at 30 fps reads the same and costs half
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const SHADING = "plastic" as const; // "smooth" is the library's other option
@@ -306,5 +305,5 @@ export function mountBot(parent: HTMLElement): void {
   apply(reduced ? "sleeping" : "default");
   if (!reduced) { startDoze(); setLooks(LOOK_AROUND, PROFILE.idle.everyMs!); }
   paint();
-  if (!reduced) gatedLoop((now, dt) => { lastNow = now; pointerPlay(); sim.update(Math.min(dt / 1000, 0.05)); if (talking) { open = talk(now, dt); const m = open.toFixed(1); if (host.dataset.mouth !== m) host.dataset.mouth = m; } paint(); }, touch ? 1000 / 30 : 1000 / 60);
+  if (!reduced) gatedLoop((now, dt) => { lastNow = now; pointerPlay(); sim.update(Math.min(dt / 1000, 0.05)); if (talking) { open = talk(now, dt); const m = open.toFixed(1); if (host.dataset.mouth !== m) host.dataset.mouth = m; } paint(); }, 1000 / 60); // 60 fps on phones too: a 32px sprite is cheap, and 30 fps looked choppy
 }

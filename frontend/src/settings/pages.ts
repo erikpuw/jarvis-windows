@@ -7,7 +7,7 @@ import {
   LayoutGrid, Key, Volume2, UserCheck, Activity, HardDrive,
   Bot, BotMessageSquare, Boxes, Network, BookOpen, Info,
   Puzzle, Plug, Sparkles, Flame, Terminal, SquareCode, Workflow, GitFork,
-  Webhook, Anchor, ScrollText, FileText,
+  Webhook, Anchor, ScrollText, FileText, FileClock,
   type IconNode,
 } from "lucide";
 import type { SettingsPageDef, SettingsPageId } from "./types";
@@ -21,6 +21,7 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
   { id: "user", label: "Người dùng", description: "Tên, cách xưng hô và tài khoản lịch.", icon: UserRound, activeIcon: UserCheck, needsKey: false },
   { id: "system", label: "Hệ thống", description: "Chi tiết phần cứng, dịch vụ và ứng dụng đang chạy.", icon: Cpu, activeIcon: Activity, needsKey: true },
   { id: "memory", label: "Bộ nhớ", description: "Xem, sửa và xoá có kiểm tra quan hệ toàn bộ dữ liệu học và bộ nhớ của JARVIS.", icon: Database, activeIcon: HardDrive, needsKey: true },
+  { id: "logs", label: "Nhật ký", description: "Lịch sử chat, Jarvis log, log bảo mật và log TTS. Một trang riêng, không kiểm tra kết nối nên không tự ghi thêm dòng vào log. Cần mật khẩu giống Bộ nhớ.", icon: FileClock, activeIcon: ScrollText, needsKey: true },
   { id: "agents", label: "Agents", description: "Danh sách và hướng dẫn câu lệnh của các AI Agent chuyên biệt.", icon: Bot, activeIcon: BotMessageSquare, needsKey: true },
   { id: "hooks", label: "Hooks", description: "Các hooks xử lý vòng đời sự kiện quét trực tiếp từ thư mục hooks/.", icon: Webhook, activeIcon: Anchor, needsKey: true },
   { id: "skills", label: "Skills", description: "Các kỹ năng chuyên môn tự động hóa quét trực tiếp từ thư mục skills/.", icon: Sparkles, activeIcon: Flame, needsKey: true },
@@ -40,6 +41,18 @@ const pageHead = (id: SettingsPageId): string => {
 const feedback = (buttonId: string): string =>
   `<span class="settings-feedback" data-feedback-for="${buttonId}" role="status" aria-live="polite"></span>`;
 
+/** Password screen over a protected area (settings/lock.ts): the root gets class "sd-lockable locked", its content "sd-lock-content". */
+const lockScreen = (id: string, title: string): string => `
+    <div id="${id}-lock" class="sd-lock-screen">
+      <form id="${id}-lock-form" class="sd-card sd-lock-card" autocomplete="off">
+        <div class="sd-lock-icon">${svgIcon(ICONS.lock, 26)}</div>
+        <h4>${title}</h4>
+        <p id="${id}-lock-msg" class="sd-lock-msg">Nhập mật khẩu để mở.</p>
+        <input type="password" id="${id}-lock-input" placeholder="Mật khẩu" aria-label="Mật khẩu" autocomplete="off" />
+        <button type="submit" class="settings-btn primary" id="${id}-lock-btn">Mở khóa</button>
+      </form>
+    </div>`;
+
 const statusRow = (dotId: string, name: string, detailId = ""): string =>
   `<div class="status-row"><span class="status-dot" id="${dotId}"></span><span class="status-name">${name}</span>${detailId ? `<span class="status-detail" id="${detailId}"></span>` : ""}<span class="status-text">—</span></div>`;
 
@@ -57,6 +70,7 @@ const ICONS = {
   gpu: `<rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="12" r="2"/><path d="M2 10h20"/>`,
   uptime: `<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>`,
   shield: `<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>`,
+  lock: `<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>`,
   brain: `<path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M12 18v4"/>`,
   network: `<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>`,
   activity: `<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.48 12H2"/>`,
@@ -130,7 +144,6 @@ const overviewPage = (): string => `
         <h4>${svgIcon(ICONS.brain, 17)} Dữ liệu tri thức</h4>
         <dl class="sd-kv">
           ${kv("Bản ghi bộ nhớ", "sysinfo-memory")}
-          ${kv("Semantic facts", "sysinfo-semantic")}
           ${kv("Hội thoại", "sysinfo-turns")}
           ${kv("Tác vụ", "sysinfo-tasks")}
           ${kv("Kỹ năng đã nạp", "sysinfo-skills")}
@@ -294,9 +307,9 @@ const systemPage = (): string => `
   </section>`;
 
 const memoryPage = (): string => `
-  <section class="sd-page sd-page-memory" data-page="memory" id="page-memory" hidden>
+  <section class="sd-page sd-page-memory sd-lockable locked" data-page="memory" id="page-memory" hidden>
     ${pageHead("memory")}
-    <div class="memory-control-layout sd-memory">
+    <div class="memory-control-layout sd-memory sd-lock-content">
       <div class="sd-card sd-memory-cats">
         <div class="sd-mem-panel-head">
           <h4>${svgIcon(ICONS.brain, 14)} Nhóm dữ liệu</h4>
@@ -328,6 +341,42 @@ const memoryPage = (): string => `
         <div class="sd-empty">Chọn một bản ghi để xem chi tiết.</div>
       </div>
     </div>
+    ${lockScreen("memory", "Memory Control đang khóa")}
+  </section>`;
+
+const logsPage = (): string => `
+  <section class="sd-page sd-page-memory sd-lockable locked" data-page="logs" id="page-logs" hidden>
+    ${pageHead("logs")}
+    <div class="memory-control-layout sd-memory sd-logs-layout sd-lock-content">
+      <div class="sd-card sd-memory-cats">
+        <div class="sd-mem-panel-head">
+          <h4>${svgIcon(ICONS.shield, 14)} Nhóm nhật ký</h4>
+        </div>
+        <div id="logs-category-nav"></div>
+      </div>
+      <div class="sd-card sd-memory-list" id="card-logs">
+        <div class="sd-logs-head">
+          <h4 id="logs-title">Lịch sử chat</h4>
+          <button type="button" class="settings-btn" id="logs-refresh">Làm mới</button>
+        </div>
+        <div id="history-subbar" class="sd-subbar">
+          <div class="sd-subtabs">
+            <button type="button" class="sd-subtab active" data-hist-view="all">Toàn bộ</button>
+            <button type="button" class="sd-subtab" data-hist-view="sessions">Phiên chat</button>
+          </div>
+          <div id="history-back" class="sd-session-back" hidden>
+            <button type="button" class="settings-btn" id="history-back-btn">← Danh sách phiên chat</button>
+            <span id="history-back-title" class="sd-session-back-title"></span>
+          </div>
+        </div>
+        <div id="history-view" class="sd-history-split" data-view="all" data-reading="0">
+          <div id="history-sessions-list" class="sd-sessions-list" hidden></div>
+          <div id="history-settings-list" class="sd-history-list"></div>
+        </div>
+        <div id="logs-content" class="sd-log-content" hidden></div>
+      </div>
+    </div>
+    ${lockScreen("logs", "Nhật ký đang khóa")}
   </section>`;
 
 const agentsPage = (): string => `
@@ -615,6 +664,7 @@ export function buildSettingsHTML(): string {
           ${userPage()}
           ${systemPage()}
           ${memoryPage()}
+          ${logsPage()}
           ${agentsPage()}
           ${hooksPage()}
           ${skillsPage()}

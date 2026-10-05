@@ -4,6 +4,8 @@ import logging
 import os
 import re
 import time
+import unicodedata
+from pathlib import Path
 
 from engine.tools.browser import browser
 # Consolidated search engine for JARVIS
@@ -48,6 +50,11 @@ SUMMARY_RULES: dict[str, str] = {
         "- Tuyệt đối không xoá ảnh, không thay đổi cấu trúc bảng.\n"
         "- Không để dòng trống xen kẽ trong bảng.\n"
         "- Đặt liên kết tổng 🔗 [Xem tất cả game miễn phí](https://store.epicgames.com/vi/free-games) ở bên dưới."
+    ),
+    "vietnam_data_lookup": (
+        "QUY TẮC ĐỊNH DẠNG ĐƠN VỊ HÀNH CHÍNH VIỆT NAM BẮT BUỘC:\n"
+        "- Tóm tắt tên đơn vị hành chính, mã số hành chính và thông tin đơn vị trực thuộc/tỉnh thành một cách rõ ràng, trang trọng.\n"
+        "- Nếu kết quả có gửi bản đồ ranh giới, hãy thông báo ngắn gọn cho ngài rằng bản đồ ranh giới đã được hiển thị trên màn hình."
     ),
 }
 
@@ -1070,57 +1077,61 @@ def extract_zodiac_info(text: str, requested_sign: str = None) -> str:
                 section_text = re.sub(r'\n{3,}', '\n\n', section_text)
                 return f"🔮 **Tử vi {std_sign}:**\n{section_text}"
             
-    return "🔮 **Tử vi hôm nay:** Vui lòng chỉ định rõ cung hoàng đạo bạn muốn xem (Ví dụ: 'Tử vi cung Bạch Dương', 'Tử vi Song Ngư hôm nay')."
+    return "🔮 **Cung hoàng đạo hôm nay:** Vui lòng chỉ định rõ cung hoàng đạo bạn muốn xem (Ví dụ: 'Xem cung Bạch Dương', 'Xem Song Ngư hôm nay')."
+
+
+def _vn_line(text: str, label: str) -> str:
+    """Dòng ngay sau một nhãn đứng riêng một dòng ("Giờ hoàng đạo\nMậu Dần (3h-5h), ..."). Nhãn phải nằm đầu dòng và
+    phân biệt hoa thường: khớp tự do thì dính tiêu đề trang ("... ngày giờ hoàng đạo\nTiện ích")."""
+    m = re.search(rf"^ ?{re.escape(label)}[ ]*\n ?([^\n]+)", text, re.M)
+    return m.group(1).strip() if m else ""
 
 
 def extract_vannien_info(text: str) -> str:
-    """Bóc tách thông tin lịch vạn niên từ innerText."""
+    """Bóc tách thông tin lịch vạn niên từ innerText của trang BaoMoi."""
     lines = [l.strip() for l in text.splitlines() if l.strip()]
     info = ["📅 **LỊCH VẠN NIÊN HÔM NAY:**"]
-    
+
     # 1. Dương lịch
     date_match = re.search(r"Thứ\s+\w+,\s+Ngày\s+\d+\s+Tháng\s+\d+\s+Năm\s+\d+", text, re.I)
     if date_match:
         info.append(f"  • Dương lịch: {date_match.group(0)}")
     else:
-        # Dự phòng
         dp_match = re.search(r"Tháng\s+\d+\s+Năm\s+\d+", text, re.I)
         if dp_match:
             info.append(f"  • Dương lịch: {dp_match.group(0)}")
-        
-    # 2. Âm lịch
-    lunar_match = re.search(r"Ngày\s+\d+\s+Tháng\s+\d+\s+Năm\s+\d+\s*-\s*Âm\s+lịch", text, re.I)
-    if lunar_match:
-        info.append(f"  • Âm lịch: {lunar_match.group(0)}")
-    else:
-        l_day = re.search(r"Ngày\s+\d+\s+Tháng\s+\d+\s+Năm\s+\d+", text, re.I)
-        if l_day:
-            info.append(f"  • Âm lịch: {l_day.group(0)}")
 
-    # 3. Giờ hoàng đạo
-    hr_match = re.search(r"Giờ\s+hoàng\s+đạo\s*\n*(.+)", text, re.I)
-    if hr_match:
-        info.append(f"  • Giờ hoàng đạo: {hr_match.group(1).strip()}")
-        
-    # 4. Mệnh ngày
-    menh_match = re.search(r"Mệnh\s+ngày\s*\n*(.+)", text, re.I)
-    if menh_match:
-        info.append(f"  • Mệnh ngày: {menh_match.group(1).strip()}")
-        
-    # 5. Tuổi xung
-    xung_match = re.search(r"Tuổi\s+xung\s*\n*(.+)", text, re.I)
-    if xung_match:
-        info.append(f"  • Tuổi xung khắc: {xung_match.group(1).strip()}")
-        
-    # 6. Hướng xuất hành
-    direction_match = []
-    for god in ["Hỷ thần", "Tài thần", "Kê thần"]:
-        god_match = re.search(rf"{god}\s*\n*(.+)", text, re.I)
-        if god_match:
-            direction_match.append(f"{god}: {god_match.group(1).strip()}")
-    if direction_match:
-        info.append(f"  • Hướng tốt: {', '.join(direction_match)}")
-        
+    # 2. Âm lịch: ngày/tháng/năm âm kèm can chi, để biết rõ đây là lịch âm (ngày dương không bao giờ ghi nhãn này)
+    lunar = re.search(r"\(Ngày\s+(\d+)\s+Tháng\s+(\d+)\s+Năm\s+(\d+)\s*-\s*Âm\s+lịch\)", text, re.I)
+    if lunar:
+        can_chi = re.search(r"ngày\s+([^,\n]+),\s*tháng\s+([^,\n]+),\s*năm\s+([^,\n]+)", text, re.I)
+        detail = (f" (ngày {can_chi.group(1).title()}, tháng {can_chi.group(2).strip().title()}, "
+                  f"năm {can_chi.group(3).strip().title()})") if can_chi else ""
+        info.append(f"  • Âm lịch: ngày {lunar.group(1)} tháng {lunar.group(2)} năm {lunar.group(3)}{detail}")
+
+    # 3. Loại ngày, tiết khí, trực
+    day_kind = re.search(r"^ ?Ngày (Hoàng đạo|Hắc đạo|Bình thường)\s*$", text, re.M)
+    if day_kind:
+        info.append(f"  • Loại ngày: {day_kind.group(1)}")
+    if tiet_khi := _vn_line(text, "Tiết khí"):
+        info.append(f"  • Tiết khí: {tiet_khi}")
+    truc = re.search(r"^ ?Trực[ ]*\n ?([^\n]+)\n ?([^\n]+)", text, re.M)
+    if truc:
+        info.append(f"  • Trực {truc.group(1).strip()}: {truc.group(2).strip()}")
+
+    # 4. Giờ hoàng đạo, mệnh ngày, tuổi xung
+    if hours := _vn_line(text, "Giờ hoàng đạo"):
+        info.append(f"  • Giờ hoàng đạo: {hours}")
+    if menh := _vn_line(text, "Mệnh ngày"):
+        info.append(f"  • Mệnh ngày: {menh}")
+    if xung := _vn_line(text, "Tuổi xung"):
+        info.append(f"  • Tuổi xung khắc: {xung}")
+
+    # 5. Hướng xuất hành
+    gods = [f"{god}: {direction}" for god in ("Hỷ thần", "Tài thần", "Kê thần") if (direction := _vn_line(text, god))]
+    if gods:
+        info.append(f"  • Hướng tốt: {', '.join(gods)}")
+
     # Dự phòng nếu bóc tách lỗi
     if len(info) <= 1:
         snippet = ""
@@ -1130,7 +1141,7 @@ def extract_vannien_info(text: str) -> str:
         if snippet:
             return f"📅 **Lịch vạn niên hôm nay:**\n{snippet}"
         return "📅 **Lịch vạn niên hôm nay:** Đang cập nhật dữ liệu..."
-        
+
     return "\n".join(info)
 
 
@@ -1344,6 +1355,331 @@ async def handle_cgv_movies_query(query: str = None, **kwargs) -> str:
 
 
 CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config", "epic.json")
+
+
+async def handle_vietnam_data_query(
+    query: str,
+    ws=None,
+    data_dir=None,
+) -> dict:
+    """Tra cứu đơn vị hành chính Việt Nam từ bộ dữ liệu vendored."""
+
+    def normalize(value) -> str:
+        text = str(value or "").lower().replace("đ", "d")
+        text = unicodedata.normalize("NFD", text)
+        text = "".join(char for char in text if unicodedata.category(char) != "Mn")
+        return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+    def aliases(unit: dict) -> set[str]:
+        raw_values = {
+            normalize(unit.get("Name")),
+            normalize(unit.get("FullName")),
+            normalize(unit.get("CodeName")),
+        }
+        prefixes = (
+            "thanh pho ",
+            "thi tran ",
+            "phuong ",
+            "tinh ",
+            "quan ",
+            "huyen ",
+            "xa ",
+        )
+        values = set()
+        for orig in raw_values:
+            if not orig:
+                continue
+            values.add(orig)
+            for prefix in prefixes:
+                if orig.startswith(prefix):
+                    stripped = orig[len(prefix):].strip()
+                    if stripped:
+                        values.add(stripped)
+                    break
+        return values
+
+    def load_units(units_path: Path) -> list[dict]:
+        stat = units_path.stat()
+        signature = (stat.st_mtime_ns, stat.st_size)
+        cache_key = str(units_path)
+        cached = _VIETNAM_DATA_DATASET_CACHE.get(cache_key)
+        if cached and cached[0] == signature:
+            return cached[1]
+
+        document = json.loads(units_path.read_text(encoding="utf-8"))
+        if not isinstance(document, list):
+            raise ValueError("units.json phải là một danh sách")
+
+        validated = []
+        for province in document:
+            if not isinstance(province, dict):
+                raise ValueError("Đơn vị cấp tỉnh không hợp lệ")
+            if not isinstance(province.get("Code"), str):
+                raise ValueError("Mã đơn vị cấp tỉnh không hợp lệ")
+            wards = province.get("Wards")
+            if not isinstance(wards, list):
+                raise ValueError("Danh sách phường/xã không hợp lệ")
+            for ward in wards:
+                if not isinstance(ward, dict) or not isinstance(ward.get("Code"), str):
+                    raise ValueError("Đơn vị phường/xã không hợp lệ")
+            validated.append(province)
+
+        _VIETNAM_DATA_DATASET_CACHE[cache_key] = (signature, validated)
+        return validated
+
+    def unit_view(unit: dict, province: dict | None = None) -> dict:
+        view = {
+            "type": unit.get("Type"),
+            "code": unit.get("Code"),
+            "name": unit.get("Name"),
+            "full_name": unit.get("FullName") or unit.get("Name"),
+            "code_name": unit.get("CodeName"),
+        }
+        if province is not None:
+            view["province"] = {
+                "code": province.get("Code"),
+                "name": province.get("Name"),
+                "full_name": province.get("FullName") or province.get("Name"),
+            }
+        return view
+
+    def contains_alias(normalized_query: str, unit: dict) -> bool:
+        padded_query = f" {normalized_query} "
+        return any(f" {alias} " in padded_query for alias in aliases(unit))
+
+    def safe_child(root: Path, child: Path) -> Path | None:
+        resolved = child.resolve()
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            return None
+        return resolved
+
+    def find_geojson_path(
+        root: Path,
+        unit: dict,
+        province: dict,
+    ) -> Path | None:
+        geo_root = (root / "geojson").resolve()
+        if not geo_root.is_dir():
+            return None
+
+        province_slug = normalize(province.get("CodeName") or province.get("Name"))
+        province_dir = None
+        for candidate in geo_root.iterdir():
+            if not candidate.is_dir():
+                continue
+            folder_slug = re.sub(r"^\d+\s+", "", normalize(candidate.name))
+            for prefix in ("thanh pho ", "tinh "):
+                if folder_slug.startswith(prefix):
+                    folder_slug = folder_slug[len(prefix):]
+                    break
+            if folder_slug == province_slug:
+                province_dir = safe_child(geo_root, candidate)
+                break
+        if province_dir is None:
+            return None
+
+        if unit is province:
+            candidate = safe_child(province_dir, province_dir / "province.geojson")
+            return candidate if candidate and candidate.is_file() else None
+
+        wards_dir = safe_child(province_dir, province_dir / "wards")
+        if wards_dir is None or not wards_dir.is_dir():
+            return None
+        ward_slug = normalize(unit.get("CodeName") or unit.get("Name"))
+        for candidate in wards_dir.iterdir():
+            if not candidate.is_file() or candidate.suffix.lower() != ".geojson":
+                continue
+            file_slug = re.sub(r"^\d+\s+", "", normalize(candidate.stem))
+            for suffix in (" thi tran", " phuong", " xa"):
+                if file_slug.endswith(suffix):
+                    file_slug = file_slug[:-len(suffix)]
+                    break
+            if file_slug == ward_slug:
+                return safe_child(geo_root, candidate)
+        return None
+
+    def load_map_payload(
+        root: Path,
+        unit: dict,
+        province: dict,
+        public_unit: dict,
+    ) -> dict | None:
+        try:
+            geojson_path = find_geojson_path(root, unit, province)
+            if geojson_path is None:
+                return None
+            geojson = json.loads(geojson_path.read_text(encoding="utf-8"))
+        except (OSError, RuntimeError, ValueError, json.JSONDecodeError):
+            return None
+        if (
+            not isinstance(geojson, dict)
+            or geojson.get("type") != "FeatureCollection"
+            or not isinstance(geojson.get("features"), list)
+        ):
+            return None
+        features = geojson["features"]
+        if any(not isinstance(feature, dict) for feature in features):
+            return None
+        bounds = None
+        if isinstance(geojson.get("bbox"), list):
+            bounds = geojson["bbox"]
+        elif features and isinstance(features[0].get("bbox"), list):
+            bounds = features[0]["bbox"]
+        return {
+            "type": "map_admin_boundary",
+            "geojson": geojson,
+            "unit": public_unit,
+            "bounds": bounds,
+        }
+
+    root = (
+        Path(data_dir).resolve()
+        if data_dir is not None
+        else (Path(__file__).resolve().parents[2] / "data" / "vietnam_data").resolve()
+    )
+    units_path = safe_child(root, root / "units.json")
+    if units_path is None or not units_path.is_file():
+        units = []
+    else:
+        try:
+            units = await asyncio.to_thread(load_units, units_path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            log.warning("Không thể tải dữ liệu hành chính từ %s", units_path)
+            units = []
+
+    normalized_query = normalize(query)
+    all_units: list[tuple[dict, dict]] = []
+    for province in units:
+        all_units.append((province, province))
+        all_units.extend((ward, province) for ward in province["Wards"])
+
+    code_match = re.search(
+        r"\bma(?: don vi| tinh| thanh pho| phuong| xa)?\s*(\d{1,5})\b",
+        normalized_query,
+    )
+    if code_match is None and re.fullmatch(r"\d{1,5}", normalized_query):
+        code_match = re.match(r"(\d{1,5})", normalized_query)
+    code = code_match.group(1) if code_match else None
+
+    matched_pair = None
+    candidates: list[dict] = []
+    if code:
+        matched_pair = next(
+            ((unit, province) for unit, province in all_units if unit["Code"] == code),
+            None,
+        )
+    else:
+        province_matches = [
+            (province, province)
+            for province in units
+            if contains_alias(normalized_query, province)
+        ]
+        ward_matches = [
+            (ward, province)
+            for province in units
+            for ward in province["Wards"]
+            if contains_alias(normalized_query, ward)
+        ]
+        
+        # Nếu query khớp exact với một alias của ward hoặc province, ưu tiên exact match
+        exact_ward_matches = [
+            (ward, province) for ward, province in ward_matches
+            if any(alias == normalized_query for alias in aliases(ward))
+        ]
+        exact_province_matches = [
+            (province, province) for province, _ in province_matches
+            if any(alias == normalized_query for alias in aliases(province))
+        ]
+        
+        if len(exact_province_matches) == 1 and not exact_ward_matches:
+            matched_pair = exact_province_matches[0]
+        elif len(exact_ward_matches) == 1:
+            matched_pair = exact_ward_matches[0]
+        else:
+            bool(ward_matches)
+            if ward_matches and len(province_matches) == 1:
+                province_context = province_matches[0][0]
+                ward_matches = [
+                    pair for pair in ward_matches if pair[1] is province_context
+                ]
+            if len(ward_matches) == 1:
+                matched_pair = ward_matches[0]
+            elif len(ward_matches) > 1:
+                candidates = [
+                    unit_view(ward, province) for ward, province in ward_matches
+                ]
+            elif len(province_matches) == 1:
+                matched_pair = province_matches[0]
+            elif len(province_matches) > 1:
+                candidates = [
+                    unit_view(province) for province, _ in province_matches
+                ]
+
+    matched_unit = None
+    map_payload = None
+    if candidates:
+        display = (
+            f"Tìm thấy {len(candidates)} đơn vị trùng tên: "
+            + "; ".join(
+                (
+                    f"{item['full_name']} - "
+                    f"{item.get('province', {}).get('full_name', '')}"
+                ).strip(" -")
+                for item in candidates
+            )
+            + ". Vui lòng nêu rõ tỉnh/thành phố."
+        )
+    elif matched_pair is None:
+        display = "Không tìm thấy đơn vị hành chính phù hợp trong dữ liệu hiện có."
+    else:
+        unit, province = matched_pair
+        matched_unit = unit_view(unit, None if unit is province else province)
+        list_requested = any(
+            phrase in normalized_query
+            for phrase in ("liet ke", "danh sach", "cac phuong xa")
+        )
+        if unit is province and list_requested:
+            ward_names = [
+                ward.get("FullName") or ward.get("Name")
+                for ward in province["Wards"]
+            ]
+            display = (
+                f"{province.get('FullName') or province.get('Name')} "
+                f"(mã {province['Code']}) có {len(ward_names)} phường/xã: "
+                + ", ".join(ward_names)
+                + "."
+            )
+        elif unit is province:
+            display = (
+                f"{province.get('FullName') or province.get('Name')} "
+                f"có mã đơn vị {province['Code']}."
+            )
+        else:
+            display = (
+                f"{unit.get('FullName') or unit.get('Name')} "
+                f"(mã {unit['Code']}) thuộc "
+                f"{province.get('FullName') or province.get('Name')}."
+            )
+
+        map_requested = any(
+            phrase in normalized_query for phrase in ("ban do", "ranh gioi", "geojson")
+        )
+        if map_requested:
+            map_payload = await asyncio.to_thread(
+                load_map_payload,
+                root,
+                unit,
+                province,
+                matched_unit,
+            )
+
+    if ws is not None and map_payload is not None:
+        from engine.agents.agent_goose import safe_ws_send_json
+        await safe_ws_send_json(ws, map_payload)
+
+    return display
 
 
 async def handle_epic_free_games_query(query: str = None, **kwargs) -> str:

@@ -1,9 +1,15 @@
+import difflib
+import json
 import time
 import logging
 import httpx
 import threading
 import re
+import unicodedata
+from datetime import datetime, timedelta, timezone
 from typing import Optional
+from urllib.parse import quote
+from engine.tools.browser import browser
 
 log = logging.getLogger("jarvis.weather")
 
@@ -12,7 +18,9 @@ SUMMARY_RULES: dict[str, str] = {
     "weather_search": (
         "QUY TẮC ĐỊNH DẠNG THỜI TIẾT BẮT BUỘC:\n"
         "- Tóm tắt nhiệt độ, độ ẩm, sức gió và trạng thái thời tiết ngắn gọn.\n"
-        "- Đưa ra lời khuyên thiết thực (mang ô, mặc ấm, hoạt động ngoài trời...) phù hợp với ngài erikpuw."
+        "- Đưa ra lời khuyên thiết thực (mang ô, mặc ấm, hoạt động ngoài trời...) phù hợp với ngài erikpuw.\n"
+        "- Với lịch mưa theo giờ: nêu rõ các khung giờ có khả năng mưa từ 50% trở lên và giờ cao nhất, "
+        "giữ nguyên số phần trăm trong dữ liệu, không bịa thêm giờ."
     ),
 }
 
@@ -85,16 +93,33 @@ def _wmo_text(code: int) -> str:
     return WMO_CODES.get(code, f"Mã thời tiết {code}")
 
 
+# Người dùng hỏi theo giờ / khả năng mưa -> lấy lịch mưa từng giờ thay vì thời tiết hiện tại.
+_HOURLY_INTENT = re.compile(
+    r"(theo|từng|mỗi) giờ|mấy giờ|giờ nào|lúc nào|khi nào|khả năng mưa|xác suất mưa|lịch (dự báo )?mưa|dự báo mưa|phần trăm mưa|% mưa"
+)
+
+
+def _wants_hourly(text: str) -> bool:
+    return bool(_HOURLY_INTENT.search((text or "").lower()))
+
+
 def _clean_location(location: str) -> str:
     """Loại bỏ các từ khóa nhiễu và chuẩn hóa viết tắt địa điểm."""
     loc = location.lower().strip()
     loc = re.sub(r"\b(tp\.?\s*hcm|tphcm|hcm)\b", "hồ chí minh", loc)
     noise_patterns = [
+        _HOURLY_INTENT.pattern,
+        r"\bcho tôi\b",
+        r"\bcụ thể\b",
+        r"\bphần trăm\b",
+        r"\btheo\b",
+        r"\b(thì|mưa|trời|có|không|nào|nhỉ|vậy|hả|bao nhiêu)\b",
         r"\bdự báo thời tiết\b",
         r"\bthời tiết\b",
         r"\bdự báo\b",
         r"\btại\b",
         r"\bở\b",
+        r"\bthành phố\b",
         r"\bcủa\b",
         r"\btỉnh\b",
         r"\bhôm nay\b",
@@ -106,57 +131,142 @@ def _clean_location(location: str) -> str:
         r"\bnhư thế nào\b",
     ]
     for pattern in noise_patterns:
-        loc = re.sub(pattern, "", loc)
+        loc = re.sub(pattern, " ", loc)
+    loc = re.sub(r"[^\w\s]", " ", loc)
     loc = re.sub(r"\s+", " ", loc).strip()
     if not loc:
         return "Hồ Chí Minh"
     return loc
 
 
+def _api_location_name(location: str) -> str:
+    """Chuẩn hóa tên địa điểm ASCII cho geocoder và wttr.in."""
+    value = (location or "").strip().translate(str.maketrans({"đ": "d", "Đ": "D"}))
+    value = "".join(
+        char for char in unicodedata.normalize("NFD", value)
+        if unicodedata.category(char) != "Mn"
+    )
+    value = re.sub(r"\s+", " ", value).strip()
+    key = re.sub(r"[^a-z0-9 ]", " ", value.lower())
+    key = re.sub(r"\s+", " ", key).strip()
+    key = re.sub(r"^(?:tp|thanh pho)\s+", "", key)
+    if key in {"ho chi minh", "hcm", "tphcm", "sai gon"}:
+        return "Ho Chi Minh City"
+    return " ".join(part.capitalize() for part in key.split())
+
+
 # ── Public API: weather_search (dùng cho tool) ──
 
-async def weather_search(location: str) -> str:
-    """Tra cứu thời tiết đầy đủ cho một địa điểm bằng Open-Meteo, tự động dự phòng sang fetch_weather()."""
-    location = _clean_location(location)
-
+async def weather_search(location: str, hourly: bool = False) -> str:
+    """Thời tiết một địa điểm. Mặc định là thời tiết hiện tại (Báo Mới -> wttr.in -> Open-Meteo);
+    hourly=True là lịch khả năng mưa theo từng giờ (Open-Meteo, dự phòng Báo Mới)."""
+    hourly = hourly or _wants_hourly(location)
+    place = _clean_location(location)
+    board = _resolve_province(place, await _load_boards())
     try:
-        lat, lon, resolved = await _geocode(location)
-        data = await _fetch_open_meteo(lat, lon)
-        return _format_response(resolved, data)
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 429:
-            log.warning(f"Open-Meteo rate limit hit (429): {e}. Falling back to fetch_weather()")
-            _mark_open_meteo_limited()
-            return await fetch_weather()
-        log.warning(f"Geocode failed for {location}: {e}")
-        return f"Không tìm thấy địa điểm '{location}'."
+        return await (_hourly_rain(place, board) if hourly else _current_weather(place, board))
+    except LookupError:
+        return f"Không tìm thấy địa điểm '{place}'. Bạn muốn xem thời tiết ở đâu?"
     except Exception as e:
-        err_msg = str(e)
-        if "limit exceeded" in err_msg.lower() or "429" in err_msg or "too many requests" in err_msg.lower():
+        if _is_rate_limited(e):
             log.warning(f"Open-Meteo rate limit hit: {e}. Falling back to fetch_weather()")
             _mark_open_meteo_limited()
             return await fetch_weather()
-        log.warning(f"Weather search failed for {location}: {e}")
-        return f"Không thể lấy dữ liệu thời tiết cho {location} lúc này."
+        log.warning(f"Weather search failed for {place}: {e}")
+        return f"Không thể lấy dữ liệu thời tiết cho {place} lúc này."
 
-    return _format_response(resolved, data)
+
+async def _current_weather(place: str, board: Optional[dict]) -> str:
+    if board:
+        try:
+            return _format_baomoi(await _baomoi_fetch(board["slug"]), _vn_hour())
+        except Exception as e:
+            log.warning(f"Báo Mới {board['slug']} lỗi: {e}")
+    lat, lon, name = await _locate(place, board)
+    try:
+        snap = await _wttr_snapshot(f"{lat},{lon}")
+    except Exception as e:
+        log.warning(f"wttr.in lỗi cho {name}: {e}")
+        snap = None
+    if snap:
+        temp = f", nhiệt độ {snap['temp']}°C" if snap.get("temp") is not None else ""
+        return f"📍 Thời tiết tại {name}: {snap['desc']}{temp}."
+    return _format_response(name, await _fetch_open_meteo(lat, lon))
+
+
+async def _hourly_rain(place: str, board: Optional[dict]) -> str:
+    if time.time() >= _open_meteo_blocked_until:
+        lat, lon, name = await _locate(place, board)
+        try:
+            return _format_hourly(name, await _fetch_open_meteo_hourly(lat, lon))
+        except Exception as e:
+            if not _is_rate_limited(e):
+                raise
+            _mark_open_meteo_limited()
+    if board:
+        return _format_baomoi_hourly(await _baomoi_fetch(board["slug"]), _vn_hour())
+    return f"Chưa lấy được lịch mưa theo giờ cho {place} (nguồn dự báo đang giới hạn lượt truy cập), bạn thử lại sau ít phút."
+
+
+async def _locate(place: str, board: Optional[dict]) -> tuple[float, float, str]:
+    """Toạ độ + tên chuẩn: tỉnh của Báo Mới có sẵn toạ độ, còn lại hỏi geocode của Open-Meteo."""
+    if board and board.get("lat") is not None:
+        return board["lat"], board["lon"], board["name"]
+    lat, lon, resolved_name = await _geocode(board["name"] if board else place)
+    return lat, lon, board["name"] if board else resolved_name
 
 
 async def _geocode(query: str) -> tuple[float, float, str]:
-    """Open-Meteo Geocoding: tên → (lat, lon, resolved_name)."""
+    """Open-Meteo Geocoding: tên → (lat, lon, resolved_name). Không có kết quả -> LookupError."""
     await _throttle_open_meteo_async(2.0)
     async with httpx.AsyncClient(timeout=5.0) as c:
         r = await c.get(
             "https://geocoding-api.open-meteo.com/v1/search",
-            params={"name": query, "count": 1, "language": "vi", "format": "json"},
+            params={"name": _api_location_name(query), "count": 1, "language": "vi", "format": "json"},
         )
         r.raise_for_status()
         body = r.json()
     results = body.get("results")
     if not results:
-        raise ValueError(f"Location '{query}' not found")
+        raise LookupError(f"Location '{query}' not found")
     r0 = results[0]
     return r0["latitude"], r0["longitude"], r0.get("name", query)
+
+
+async def _fetch_open_meteo_hourly(lat: float, lon: float) -> dict:
+    """Open-Meteo: khả năng mưa (%) và lượng mưa (mm) từng giờ cho 24 giờ tới."""
+    await _throttle_open_meteo_async(2.0)
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "hourly": "precipitation_probability,precipitation",
+        "forecast_hours": 24,
+        "timezone": "auto",
+    }
+    async with httpx.AsyncClient(timeout=5.0) as c:
+        r = await c.get("https://api.open-meteo.com/v1/forecast", params=params)
+        r.raise_for_status()
+        return r.json()
+
+
+def _hour_label(stamp: str, first_stamp: str) -> str:
+    """'2026-10-04T09:00' -> '09:00'; sang ngày khác thì kèm 'dd/mm'."""
+    return stamp[-5:] if stamp[:10] == first_stamp[:10] else f"{stamp[8:10]}/{stamp[5:7]} {stamp[-5:]}"
+
+
+def _format_hourly(resolved: str, data: dict) -> str:
+    hourly = data.get("hourly", {})
+    times = hourly.get("time", [])
+    if not times:
+        raise ValueError("Open-Meteo không trả dữ liệu theo giờ")
+    pops = hourly.get("precipitation_probability", [])
+    mms = hourly.get("precipitation", [])
+    lines = [f"🌧 Khả năng mưa theo giờ tại {resolved} ({len(times)} giờ tới):"]
+    for i, stamp in enumerate(times):
+        pop = pops[i] if i < len(pops) and pops[i] is not None else "?"
+        mm = mms[i] if i < len(mms) else 0
+        lines.append(f"  {_hour_label(stamp, times[0])} — {pop}%" + (f" ({mm} mm)" if mm else ""))
+    return "\n".join(lines)
 
 
 async def _fetch_open_meteo(lat: float, lon: float) -> dict:
@@ -237,6 +347,187 @@ def sanitize_weather_display_text(text: str) -> str:
         flags=re.I,
     )
     return cleaned
+
+
+# ── Báo Mới: danh sách tỉnh thành + thời tiết từng giờ (JSON nhúng trong trang, dữ liệu gốc từ weather.com) ──
+
+_BAOMOI_URL = "https://baomoi.com/tien-ich-thoi-tiet-{slug}.epi"
+_BAOMOI_DEFAULT_SLUG = "tp-ho-chi-minh"
+_BAOMOI_PAGE_TTL_SECONDS = 10 * 60
+_BOARDS_TTL_SECONDS = 24 * 60 * 60
+_boards_cache: Optional[tuple[float, list[dict]]] = None
+_baomoi_page_cache: dict[str, tuple[float, dict]] = {}
+
+# Dùng khi Báo Mới không tải được danh sách: tên tỉnh thành -> slug suy ra từ tên (không có toạ độ, sẽ geocode).
+_BOARD_NAMES_FALLBACK = (
+    "TP. Hồ Chí Minh", "Hà Nội", "Đà Nẵng", "An Giang", "Bắc Ninh", "Cà Mau", "Cần Thơ", "Cao Bằng",
+    "Đắk Lắk", "Điện Biên", "Đồng Nai", "Đồng Tháp", "Gia Lai", "Hà Tĩnh", "Hải Phòng", "Hưng Yên",
+    "Khánh Hòa", "Lai Châu", "Lâm Đồng", "Lạng Sơn", "Lào Cai", "Nghệ An", "Ninh Bình", "Phú Thọ",
+    "Quảng Ngãi", "Quảng Ninh", "Quảng Trị", "Sơn La", "Tây Ninh", "Thái Nguyên", "Thanh Hóa",
+    "Thừa Thiên Huế", "Tuyên Quang", "Vĩnh Long",
+)
+_PROVINCE_ALIASES = {
+    "hcm": "tp-ho-chi-minh", "tphcm": "tp-ho-chi-minh", "sai gon": "tp-ho-chi-minh",
+    "saigon": "tp-ho-chi-minh", "hue": "thua-thien-hue",
+}
+
+
+def _fold(text: str) -> str:
+    """Thường hóa, bỏ dấu tiếng Việt, ký tự lạ thành khoảng trắng: 'Đà Nẵng!' -> 'da nang'."""
+    text = unicodedata.normalize("NFD", (text or "").lower().replace("đ", "d"))
+    text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+
+def _board_key(name: str) -> str:
+    return re.sub(r"^(tp|thanh pho) ", "", _fold(name))
+
+
+def _vn_hour() -> int:
+    return datetime.now(timezone(timedelta(hours=7))).hour
+
+
+def _resolve_province(text: str, boards: list[dict]) -> Optional[dict]:
+    """Câu/tên người dùng -> tỉnh thành của Báo Mới (khớp tên, bí danh, tên nằm giữa câu, gõ sai nhẹ)."""
+    q = _board_key(text)
+    if not q:
+        return None
+    by_slug = {b["slug"]: b for b in boards}
+    keys = {_board_key(b["name"]): b for b in boards}
+    if q in _PROVINCE_ALIASES and _PROVINCE_ALIASES[q] in by_slug:
+        return by_slug[_PROVINCE_ALIASES[q]]
+    if q in keys:
+        return keys[q]
+    padded = f" {q} "
+    inside = [k for k in keys if f" {k} " in padded]
+    if inside:
+        return keys[max(inside, key=len)]
+    for alias, slug in _PROVINCE_ALIASES.items():
+        if f" {alias} " in padded and slug in by_slug:
+            return by_slug[slug]
+    close = difflib.get_close_matches(q, keys, n=1, cutoff=0.85)
+    return keys[close[0]] if close else None
+
+
+def _fallback_boards() -> list[dict]:
+    return [{"name": n, "slug": _fold(n).replace(" ", "-"), "lat": None, "lon": None} for n in _BOARD_NAMES_FALLBACK]
+
+
+def _to_float(value) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _baomoi_day(entry: dict) -> dict:
+    hours = []
+    for h in entry.get("hours") or []:
+        try:
+            hours.append({
+                "h": int(h["hours"]), "temp": round(h["temperature"]), "hum": h.get("humidity"),
+                "wind": h.get("wind"), "pop": h.get("pop"), "status": h.get("status") or "",
+            })
+        except (KeyError, TypeError, ValueError):
+            continue
+    return {
+        "date": entry["date"], "status": entry.get("status") or "",
+        "tmin": int(entry["temperatureMin24Hour"]), "tmax": int(entry["temperatureMax24Hour"]),
+        "pop_day": (entry.get("day") or {}).get("pop"), "pop_night": (entry.get("night") or {}).get("pop"),
+        "hours": hours,
+    }
+
+
+def _baomoi_parse(html: str) -> Optional[dict]:
+    """Đọc JSON __NEXT_DATA__ của trang Báo Mới. Trang đổi cấu trúc hoặc bị chặn bot thì trả None
+    (không đoán): {name, lat, lon, boards: [{name, slug, lat, lon}], days: [{date, tmin, tmax, hours: [...]}]}."""
+    m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html or "", re.S)
+    if not m:
+        return None
+    try:
+        content = json.loads(m.group(1))["props"]["pageProps"]["resp"]["data"]["content"]
+        board = content["activeBoard"]
+        days = []
+        for entry in board["entries"]:
+            try:
+                days.append(_baomoi_day(entry))
+            except (KeyError, TypeError, ValueError):
+                continue
+        if not days or not days[0]["hours"]:
+            return None
+        boards = [
+            {"name": b["displayName"], "slug": b["shortName"], "lat": _to_float(b.get("latitude")), "lon": _to_float(b.get("longitude"))}
+            for b in content.get("boards") or []
+        ]
+        return {
+            "name": board["displayName"], "lat": _to_float(board.get("latitude")), "lon": _to_float(board.get("longitude")),
+            "boards": boards, "days": days,
+        }
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _baomoi_current(days: list[dict], hour: int) -> dict:
+    """Mốc giờ gần nhất không sớm hơn `hour` trong hôm nay (trang chỉ liệt kê từ giờ hiện tại trở đi)."""
+    hours = days[0]["hours"]
+    return next((h for h in hours if h["h"] >= hour), hours[-1])
+
+
+async def _baomoi_fetch(slug: str) -> dict:
+    cached = _baomoi_page_cache.get(slug)
+    if cached and time.time() - cached[0] < _BAOMOI_PAGE_TTL_SECONDS:
+        return cached[1]
+    url = _BAOMOI_URL.format(slug=slug)
+    page, used_stealth = await browser._fetch(url, timeout_ms=10_000)
+    if page is None or (page.status and page.status >= 400):
+        raise ValueError(f"Scrapling không tải được Báo Mới (HTTP {getattr(page, 'status', None)})")
+    parsed = _baomoi_parse(str(page.html_content))
+    if not parsed:
+        log.warning("Scrapling tải Báo Mới nhưng không parse được dữ liệu (stealth=%s)", used_stealth)
+        raise ValueError("Báo Mới đổi giao diện hoặc không trả nội dung thời tiết có cấu trúc")
+    global _boards_cache
+    if parsed["boards"]:
+        _boards_cache = (time.time(), parsed["boards"])
+    _baomoi_page_cache[slug] = (time.time(), parsed)
+    return parsed
+
+
+async def _load_boards() -> list[dict]:
+    """Danh sách tỉnh thành lấy từ Báo Mới (cache 24 giờ); không tải được thì dùng danh sách tĩnh."""
+    if _boards_cache and time.time() - _boards_cache[0] < _BOARDS_TTL_SECONDS:
+        return _boards_cache[1]
+    try:
+        await _baomoi_fetch(_BAOMOI_DEFAULT_SLUG)
+    except Exception as e:
+        log.warning(f"Không tải được danh sách tỉnh thành từ Báo Mới: {e}")
+    return _boards_cache[1] if _boards_cache else _fallback_boards()
+
+
+def _format_baomoi(p: dict, hour: int) -> str:
+    cur, today = _baomoi_current(p["days"], hour), p["days"][0]
+    lines = [f"📍 Thời tiết tại {p['name']} (lúc {cur['h']:02d}:00):"]
+    lines.append(f"  🌡  Nhiệt độ: {cur['temp']}°C (hôm nay {today['tmin']}–{today['tmax']}°C).")
+    if cur["status"]:
+        lines.append(f"  ☁️  {cur['status']}.")
+    if cur["hum"] is not None:
+        lines.append(f"  💧 Độ ẩm: {cur['hum']}%.")
+    if cur["wind"] is not None:
+        lines.append(f"  🌬  Gió: {cur['wind']} km/h.")
+    if cur["pop"] is not None:
+        lines.append(f"  🌧  Khả năng mưa: {cur['pop']}%.")
+    return "\n".join(lines)
+
+
+def _format_baomoi_hourly(p: dict, hour: int) -> str:
+    """Dự phòng khi Open-Meteo bị giới hạn: 24 giờ kế tiếp từ hôm nay sang ngày mai."""
+    rows = [(d["date"], h) for d in p["days"][:2] for h in d["hours"]]
+    today = p["days"][0]["date"]
+    start = next((i for i, (date, h) in enumerate(rows) if date == today and h["h"] >= hour), 0)
+    lines = [f"🌧 Khả năng mưa theo giờ tại {p['name']}:"]
+    for date, h in rows[start:start + 24]:
+        label = f"{h['h']:02d}:00" if date == today else f"{date[:5]} {h['h']:02d}:00"
+        lines.append(f"  {label} — {h['pop'] if h['pop'] is not None else '?'}%")
+    return "\n".join(lines)
 
 
 # ── Legacy API (giữ cho greeting engine) ──
@@ -379,10 +670,11 @@ async def _open_meteo_snapshot() -> dict:
     }
 
 
-async def _wttr_snapshot() -> Optional[dict]:
+async def _wttr_snapshot(query: str = "Ho Chi Minh City") -> Optional[dict]:
+    query = _api_location_name(query)
     async with httpx.AsyncClient(timeout=5.0) as http:
         resp = await http.get(
-            "https://wttr.in/h%E1%BB%93%20ch%C3%AD%20minh",
+            f"https://wttr.in/{quote(query, safe=',')}",
             params={"format": "%C|%t", "lang": "en"},
         )
         resp.raise_for_status()
@@ -394,25 +686,12 @@ async def _wttr_snapshot() -> Optional[dict]:
     return {"desc": translate_weather_desc(desc_en).lower(), "temp": int(m.group()), "is_day": None, "source": "wttr"}
 
 
-def _baomoi_snapshot(temp_raw, desc_raw) -> Optional[dict]:
-    """Báo Mới là cào HTML: trang đổi giao diện hoặc chặn bot thì selector trả rác —
-    chỉ nhận khi nhiệt độ là số hợp lý và mô tả là một cụm ngắn."""
-    m = re.fullmatch(r"\s*\+?(-?\d{1,2})\s*°?\s*C?\s*", temp_raw or "")
-    desc = (desc_raw or "").strip()
-    if not m or not (2 <= len(desc) <= 40) or not -10 <= int(m.group(1)) <= 50:
-        return None
-    return {"desc": desc[0].lower() + desc[1:], "temp": int(m.group(1)), "is_day": None, "source": "baomoi"}
-
-
 async def _baomoi_fetch_snapshot() -> Optional[dict]:
-    from scrapling.fetchers import AsyncFetcher
-    response = await AsyncFetcher.get("https://baomoi.com/tien-ich-thoi-tiet.epi", timeout=10)
-    if getattr(response, "status", 200) != 200:
+    cur = _baomoi_current((await _baomoi_fetch(_BAOMOI_DEFAULT_SLUG))["days"], _vn_hour())
+    status = cur["status"]
+    if not status:
         return None
-    return _baomoi_snapshot(
-        response.css("span[class*='text-[5rem]']::text").get(),
-        response.css("span[class*='text-[#777]'][class*='ml-[13px]']::text").get(),
-    )
+    return {"desc": status[0].lower() + status[1:], "temp": cur["temp"], "is_day": None, "source": "baomoi"}
 
 
 async def fetch_weather_snapshot() -> Optional[dict]:

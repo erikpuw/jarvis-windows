@@ -40,28 +40,45 @@ async function open(browser, opts = {}) {
     return { ghost: g?.textContent, anims: w.length, from: kf?.transform };
   });
   check(up.ghost === "Đang nghĩ…" && up.anims >= 1, "1a. đổi chữ: có chữ cũ đang trượt ra + chữ mới trượt vào", JSON.stringify(up));
-  check(String(up.from).includes("8px") && !String(up.from).includes("-8px"), "1b. lên trạng thái bận hơn → chữ mới trồi từ dưới lên", String(up.from));
-  send("idle"); await page.waitForTimeout(60); // ngay sau "làm việc": app có thể tự về Sẵn sàng nếu chờ lâu
-  const down = await page.evaluate(() => document.getElementById("status-text").getAnimations().filter((a) => a.constructor.name === "Animation").pop()?.effect?.getKeyframes()[0]?.transform);
-  check(String(down).includes("-8px"), "1d. về trạng thái nhàn hơn → chữ mới trồi từ trên xuống", String(down));
-  await page.waitForTimeout(500);
+  // hướng trượt ngẫu nhiên mỗi lần đổi: đổi 16 lần thì phải thấy cả lên lẫn xuống (xác suất toàn một hướng ~ 1/32768)
+  const dirs = [];
+  for (let i = 0; i < 16; i++) {
+    send(i % 2 ? "thinking" : "working"); await page.waitForTimeout(50);
+    dirs.push(await page.evaluate(() => { const t = document.getElementById("status-text").getAnimations().filter((a) => a.constructor.name === "Animation").pop()?.effect?.getKeyframes()[0]?.transform; return String(t).includes("-12px") ? -1 : String(t).includes("12px") ? 1 : 0; }));
+  }
+  check(dirs.includes(1) && dirs.includes(-1) && !dirs.includes(0), "1b. hướng trượt ngẫu nhiên mỗi lần đổi trạng thái (cả lên lẫn xuống)", dirs.join(""));
+  check(!dirs.every((d, i) => i === 0 || d !== dirs[i - 1]) && !dirs.every((d, i) => i === 0 || d === dirs[i - 1]), "1b2. hướng không theo quy luật bận/nhàn (cùng một cặp trạng thái vẫn ra hướng khác nhau)", dirs.join(""));
+  send("idle"); await page.waitForTimeout(60);
+  // nhịp mask-reveal-up (bỏ blur): chữ cũ thoát rất nhanh 200ms (ease-in) nhường chỗ, chữ mới vào sau 90ms dài 547ms (ease-out), trượt 12px vào / 9px ra
+  const rhythm = await page.evaluate(() => {
+    const g = document.querySelector("#status-row .status-ghost"), l = document.getElementById("status-text");
+    const all = (el) => el.getAnimations().filter((a) => a.constructor.name === "Animation");
+    const ga = all(g)[0], la = all(l).pop();
+    const kf = (a) => a.effect.getKeyframes();
+    return { gDur: ga?.effect.getTiming().duration, gEase: ga?.effect.getTiming().easing, lDelay: la?.effect.getTiming().delay, lDur: la?.effect.getTiming().duration, lEase: la?.effect.getTiming().easing, gTo: kf(ga)[1]?.transform, blur: [...kf(ga), ...kf(la)].some((f) => f.filter && f.filter !== "none") };
+  });
+  check(rhythm.gDur === 200 && rhythm.lDelay === 90 && rhythm.lDur === 547 && /0\.22, 1, 0\.36, 1/.test(rhythm.lEase) && /0\.64, 0, 0\.78, 0/.test(rhythm.gEase) && !rhythm.blur && /9px/.test(rhythm.gTo), "1h. nhịp mask-reveal-up không blur: ra 200ms ease-in, vào trễ 90ms dài 547ms ease-out", JSON.stringify(rhythm));
+  await page.waitForTimeout(900);
   check(!(await page.$("#status-row .status-ghost")), "1c. chữ cũ được dọn sau khi trượt xong");
 
-  // 2. rảnh 10s → chữ cuộn vào, orb ở lại nhưng mờ
+  // 2. rảnh 10s → chữ cuộn vào, orb ở lại nguyên độ sáng và kích thước
   await page.waitForTimeout(500);
   await page.clock.fastForward(8000);
   check(!(await quiet()), "2a. chưa đủ 10s → chữ vẫn hiện");
   await page.clock.fastForward(3000);
   await page.waitForTimeout(700); // CSS transition chạy theo giờ thật
   const l = await label();
-  const orbOp = await page.$eval("#status-orb", (e) => parseFloat(getComputedStyle(e).opacity));
+  const orbOp = await page.$eval("#status-orb", (e) => { const cs = getComputedStyle(e); return parseFloat(cs.opacity) * (new DOMMatrixReadOnly(cs.transform).a); });
   check((await quiet()) && l.w === 0 && l.op < 0.05, "2b. sau 10s rảnh → chữ cuộn vào (thu về 0, mờ)", JSON.stringify(l));
-  check(orbOp < 0.6 && orbOp > 0.2, "2c. orb ở lại, mờ hơn", String(orbOp));
+  check(orbOp === 1, "2c. orb ở lại nguyên độ sáng và kích thước (không mờ, không nhỏ lại)", String(orbOp));
+  const tx = () => page.$eval("#status-text", (e) => new DOMMatrixReadOnly(getComputedStyle(e).transform).m41);
+  check((await tx()) < -8, "2d. line-by-line-slide ngược: chữ Sẵn sàng trượt vô (sang trái) rồi mất", String(await tx()));
 
   // 3. có việc → chữ cuộn ra ngay
   send("thinking"); await page.waitForTimeout(700);
   const l2 = await label();
   check(!(await quiet()) && l2.w > 40 && l2.op > 0.9 && l2.text === "Đang nghĩ…", "3a. có việc → chữ cuộn ra", JSON.stringify(l2));
+  check(Math.abs(await tx()) < 0.5, "3c. chữ về đúng chỗ sau khi trượt ra", String(await tx()));
   await page.clock.fastForward(30000);
   check(!(await quiet()), "3b. đang bận thì không bao giờ cuộn vào");
 
@@ -78,7 +95,10 @@ async function open(browser, opts = {}) {
   check(await quiet(), "4d. idle 10s → chữ cuộn vào");
 
   // 5. gõ phím hoặc bấm chuột → cuộn ra và đếm lại
-  await page.keyboard.press("Shift"); await page.waitForTimeout(700);
+  await page.keyboard.press("Shift"); await page.waitForTimeout(120);
+  const mid = await page.$eval("#status-text", (e) => new DOMMatrixReadOnly(getComputedStyle(e).transform).m41);
+  check(mid < -0.5 && mid > -16, "5d. chữ đang trượt ra từ bên trái (giữa đường, chưa tới chỗ)", String(mid));
+  await page.waitForTimeout(600);
   check(!(await quiet()) && (await label()).w > 40, "5a. gõ phím → chữ cuộn ra");
   await page.clock.fastForward(8000);
   check(!(await quiet()), "5b. đếm lại 10s từ lần thao tác cuối");

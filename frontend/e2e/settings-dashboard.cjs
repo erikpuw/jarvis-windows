@@ -65,6 +65,10 @@ async function newPage(browser, { width, height, hasKey = true }) {
   await page.route("**/api/tts/voices", (r) => json(r, {
     engine: "vieneu", current: "a", voices: [{ name: "a", label: "Giọng A", kind: "preset" }],
   }));
+  // Memory Control is password-locked: the fake backend accepts any password
+  await page.route("**/api/memory-lock/status", (r) => r.fulfill({ json: { configured: true } }));
+  await page.route("**/api/memory-lock/unlock", (r) => r.fulfill({ json: { success: true, token: "t" } }));
+  await page.route("**/api/memory-lock/lock", (r) => r.fulfill({ json: { success: true } }));
   await page.route("**/api/memory-control/summary", (r) => json(r, { success: true, counts: { learnings: items.length } }));
   await page.route("**/api/learnings/list**", (r) => json(r, { success: true, learnings: items, total: items.length }));
   await page.route("**/api/memory-control/delete", (r) => {
@@ -103,7 +107,7 @@ const LEGACY_IDS = [
   "status-intelligence-core", "status-server-engine", "status-llm-server", "status-tts-server",
   "status-server", "status-server-detail",
   "row-status-llm", "row-status-redis", "row-status-db", "row-status-rag", "apps-list-container",
-  "sysinfo-memory", "sysinfo-semantic", "sysinfo-turns", "sysinfo-tasks", "sysinfo-skills",
+  "sysinfo-memory", "sysinfo-turns", "sysinfo-tasks", "sysinfo-skills",
   "sysinfo-commands", "sysinfo-port", "sysinfo-uptime",
   "memory-category-nav", "memory-search-input", "btn-memory-search", "memory-select-all",
   "memory-bulk-delete", "memory-list-container", "memory-page-prev", "memory-page-status",
@@ -184,6 +188,7 @@ const PAGES = ["overview", "connect", "voice", "user", "system", "memory"];
     await page.click("#prompt-preview-close");
 
     await page.click('.sd-nav-item[data-page="memory"]');
+    await page.fill("#memory-lock-input", "x"); await page.click("#memory-lock-btn"); // Memory Control đòi mật khẩu
     await page.waitForSelector('[data-memory-record-id="1"]');
     await page.click('[data-memory-record-id="1"]');
     await page.waitForTimeout(300);
@@ -207,6 +212,7 @@ const PAGES = ["overview", "connect", "voice", "user", "system", "memory"];
     check((await visiblePage(page)) === "voice", "2d. nhớ trang đang xem", await visiblePage(page));
 
     await page.click('.sd-nav-item[data-page="memory"]');
+    await page.fill("#memory-lock-input", "x"); await page.click("#memory-lock-btn"); // Memory Control đòi mật khẩu
     await page.waitForSelector('[data-memory-record-id="4"]');
     await page.click("#memory-select-all");
     check((await page.textContent("#memory-bulk-delete")).includes("(4)"), "8a. đếm số mục đã chọn");

@@ -128,13 +128,14 @@ def sampling_params(thinking: bool = False, temperature: float | None = None) ->
 
 def vision_request_kwargs() -> dict:
     """Tham số cho request vision/OCR (chế độ instruct, tắt thinking) theo model đang chạy.
-    Dựng từ sampling_params(False) + reasoning_controls(False)."""
-    sp = sampling_params(False)
+    Đọc chữ/số trong ảnh phải tất định: temperature 0 và không phạt lặp token (presence_penalty làm hỏng
+    số/ký tự lặp lại trong văn bản gốc). Đo trên Gemma E4B: temp 1.0 đọc sai giờ/phần trăm hoặc trả rỗng."""
+    sp = sampling_params(False, temperature=0.0)
     rc = reasoning_controls(False)
     return {
         "temperature": sp["temperature"],
         "top_p": sp["top_p"],
-        "presence_penalty": sp["presence_penalty"],
+        "presence_penalty": 0.0,
         "extra_body": {**sp["extra_body"], **rc},
     }
 

@@ -1,5 +1,15 @@
 {
   "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp",
+        "--api-key",
+        "ctx7sk-5ca58e99-3394-4cdc-8724-2406afdd98b0"
+      ],
+      "enabled": false
+    },
     "gitnexus": {
       "command": "gitnexus",
       "args": [
@@ -15,12 +25,8 @@
       ],
       "enabled": false
     },
-    "wikipedia-mcp": {
+    "wikipedia-vi": {
       "command": "wikipedia-mcp",
-      "args": [
-        "--language",
-        "VI"
-      ],
       "enabled": true
     },
     "codebase-memory-mcp": {

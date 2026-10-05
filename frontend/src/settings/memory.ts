@@ -2,7 +2,8 @@
  * Memory Control Center (Settings → Bộ nhớ). Moved out of settings.ts; the
  * element ids are the ones settings-pages.ts renders.
  */
-import { apiGet, apiPost } from "./api";
+import { apiGet, apiPost, fetchWithTimeout } from "./api";
+import { registerLockable, isUnlocked } from "./lock";
 import { decorateActionButton, makeIcon, runAction, type ActionKind } from "../icons";
 import type { MorphIconElement } from "morphicons/element";
 import {
@@ -19,9 +20,9 @@ import {
 
 let onMemoryDataChanged: () => Promise<unknown> = async () => {};
 
+
 type MemoryCategoryId =
   | "learning"
-  | "memory"
   | "workflow"
   | "outcome"
   | "conversation"
@@ -48,7 +49,6 @@ interface MemoryItem {
 const MEMORY_PAGE_SIZE = 50;
 const MEMORY_CATEGORIES: MemoryCategory[] = [
   { id: 'learning', label: "Learnings", endpoint: "/api/learnings/list", responseKey: "learnings", color: "#a78bfa", icon: Brain, activeIcon: Lightbulb },
-  { id: 'memory', label: "Memories", endpoint: "/api/memories/list", responseKey: "memories", color: "#10b981", icon: Sparkles, activeIcon: Database },
   { id: 'workflow', label: "Workflows", endpoint: "/api/workflows/list", responseKey: "workflows", color: "#22d3ee", icon: Workflow, activeIcon: RotateCw },
   { id: 'outcome', label: "Agent Outcomes", endpoint: "/api/outcomes/list", responseKey: "outcomes", color: "#f59e0b", icon: Target, activeIcon: CheckCheck },
   { id: 'conversation', label: "Conversations", endpoint: "/api/conversations", responseKey: "conversations", color: "#60a5fa", icon: MessageSquare, activeIcon: MessagesSquare },
@@ -59,7 +59,6 @@ const MEMORY_CATEGORIES: MemoryCategory[] = [
 
 const EDITABLE_MEMORY_FIELDS: Record<MemoryCategoryId, string[]> = {
   learning: ["type", "semantic_key", "content", "source", "importance", "embedding"],
-  memory: ["type", "content", "source", "importance"],
   workflow: ["agent", "intent", "tool_chain", "argument_keys", "sample_queries", "success_evidence", "validation_count", "status", "wiki_path"],
   outcome: ["agent", "query", "status", "result", "traces"],
   conversation: ["role", "content", "session_id"],
@@ -171,7 +170,6 @@ function renderMemoryCategoryNav(): void {
   if (!nav) return;
   const countKeys: Partial<Record<MemoryCategoryId, string>> = {
     learning: "learnings",
-    memory: "memories",
     workflow: "workflows",
     outcome: "outcomes",
     conversation: "conversations",
@@ -249,6 +247,7 @@ async function loadMemorySummary(): Promise<void> {
 }
 
 async function loadMemoryList(): Promise<void> {
+  if (!isUnlocked("memory")) return;
   const container = document.getElementById("memory-list-container");
   if (!container) return;
   container.innerHTML = '<div class="sd-empty sd-loading-state"><span>Đang tải danh sách bản ghi…</span></div>';
@@ -274,6 +273,7 @@ async function loadMemoryList(): Promise<void> {
     }
     renderMemoryItems();
   } catch (error) {
+    if (!isUnlocked("memory")) return; // a 401 locked the page while loading: keep it empty
     container.innerHTML = `<div class="sd-empty sd-error-state">Lỗi tải bộ nhớ: ${escapeMemoryHtml(error)}</div>`;
   }
 }
@@ -491,7 +491,7 @@ async function deleteBulkSelectedRecords(btn: HTMLButtonElement): Promise<void> 
     for (const item of targets) {
       try {
         const result = kind === "notes"
-          ? await (await fetch(`/api/notes/delete?id=${encodeURIComponent(String(item.id))}`, { method: "DELETE" })).json()
+          ? await (await fetchWithTimeout(`/api/notes/delete?id=${encodeURIComponent(String(item.id))}`, { method: "DELETE" })).json()
           : await apiPost<{ success: boolean; code?: string; error?: string }>("/api/memory-control/delete", { kind, id: Number(item.id) });
         if (!result.success) throw new Error(result.code || result.error || "delete_failed");
       } catch (error) {
@@ -538,7 +538,7 @@ async function deleteSelectedMemoryRecord(btn: HTMLButtonElement): Promise<void>
   const ok = await runAction(btn, async () => {
     if (kind === "notes") {
       if (!confirm("Xóa ghi chú đã chọn?")) return false;
-      const response = await fetch(`/api/notes/delete?id=${encodeURIComponent(String(item.id))}`, { method: "DELETE" });
+      const response = await fetchWithTimeout(`/api/notes/delete?id=${encodeURIComponent(String(item.id))}`, { method: "DELETE" });
       const result = await response.json();
       if (!result.success) throw new Error(`Không thể xóa bản ghi: ${result.error || "delete_failed"}`);
       return;
@@ -557,11 +557,36 @@ async function deleteSelectedMemoryRecord(btn: HTMLButtonElement): Promise<void>
   await onMemoryDataChanged();
 }
 
-export { loadMemoryList };
+/** While locked (settings/lock.ts) nothing stays loaded: drops every record from memory and page. */
+function clearMemoryView(): void {
+  activeMemoryItems = [];
+  memorySummary = {};
+  selectedMemoryId = null;
+  memoryOffset = 0;
+  memoryTotal = 0;
+  mobileDetailActive = false;
+  bulkSelectedIds.clear();
+  for (const id of ["memory-list-container", "memory-detail-container"]) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = "";
+  }
+  const search = document.getElementById("memory-search-input") as HTMLInputElement | null;
+  if (search) search.value = "";
+  const pageStatus = document.getElementById("memory-page-status");
+  if (pageStatus) pageStatus.textContent = "";
+  renderMemoryCategoryNav();
+}
 
 /** Wires every Memory Center control. Call once, after the panel markup exists. */
 export function initMemoryCenter(onDataChanged: () => Promise<unknown>): void {
   onMemoryDataChanged = onDataChanged;
+
+  registerLockable({
+    id: "memory",
+    root: () => document.getElementById("page-memory"),
+    onUnlock: async () => { memoryOffset = 0; await loadMemoryList(); },
+    onLock: clearMemoryView,
+  });
 
   const searchBtn = document.getElementById("btn-memory-search") as HTMLButtonElement | null;
   if (searchBtn && !searchBtn.querySelector("morph-icon")) {

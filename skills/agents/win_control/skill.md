@@ -1,6 +1,6 @@
 ---
 name: win_control
-title: Agent Windows Control
+title: Agent Control
 aliases:
 - agent_win_control
 - agent_control

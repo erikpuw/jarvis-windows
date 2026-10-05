@@ -36,6 +36,16 @@ BOTH = [
     ("Giá $12.5 tỷ và 3,5 triệu USD; vàng 78.500.000 VNĐ/lượng, 1.500.000đ.",
      "Giá mười hai phẩy năm tỷ đô la và ba phẩy năm triệu đô la Mỹ, vàng bảy mươi tám triệu năm trăm nghìn "
      "đồng trên lượng, một triệu năm trăm nghìn đồng."),
+    # đơn vị đứng sau "VNĐ/": đọc "trên" + đơn vị, không đánh vần "m ba" / "k W h"
+    ("Nước 6.700 VNĐ/m³, điện 1.984 VNĐ/kWh.",
+     "Nước sáu nghìn bảy trăm đồng trên mét khối, điện một nghìn chín trăm tám mươi bốn đồng trên ki lô oát giờ."),
+    ("Gạo 25.000 VNĐ/kg, xăng 23.500đ/lít, gas 400.000 VND/bình.",
+     "Gạo hai mươi lăm nghìn đồng trên ki lô gam, xăng hai mươi ba nghìn năm trăm đồng trên lít, "
+     "gas bốn trăm nghìn đồng trên bình."),
+    # 24/7 là "cả ngày cả tuần", không phải 24 tháng 7 (trừ khi có chữ "ngày" đứng trước)
+    ("Làm việc 24/7, hỗ trợ 24/7.", "Làm việc hai mươi bốn trên bảy, hỗ trợ hai mươi bốn trên bảy."),
+    ("Sự kiện ngày 24/7 và lễ 30/4.",
+     "Sự kiện ngày hai mươi bốn tháng bảy và lễ ngày ba mươi tháng bốn."),
     # phép tính, khoảng
     ("5 + 3 = 8, 8 - 3 = 5, 4 x 6 = 24, 10 / 2 = 5, 2^3 = 8, 7 > 5, 3 <= 4, 1/2 cốc, tỷ lệ 16:9.",
      "năm cộng ba bằng tám, tám trừ ba bằng năm, bốn nhân sáu bằng hai mươi bốn, mười chia hai bằng năm, "

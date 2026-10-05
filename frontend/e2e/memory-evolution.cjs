@@ -17,6 +17,10 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   const saves = [];
   await page.routeWebSocket(/\/ws/, () => {});
   await page.route("**/api/**", (r) => r.fulfill({ json: { success: true, env_keys_set: { llama: true } } }));
+  // Memory Control is password-locked: the fake backend accepts any password
+  await page.route("**/api/memory-lock/status", (r) => r.fulfill({ json: { configured: true } }));
+  await page.route("**/api/memory-lock/unlock", (r) => r.fulfill({ json: { success: true, token: "t" } }));
+  await page.route("**/api/memory-lock/lock", (r) => r.fulfill({ json: { success: true } }));
   await page.route("**/api/memory-control/summary", (r) => r.fulfill({ json: { success: true, counts: {} } }));
   await page.route("**/api/learnings/list**", (r) => r.fulfill({ json: { success: true, learnings: [], total: 0 } }));
   await page.route("**/api/evolution/list**", (r) => r.fulfill({ json: { success: true, total: 2, items: [
@@ -33,6 +37,8 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   await page.evaluate(() => document.getElementById("btn-settings").click());
   await page.waitForTimeout(500);
   await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="memory"]').click());
+  await page.waitForTimeout(400);
+  await page.fill("#memory-lock-input", "x"); await page.click("#memory-lock-btn"); // Memory Control đòi mật khẩu
   await page.waitForTimeout(1000);
 
   const nav = await page.$$eval("#memory-category-nav .sd-mem-cat-btn", (b) => b.map((x) => `${x.dataset.memoryKind}:${x.textContent.trim().replace(/\d+$/, "")}`));

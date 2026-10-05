@@ -70,6 +70,9 @@ COMMAND_ACTION_PHRASES: dict[str, str] = {
     "get_epic_free_games": "Xem game miễn phí Epic",
     "get_vannien_data": "Tra cứu lịch vạn niên",
     "get_zodiac_data": "Tra cứu cung hoàng đạo",
+    "vietnam_data_lookup": "Tra cứu dữ liệu Việt Nam",
+    "vietlott_analysis": "Phân tích kết quả Vietlott",
+    "legal_lookup": "Tra cứu luật pháp",
     "map_pois": "Tìm địa điểm",
     "map_route": "Tìm đường đi",
     "office_tool": "Xử lý tài liệu Office",
@@ -124,6 +127,7 @@ def resolve_slash_command(text: str) -> dict | None:
                 "kind": "directive",
                 "command": command_name,
                 "text": resolve_command_directive(command_name, spec, args),
+                "value": args,
             }
         return {
             "kind": "directive",
@@ -143,6 +147,15 @@ def resolve_slash_command(text: str) -> dict | None:
     }
 
 
+def _mark_forced(ws, command_name: str, value: str) -> None:
+    """Lệnh của agent tra cứu (mỗi tool một agent) chạy đúng agent của nó (decide() đọc một lần); văn bản lệnh giữ nguyên."""
+    from engine.orchestrator.registry import AGENT_REGISTRY
+    from engine.prompts import catalog
+    agent = catalog.tool_to_agent_map().get(command_name)
+    if value and "tool" in AGENT_REGISTRY.get(agent, {}):
+        ws.forced_command = {"tool": command_name, "value": value}
+
+
 async def handle_slash_message(ws, text: str, send_json) -> str | None:
     """Process a WebUI message through slash-command resolution.
 
@@ -151,12 +164,14 @@ async def handle_slash_message(ws, text: str, send_json) -> str | None:
     ``send_json``). ``ws.pending_slash_command`` holds the bare command waiting
     for its parameter value between turns.
     """
+    ws.forced_command = None
     if text.startswith("/"):
         # A new slash command overrides any pending param prompt.
         ws.pending_slash_command = None
         result = resolve_slash_command(text)
         if result is not None:
             if result["kind"] == "directive":
+                _mark_forced(ws, result["command"], result.get("value") or result["text"])
                 return result["text"]
             await send_json({"type": "stream_start"})
             await send_json({"type": "text_chunk", "text": result["text"]})
@@ -172,5 +187,6 @@ async def handle_slash_message(ws, text: str, send_json) -> str | None:
         command = load_command(pending)
         spec = command_spec(command) if command else {}
         if spec:
+            _mark_forced(ws, pending, text)
             return resolve_command_directive(pending, spec, text)
     return text

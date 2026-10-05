@@ -65,13 +65,13 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   const dbl = await rate();
   check(dbl.gl <= 62 && (dbl.raf["anim-gate.ts"] || 0) <= 400, "6. đóng/mở lớp phủ liên tục không sinh vòng lặp thứ hai", `gl=${dbl.gl.toFixed(0)} ${JSON.stringify(dbl.raf)}`);
 
-  // bot linh vật: 30 khung/s trên màn cảm ứng
+  // bot linh vật: 60 khung/s cả trên màn cảm ứng (đã bỏ giới hạn 30; xem bot-fps.cjs)
   for (let i = 0; i < 50 && !sock; i++) await page.waitForTimeout(100);
   await page.evaluate(() => document.getElementById("command-container")?.classList.add("visible"));
   await page.waitForTimeout(800);
   await page.evaluate(() => (window.__bot = 0)); await page.waitForTimeout(1500);
   const bot = await page.evaluate(() => window.__bot / 1.5);
-  check(bot > 5 && bot <= 32, "7. bot linh vật vẽ <=30 khung/s trên màn cảm ứng", `${bot.toFixed(0)}/s`);
+  check(bot >= 50 && bot <= 65, "7. bot linh vật vẽ ~60 khung/s trên màn cảm ứng (không còn bị giới hạn 30)", `${bot.toFixed(0)}/s`);
 
   await browser.close();
   console.log(failed ? `\n${failed} FAIL` : "\nALL PASS");

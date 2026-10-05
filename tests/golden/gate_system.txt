@@ -1,5 +1,10 @@
-Phân loại yêu cầu HIỆN TẠI của người dùng thành đúng một nhãn:
-- general: trò chuyện, cảm xúc, góp ý, hỏi hay bàn về chính Jarvis (giọng nói, lỗi, cách hoạt động, hỏi vì sao vừa rồi làm sai hay bị lỗi), hỏi cách để tự mình làm một việc, kể cả việc trên máy tính hay trong một ứng dụng (người dùng muốn biết cách làm, không nhờ Jarvis mở hay thực hiện việc đó), suy nghĩ hay dự định của người dùng (việc do CHÍNH NGƯỜI DÙNG sẽ làm, không phải nhờ Jarvis làm), nhờ chính Jarvis nói/đọc thử để nghe giọng, câu chỉ kể/than/nhận xét mà không có mệnh lệnh nhờ Jarvis làm gì, hoặc bất cứ điều gì không cần làm gì lên máy tính hay lấy dữ liệu ngoài.
-- general_knowledge: câu hỏi kiến thức nền (lịch sử, khoa học, định nghĩa, tiểu sử) cần tra bách khoa; KHÔNG gồm luật hay văn bản pháp luật Việt Nam.
-- orchestrator: nhờ Jarvis làm một việc cụ thể lên máy tính hoặc lấy dữ liệu ngoài/thời gian thực (mở/đóng ứng dụng, email, tin tức, giá, thời tiết, ghi chú, cung hoàng đạo, lịch vạn niên, chụp màn hình, xem youtube, tra giá sản phẩm, dream, nhìn màn hình...).
-Chỉ dựa vào yêu cầu hiện tại; lịch sử chỉ là ngữ cảnh. Chỉ trả về đúng một nhãn, không giải thích.
+Phân loại yêu cầu HIỆN TẠI của người dùng theo đúng một nhãn trong `general`, `general_knowledge`, `orchestrator`, `attachment_clarify`, theo hướng dẫn route skill bên dưới. Ưu tiên yêu cầu hiện tại; lịch sử chỉ là ngữ cảnh. Chỉ trả về đúng tên nhãn, không giải thích.
+Lượt này không có metadata tệp đính kèm; không chọn attachment_clarify.
+
+Dùng general cho hội thoại, cảm xúc, góp ý về Jarvis; khi người dùng hỏi cách tự mình làm; hoặc kể dự định/than. Nếu họ chỉ hỏi hướng dẫn và không nhờ Jarvis thực hiện thì chọn general.
+
+Dùng general_knowledge cho kiến thức nền như lịch sử, khoa học, định nghĩa, địa lý, tiểu sử; không gồm luật Việt Nam.
+
+Dùng orchestrator khi người dùng nhờ Jarvis trực tiếp thực hiện thao tác, dùng công cụ, hoặc lấy dữ liệu ngoài/thời gian thực. Bao gồm làm lại hay thử lại việc vừa nhờ.
+
+Chỉ dùng attachment_clarify khi có tệp đính kèm và người dùng chưa nói rõ muốn làm gì với nó (ví dụ: “giúp tôi với file này”, “cái này là sao?”). Nếu nêu thao tác như đọc, tóm tắt, trích xuất, dịch, sửa hay tạo thì chọn orchestrator.

@@ -1,6 +1,6 @@
 ---
 name: rag
-title: Agent Document RAG
+title: Agent RAG
 aliases:
 - agent_rag
 description: Đọc, tóm tắt hoặc phân tích nội dung tệp đính kèm.

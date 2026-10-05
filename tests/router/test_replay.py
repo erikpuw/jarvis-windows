@@ -34,8 +34,14 @@ def test_office_and_rag_need_an_attachment(monkeypatch):
 
 
 def test_legacy_agent_names_are_normalized(monkeypatch):
-    assert _find([W("check_project")], monkeypatch=monkeypatch)["agent"] == "project"
-    assert _find([W("learning")], monkeypatch=monkeypatch)["agent"] == "history"
+    wf = lambda agent, tool: {"id": 1, "agent": agent, "tool_chain": [tool]}
+    assert _find([wf("check_project", "check_project")], monkeypatch=monkeypatch)["agent"] == "project"
+    assert _find([wf("learning", "query_history")], monkeypatch=monkeypatch)["agent"] == "history"
+
+
+def test_legacy_search_agent_maps_to_the_agent_of_its_first_tool(monkeypatch):
+    wf = {"id": 3, "agent": "search", "tool_chain": ["get_market_data"]}
+    assert _find([wf], monkeypatch=monkeypatch) == {"id": 3, "agent": "market", "tool_chain": ["get_market_data"]}
 
 
 def test_learning_failure_means_no_replay(monkeypatch):

@@ -26,6 +26,7 @@ AFFIRM = frozenset({
     "có", "co", "ừ", "ừm", "ừ ừ", "uh", "uhm", "ok", "oke", "okay", "yes", "vâng", "dạ", "dạ có", "được", "được đó",
     "đồng ý", "làm đi", "chạy đi", "mở đi", "làm luôn", "ok làm đi", "ừ làm đi", "có làm đi", "ok luôn", "ừ đúng rồi",
     "ừ đi", "ok đi", "oke đi", "dạ vâng", "được rồi", "có đi",
+    "thử lại", "thử lại đi", "thử lại coi", "thử lại xem", "làm lại", "làm lại đi", "chạy lại", "mở lại", "mở lại đi",
 })
 DENY = frozenset({
     "không", "ko", "khong", "no", "thôi", "thoi", "thôi khỏi", "khỏi", "không cần", "không cần đâu", "để sau",
@@ -49,11 +50,15 @@ def _drop_trailing_partial_marker(text: str) -> str:
     return text
 
 
+_TEMPLATE_BRACKETS = re.compile(r"(<ask_user>\s*)\[([^\[\]]*)\]")  # khuôn ghi "[việc]", model chép luôn cả ngoặc
+
+
 def extract(text: str) -> tuple[str, str]:
     """(văn bản bỏ marker + bỏ cả khối <action_run>, câu hỏi trong <ask_user> hoặc "")."""
-    m = ASK_RE.search(text or "")
+    text = _TEMPLATE_BRACKETS.sub(lambda m: m.group(1) + m.group(2), text or "")
+    m = ASK_RE.search(text)
     ask = " ".join(m.group(1).split()) if m else ""
-    clean = _drop_trailing_partial_marker(_MARKER_RE.sub("", _ACTION_BLOCK_RE.sub("", text or "")))
+    clean = _drop_trailing_partial_marker(_MARKER_RE.sub("", _ACTION_BLOCK_RE.sub("", text)))
     return clean.strip(), ask
 
 
@@ -128,7 +133,7 @@ class StreamTagFilter:
             elif self.suppress:
                 self.tool += part
             else:
-                out = self._emit(out, part)
+                out = self._emit(out, part.replace("[", "").replace("]", "") if self.in_ask else part)
         return out
 
     def flush(self) -> str:

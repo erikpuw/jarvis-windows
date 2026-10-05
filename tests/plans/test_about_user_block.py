@@ -25,6 +25,7 @@ def test_about_user_block_reads_preferences(monkeypatch, tmp_path):
 
 def test_about_user_block_dedupes_style_md(monkeypatch, tmp_path):
     """Bullet Preferences đã có trong STYLE.md (đánh dấu [MỚI] ... Từ `key`) thì bị lọc khỏi <about_user>."""
+    monkeypatch.setenv("BONSAI_MODEL", "true")
     monkeypatch.setattr(chat, "PROJECT_ROOT", tmp_path)
     pref_folder = tmp_path / "data" / "wiki" / "System"
     pref_folder.mkdir(parents=True)
@@ -39,3 +40,35 @@ def test_about_user_block_dedupes_style_md(monkeypatch, tmp_path):
     result = chat.about_user_block()
     assert "b" in result
     assert "[`a`]" not in result
+
+
+def test_about_user_block_does_not_dedupe_non_bonsai_style(monkeypatch, tmp_path):
+    monkeypatch.setenv("BONSAI_MODEL", "false")
+    monkeypatch.setenv("CHANG_MODEL", "false")
+    monkeypatch.setattr(chat, "PROJECT_ROOT", tmp_path)
+    pref_folder = tmp_path / "data" / "wiki" / "System"
+    pref_folder.mkdir(parents=True)
+    (pref_folder / "Preferences.md").write_text("- [`a`] Thích đồ cay\n", encoding="utf-8")
+    style_folder = tmp_path / "skills" / "self_evolution"
+    style_folder.mkdir(parents=True)
+    (style_folder / "STYLE.md").write_text(
+        "- **[MỚI]** Thích đồ cay (Từ `a` trong Preferences.md)\n", encoding="utf-8"
+    )
+
+    assert "[`a`]" in chat.about_user_block()
+
+
+def test_about_user_block_dedupes_style_for_gemma(monkeypatch, tmp_path):
+    monkeypatch.setenv("BONSAI_MODEL", "false")
+    monkeypatch.setenv("CHANG_MODEL", "true")
+    monkeypatch.setattr(chat, "PROJECT_ROOT", tmp_path)
+    pref_folder = tmp_path / "data" / "wiki" / "System"
+    pref_folder.mkdir(parents=True)
+    (pref_folder / "Preferences.md").write_text("- [`a`] Thích đồ cay\n", encoding="utf-8")
+    style_folder = tmp_path / "skills" / "self_evolution"
+    style_folder.mkdir(parents=True)
+    (style_folder / "STYLE.md").write_text(
+        "- **[MỚI]** Thích đồ cay (Từ `a` trong Preferences.md)\n", encoding="utf-8"
+    )
+
+    assert "[`a`]" not in chat.about_user_block()

@@ -7,10 +7,11 @@ import json
 import re
 from pathlib import Path
 from typing import Any, Literal
-from fastapi import APIRouter, UploadFile, File, Form, Request
+from fastapi import APIRouter, Depends, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse, FileResponse
 from engine.security.policy import UploadTooLarge, read_limited, resolve_file_under
 from pydantic import BaseModel
+from engine.UIUX.memory_lock import lock_router, memory_gate
 
 
 def mount_frontend_dist(app, dist: Path) -> None:
@@ -29,7 +30,9 @@ def mount_frontend_dist(app, dist: Path) -> None:
 
 log = logging.getLogger("jarvis.ui_engine")
 
-router = APIRouter()
+# Memory Control, lịch sử chat, nhật ký (xem memory_lock.PROTECTED_PREFIXES) đòi token mở khóa bằng MEMORY_PASSWORD
+router = APIRouter(dependencies=[Depends(memory_gate)])
+router.include_router(lock_router)
 _pending_tasks: set[asyncio.Task] = set()
 
 # ---------------------------------------------------------------------------
@@ -439,7 +442,6 @@ def _scan_agents() -> list[dict]:
     try:
         from engine.prompts import catalog
         agents_catalog = catalog.agents()
-        agents_dir = Path(__file__).parent.parent / "agents"
         
         # Read guidance and descriptions from prompt/agents.md
         agents_md_path = Path(__file__).parent.parent.parent / "prompt" / "agents.md"
@@ -466,7 +468,18 @@ def _scan_agents() -> list[dict]:
             "office": "chỉnh sửa tệp báo cáo Word",
             "project": "kiểm tra sức khỏe dự án",
             "rag": "tóm tắt tài liệu đính kèm",
-            "search": "thời tiết Hà Nội hôm nay thế nào",
+            "weather": "thời tiết Hà Nội hôm nay thế nào",
+            "news": "tin tức nổi bật hôm nay",
+            "market": "giá vàng SJC hôm nay",
+            "shop": "so sánh máy giặt LG và Electrolux",
+            "route": "chỉ đường từ nhà đến sân bay",
+            "places": "quán cà phê gần đây",
+            "cinema": "phim đang chiếu ở CGV",
+            "games": "game miễn phí tuần này trên Epic",
+            "lunar": "hôm nay âm lịch ngày bao nhiêu",
+            "zodiac": "tử vi cung sư tử hôm nay",
+            "vn_data": "phường Bến Nghé thuộc quận nào",
+            "web": "gợi ý món ăn hợp ngày mưa",
             "security": "quét cổng và kiểm tra an ninh mạng",
             "vietlott": "phân tích kết quả Mega 6/45",
             "vision": "chụp màn hình hiện tại",
@@ -486,7 +499,18 @@ def _scan_agents() -> list[dict]:
             "vision": "Agent Vision Screen",
             "webcam": "Agent Webcam Live",
             "security": "Agent Security Guard",
-            "search": "Agent Web Search",
+            "weather": "Agent Weather",
+            "news": "Agent News",
+            "market": "Agent Market",
+            "shop": "Agent Shop",
+            "route": "Agent Route",
+            "places": "Agent Places",
+            "cinema": "Agent Cinema",
+            "games": "Agent Games",
+            "lunar": "Agent Lunar Calendar",
+            "zodiac": "Agent Zodiac",
+            "vn_data": "Agent Vietnam Data",
+            "web": "Agent Web Research",
             "project": "Agent Project Health",
             "notes": "Agent Notes Manager",
             "media": "Agent Media Stream",
@@ -496,29 +520,23 @@ def _scan_agents() -> list[dict]:
             "dream": "Agent Dream Cycle",
         }
 
-        seen_keys = set()
-        if agents_dir.exists():
-            for f in agents_dir.glob("*.py"):
-                if f.name != "__init__.py":
-                    key = f.stem.replace("agent_", "").lower()
-                    seen_keys.add(key)
-                    cat_data = agents_catalog.get(key, {})
-                    title_name = name_overrides.get(key, f"Agent {key.replace('_', ' ').title()}")
-                    desc = agents_guidance.get(key) or cat_data.get("description") or f"Tác nhân chuyên biệt xử lý {key}"
-                    example = sample_queries.get(key, f"@{key}")
-                    tools = [t.get("name") for t in cat_data.get("tools", [])]
-
-                    agents_list.append({
-                        "id": key,
-                        "name": title_name,
-                        "file": f.name,
-                        "description": desc,
-                        "example": example,
-                        "tools": tools,
-                        "aliases": cat_data.get("aliases", []),
-                        # what the command bar actually accepts (fast_paths.resolve_mention)
-                        "mention": f"@{key}",
-                    })
+        from engine.orchestrator.registry import AGENT_REGISTRY
+        for key, cat_data in agents_catalog.items():
+            # nhiều agent tra cứu dùng chung agent_search.py nên liệt kê theo danh mục, không theo file
+            module_file = AGENT_REGISTRY.get(key, {}).get("module", "").rsplit(".", 1)[-1]
+            title_name = name_overrides.get(key, f"Agent {key.replace('_', ' ').title()}")
+            desc = agents_guidance.get(key) or cat_data.get("description") or f"Tác nhân chuyên biệt xử lý {key}"
+            agents_list.append({
+                "id": key,
+                "name": title_name,
+                "file": f"{module_file}.py",
+                "description": desc,
+                "example": sample_queries.get(key, f"@{key}"),
+                "tools": [t.get("name") for t in cat_data.get("tools", [])],
+                "aliases": cat_data.get("aliases", []),
+                # what the command bar actually accepts (fast_paths.resolve_mention)
+                "mention": f"@{key}",
+            })
         # Sort alphabetically by Agent Name
         agents_list.sort(key=lambda a: a["name"])
     except Exception as e:
@@ -797,14 +815,12 @@ async def api_settings_status(apps: bool = False):
 
     messages_count = 0
     conversation_turn_count = 0
-    semantic_count = 0
     task_count = 0
     try:
         from engine.core.memory import _get_db
         conn = _get_db()
         messages_count = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
         conversation_turn_count = messages_count // 2
-        semantic_count = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
         task_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE status != 'completed'").fetchone()[0]
         conn.close()
     except Exception: pass
@@ -970,7 +986,6 @@ async def api_settings_status(apps: bool = False):
         "session_active": server._active_voice_connections > 0,
         "memory_count": memory_count,
         "messages_count": messages_count,
-        "semantic_memory_count": semantic_count,
         "conversation_turn_count": conversation_turn_count,
         "task_count": task_count,
         "server_port": 8340,
@@ -1235,18 +1250,45 @@ async def api_dream_run():
     return {"status": "started"}
 
 
-@router.get("/api/logs")
-async def api_logs(lines: int = 300):
+LOG_TAIL_BYTES = 512 * 1024  # file log có thể rất lớn: chỉ đọc phần đuôi
+LOG_MAX_LINES = 2000
+
+
+def _log_dir() -> Path:
     import server
-    log_file = server.LOG_DIR / "jarvis.log"
-    if not log_file.exists():
-        return {"success": False, "error": "Log file not found"}
+    return server.LOG_DIR
+
+
+def _tail_log(filename: str, lines: int) -> dict:
+    """Last `lines` lines of a fixed log file under the log dir (the UI never sends a path, only which of the three)."""
+    path = _log_dir() / filename
+    if not path.exists():
+        return {"success": False, "error": f"Không tìm thấy {filename}"}
+    lines = max(1, min(lines, LOG_MAX_LINES))
     try:
-        content = log_file.read_text(encoding="utf-8", errors="replace")
-        log_lines = content.strip().split("\n")[-lines:]
-        return {"success": True, "logs": "\n".join(log_lines)}
+        with open(path, "rb") as f:
+            size = f.seek(0, os.SEEK_END)
+            f.seek(max(0, size - LOG_TAIL_BYTES))
+            raw = f.read()
+        text = raw.decode("utf-8-sig", errors="replace")  # security_alerts.log is written as utf-8-sig
+        return {"success": True, "logs": "\n".join(text.strip().splitlines()[-lines:])}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+@router.get("/api/logs")
+async def api_logs(lines: int = 300):
+    return _tail_log("jarvis.log", lines)
+
+
+@router.get("/api/logs/security")
+async def api_logs_security(lines: int = 300):
+    return _tail_log("security_alerts.log", lines)
+
+
+@router.get("/api/logs/tts")
+async def api_logs_tts(lines: int = 300):
+    return _tail_log("stream_tts.log", lines)
 
 
 @router.post("/api/upload")
@@ -1431,7 +1473,6 @@ class LearningUpdateBody(BaseModel):
 
 MemoryControlKind = Literal[
     "learning",
-    "memory",
     "workflow",
     "outcome",
     "conversation",
@@ -1699,51 +1740,7 @@ async def api_learnings_reembed(body: EmbedRecomputeBody):
         return {"success": False, "error": str(e)}
 
 
-class MemoryUpdateBody(BaseModel):
-    id: int
-    content: str
-    type_name: str = "fact"
-    importance: int = 5
 
-@router.get("/api/memories/list")
-async def api_memories_list(
-    q: str = "", limit: int = 50, offset: int = 0
-):
-    try:
-        from engine.core.memory import list_memory_records
-        page = await asyncio.to_thread(
-            list_memory_records, q, limit, offset
-        )
-        return {"success": True, "memories": page["items"], **page}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@router.get("/api/memories/search")
-async def api_memories_search(q: str = "", limit: int = 100):
-    try:
-        from engine.core.memory import list_memory_records
-        page = await asyncio.to_thread(list_memory_records, q, limit, 0)
-        return {"success": True, "memories": page["items"], **page}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@router.post("/api/memories/update")
-async def api_memories_update(body: MemoryUpdateBody):
-    try:
-        from engine.core.memory import update_memory
-        success = await asyncio.to_thread(update_memory, body.id, body.content, body.importance, body.type_name)
-        return {"success": success}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@router.delete("/api/memories/delete")
-async def api_memories_delete(id: int):
-    try:
-        from engine.core.memory import delete_memory
-        success = await asyncio.to_thread(delete_memory, id)
-        return {"success": success}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
 
 
 # -- Learning System Sync Endpoints (validated workflows + agent outcomes) ------
@@ -1816,18 +1813,26 @@ async def api_conversations(
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+def _session_row(row: dict) -> dict:
+    """Gắn nhãn nguồn; session_id rỗng (tin cũ trước khi có phiên) hiện là 'legacy'."""
+    sid = row["session_id"] or ""
+    row["source"] = "web" if sid.startswith("web-") else "telegram" if sid.startswith("tg-") else "legacy"
+    row["session_id"] = sid or "legacy"
+    return row
+
+
 @router.get("/api/conversations/sessions")
-async def api_conversations_sessions(limit: int = 20):
+async def api_conversations_sessions(limit: int = 50):
     try:
         from engine.core.memory import _get_db
         def _fetch():
             conn = _get_db()
             try:
                 rows = conn.execute(
-                    "SELECT session_id, COUNT(*) as msg_count, MIN(created_at) as started_at, MAX(created_at) as last_msg FROM messages WHERE session_id != '' GROUP BY session_id ORDER BY last_msg DESC LIMIT ?",
+                    "SELECT session_id, COUNT(*) as msg_count, MIN(created_at) as started_at, MAX(created_at) as last_msg FROM messages GROUP BY session_id ORDER BY last_msg DESC LIMIT ?",
                     (limit,)
                 ).fetchall()
-                return [dict(r) for r in rows]
+                return [_session_row(dict(r)) for r in rows]
             finally:
                 conn.close()
         sessions = await asyncio.to_thread(_fetch)
@@ -1849,7 +1854,7 @@ async def api_conversations_session(session_id: str):
                 return [dict(r) for r in rows]
             finally:
                 conn.close()
-        msgs = await asyncio.to_thread(_fetch, session_id)
+        msgs = await asyncio.to_thread(_fetch, "" if session_id == "legacy" else session_id)
         return {"success": True, "messages": msgs}
     except Exception as e:
         return {"success": False, "error": str(e)}

@@ -114,6 +114,7 @@ async def dispatch(d: RouteDecision, text: str, ctx: TurnContext) -> str:
     tasks = [{"agent": d.agent, "query": d.query}] if d.kind == "agent" else None
 
     offer_context = ""
+    effective_user_text = d.query
     if d.kind == "orchestrator" and d.source == "gate":
         try:
             from engine.core import memory
@@ -121,11 +122,18 @@ async def dispatch(d: RouteDecision, text: str, ctx: TurnContext) -> str:
         except Exception as exc:
             log.warning("[ROUTER] get_pending_offer failed: %s", exc)
             ask, tool = "", ""
+        if ask and tool:
+            from engine.router.ask_user import ask_to_command, reply_kind
+            if reply_kind(d.query) == "affirm" or len(d.query.split()) <= 2:
+                cmd = ask_to_command(ask)
+                if cmd:
+                    log.info("[ROUTER] Binding pending offer command '%s' for query '%s'", cmd, d.query)
+                    effective_user_text = cmd
         from engine.prompts.router import build_offer_context
         offer_context = build_offer_context(ask, tool)
 
     from engine.orchestrator import AttachmentIgnored
-    kwargs = dict(user_text=d.query, conversation_history=ctx.conversation_history, ws=ctx.ws,
+    kwargs = dict(user_text=effective_user_text, conversation_history=ctx.conversation_history, ws=ctx.ws,
                   flow_tracker=ctx.flow_tracker, flow_agents=ctx.flow_agents,
                   attachment_context=ctx.attachment_context)
     try:

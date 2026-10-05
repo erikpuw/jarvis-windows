@@ -11,25 +11,6 @@ from typing import Any
 logger = logging.getLogger("jarvis.ws_dispatcher")
 
 
-async def close_superseded_websocket(ws: Any) -> None:
-    """Stop a replaced UI session so it cannot keep greeting or receiving events."""
-    greeting_task = getattr(ws, "greeting_task", None)
-    if greeting_task is not None and not greeting_task.done():
-        greeting_task.cancel()
-        await asyncio.gather(greeting_task, return_exceptions=True)
-    try:
-        await ws.send_json({
-            "type": "superseded",
-            "reason": "Session opened on another device",
-        })
-    except Exception:
-        pass
-    try:
-        await ws.close(code=4001, reason="Session superseded by another device")
-    except Exception:
-        logger.debug("Superseded WebSocket was already closed", exc_info=True)
-
-
 class WebSocketEventDispatcher:
     """Serialize writes while allowing low-priority UI telemetry to coalesce."""
 

@@ -2,6 +2,25 @@
  {
   "type": "function",
   "function": {
+   "name": "cinema",
+   "description": "Phim đang chiếu và sắp chiếu ở rạp CGV (không phải xem video hay phim trực tuyến).",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "yêu cầu ngắn gọn cho agent"
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
    "name": "desktop",
    "description": "Mở, đóng, bật, tắt ứng dụng Windows (bao gồm cả Word/Excel/PowerPoint/Outlook-email khi chỉ là mở/đóng ứng dụng, không phải đọc nội dung).",
    "parameters": {
@@ -42,6 +61,25 @@
   "function": {
    "name": "email",
    "description": "Chỉ khi kiểm tra 10 email gần nhất hoặc lịch hẹn 7 ngày tới trong Outlook.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "yêu cầu ngắn gọn cho agent"
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "games",
+   "description": "Game miễn phí trên Epic Games Store.",
    "parameters": {
     "type": "object",
     "properties": {
@@ -116,8 +154,84 @@
  {
   "type": "function",
   "function": {
+   "name": "legal",
+   "description": "Tra cứu văn bản pháp luật Việt Nam.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "yêu cầu ngắn gọn cho agent"
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "lunar",
+   "description": "Lịch vạn niên hôm nay gồm ngày âm lịch kèm can chi, giờ hoàng đạo, mệnh ngày, tuổi xung khắc, hướng xuất hành.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "yêu cầu ngắn gọn cho agent"
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "market",
+   "description": "Chỉ giá vàng, tỷ giá ngoại tệ, giá xăng dầu, giá gas, giá điện nước hôm nay (giá tổng hợp thị trường). Giá hàng hóa, thực phẩm, sản phẩm là mua sắm.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "yêu cầu ngắn gọn cho agent"
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
    "name": "media",
    "description": "Nghe nhạc, xem phim, xem livestream, xem video Youtube.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "yêu cầu ngắn gọn cho agent"
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "news",
+   "description": "Tin tức, bản tin thời sự trên báo trong nước, kể cả tin về giá cả, kinh tế.",
    "parameters": {
     "type": "object",
     "properties": {
@@ -173,6 +287,25 @@
  {
   "type": "function",
   "function": {
+   "name": "places",
+   "description": "Tìm địa điểm, quán xung quanh.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "yêu cầu ngắn gọn cho agent"
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
    "name": "project",
    "description": "Kiểm tra project, quét lỗi cú pháp, báo cáo sức khỏe, lịch sử vá lỗi.",
    "parameters": {
@@ -211,8 +344,8 @@
  {
   "type": "function",
   "function": {
-   "name": "search",
-   "description": "Tra cứu thời gian thực dạng văn bản: thời tiết, tin tức, giá vàng/xăng/usd, giá tổng hợp/giá thị trường hôm nay (vàng, xăng dầu, tỷ giá, gas, điện, nước), bản đồ, lịch vạn niên, cung hoàng đạo, lịch chiếu CGV, game miễn phí. KHÔNG dùng để xem video/livestream.",
+   "name": "route",
+   "description": "Chỉ đường đi từ nơi này đến nơi khác.",
    "parameters": {
     "type": "object",
     "properties": {
@@ -249,8 +382,103 @@
  {
   "type": "function",
   "function": {
+   "name": "shop",
+   "description": "Mua sắm: tra giá, đánh giá, so sánh, chọn sản phẩm và hàng hóa (điện tử, đồ gia dụng, thực phẩm).",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "yêu cầu ngắn gọn cho agent"
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "system",
+   "description": "Xem hoạt động hệ thống máy tính: CPU, RAM, ổ đĩa, tiến trình đang chạy, tình trạng máy.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "yêu cầu ngắn gọn cho agent"
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "vietlott",
+   "description": "Phân tích kết quả Mega 6/45, Power 6/55.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "yêu cầu ngắn gọn cho agent"
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
    "name": "vision",
    "description": "Chỉ khi người dùng yêu cầu chụp/xem màn hình ngay bây giờ.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "yêu cầu ngắn gọn cho agent"
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "vn_data",
+   "description": "Đơn vị hành chính Việt Nam: tỉnh, huyện, xã, mã hành chính.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "yêu cầu ngắn gọn cho agent"
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "weather",
+   "description": "Thời tiết, nhiệt độ, dự báo của một nơi.",
    "parameters": {
     "type": "object",
     "properties": {
@@ -289,6 +517,25 @@
   "function": {
    "name": "win_control",
    "description": "Chỉ khi người dùng gọi rõ điều khiển UI/Explorer Windows.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "yêu cầu ngắn gọn cho agent"
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "zodiac",
+   "description": "Tử vi hằng ngày của 12 cung hoàng đạo (cung theo ngày sinh dương lịch), không phải tử vi theo năm sinh/tuổi âm lịch.",
    "parameters": {
     "type": "object",
     "properties": {

@@ -1,6 +1,6 @@
 ---
 name: office
-title: Agent Office Suite
+title: Agent Office
 aliases:
 - agent_office
 - officecli

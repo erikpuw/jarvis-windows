@@ -35,30 +35,6 @@ def strip_emoji_for_tts(text: str) -> str:
     return _EMOJI_RE.sub("", text)
 
 # ---------------------------------------------------------------------------
-# Speech-to-Text Corrections
-# ---------------------------------------------------------------------------
-
-STT_CORRECTIONS = {
-    r"\bcloud code\b": " Code",
-    r"\bclock code\b": " Code",
-    r"\bquad code\b": " Code",
-    r"\bclawed code\b": " Code",
-    r"\bclod code\b": " Code",
-    r"\bcloud\b": "",
-    r"\bquad\b": "",
-    r"\btravis\b": "JARVIS",
-    r"\bjarves\b": "JARVIS",
-}
-
-def apply_speech_corrections(text: str) -> str:
-    """Fix common speech-to-text errors before processing."""
-    import re as _stt_re
-    result = text
-    for pattern, replacement in STT_CORRECTIONS.items():
-        result = _stt_re.sub(pattern, replacement, result, flags=_stt_re.IGNORECASE)
-    return result
-
-# ---------------------------------------------------------------------------
 # Vietnamese Text Normalization for TTS
 # ---------------------------------------------------------------------------
 
@@ -197,10 +173,8 @@ _UNIT_WORDS = {
     "db": "đề xi ben", "kcal": "ki lô ca lo", "min": "phút",
 }
 _UNIT_LETTER = {"m": "mét", "g": "gam", "l": "lít", "L": "lít", "s": "giây", "h": "giờ", "V": "vôn", "W": "oát"}
-_UNIT_RE = re.compile(
-    r"(?<=\d)\s?(" + "|".join(sorted((re.escape(k) for k in _UNIT_WORDS), key=len, reverse=True)) + r")(?!\w)",
-    re.IGNORECASE,
-)
+_UNIT_ALT = "|".join(sorted((re.escape(k) for k in _UNIT_WORDS), key=len, reverse=True))
+_UNIT_RE = re.compile(r"(?<=\d)\s?(" + _UNIT_ALT + r")(?!\w)", re.IGNORECASE)
 _UNIT_LETTER_RE = re.compile(r"(?<=\d)\s?([mglLshVW])(?!\w)")
 
 # Từ đứng trước "/" khiến "/" nghĩa là "trên" (đồng/lượng, kWh/ngày, người/ngày...).
@@ -335,6 +309,9 @@ def _normalize_reading(text: str) -> str:
 
     def _day_month(m):  # 21/09: ngày nếu có "ngày" đứng trước hoặc ngày > 12, ngược lại là phân số
         day, month = int(m.group(1)), int(m.group(2))
+        has_ngay = m.string[max(0, m.start() - 5):m.start()].lower().endswith("ngày ")
+        if (day, month) == (24, 7) and not has_ngay:
+            return "24 trên 7"  # 24/7: cả ngày cả tuần, không phải ngày 24 tháng 7
         if day > 12 or m.string[max(0, m.start() - 5):m.start()].lower().endswith("ngày "):
             return f"{_date_prefix(m)}{day} tháng {month}"
         return f"{day} phần {month}"
@@ -398,6 +375,11 @@ def _normalize_reading(text: str) -> str:
     t = re.sub(r"#(?=\d)", "số ", t)
 
     # "/" : trên (đồng/lượng, kWh/ngày) hoặc khoảng trắng (đường dẫn, và/hoặc)
+    t = re.sub(  # đồng/m3, đồng/kWh, đồng/kg: đơn vị sau "/" không có chữ số đứng trước nên phải đổi ở đây
+        r"\b(" + _PER_LEFT + r")\s*/\s*(" + _UNIT_ALT + r")(?!\w)",
+        lambda m: f"{m.group(1)} trên {_UNIT_WORDS[m.group(2).lower()]} ",
+        t, flags=re.IGNORECASE,
+    )
     t = re.sub(r"\b(" + _PER_LEFT + r")\s*/\s*(?=\w)", r"\1 trên ", t)
     t = re.sub(r"\s*/\s*", " ", t)
 

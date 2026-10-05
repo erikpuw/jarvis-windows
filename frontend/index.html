@@ -5,6 +5,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport"
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, viewport-fit=cover" />
+  <meta name="theme-color" content="#050508" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>JARVIS</title>
   <script type="module" src="/src/main.ts"></script>
 </head>
@@ -37,7 +40,7 @@
     <button id="btn-mute" title="Mute/Unmute"></button>
     <button id="btn-tts-toggle" title="Bật/Tắt âm thanh phản hồi (TTS)"></button>
     <button id="btn-cmd-bar" title="Toggle Command Bar (Ctrl+K)"></button>
-    <button id="btn-history" title="Xem lịch sử chat"></button>
+    <button id="btn-orb-toggle" title="Tắt orb (ngừng vẽ, trả GPU)" aria-pressed="true"></button>
     <button id="btn-map" title="Bản đồ & Vị trí"></button>
     <button id="btn-menu" title="Menu"></button>
   </div>
@@ -46,7 +49,6 @@
   <div id="menu-dropdown" style="display:none">
     <button id="btn-settings">Settings</button>
     <button id="btn-restart">Restart Server</button>
-    <button id="btn-logs">Jarvis Logs</button>
   </div>
 
   <!-- Command input area — centered bottom -->
@@ -73,18 +75,6 @@
   </div>
   <div id="jarvis-label">JARVIS</div>
   <div id="error-text"></div>
-  <!-- History Panel -->
-  <div id="history-panel" class="hidden">
-    <div class="history-header">
-      <h3>CHAT HISTORY</h3>
-      <button id="btn-close-history">&times;</button>
-    </div>
-    <div id="history-list">
-      <!-- Messages loaded here -->
-      <div class="history-loading">Loading history...</div>
-    </div>
-  </div>
-
   <div id="media-player" class="media-player hidden">
     <div id="media-player-inner"></div>
   </div>

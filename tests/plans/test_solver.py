@@ -36,6 +36,7 @@ def test_solver_has_no_tools_and_gets_about_user_and_framed_data(monkeypatch):
     assert "tools" not in kw and "response_format" not in kw and kw["stream"] is False
     system, user = kw["messages"][0]["content"], kw["messages"][1]["content"]
     assert "<about_user>\nThích đồ cay\n</about_user>" in system and "<du_lieu>" in system
+    assert "sở thích" in system.lower()
     assert '<du_lieu buoc="1" nguon="web" trang_thai="THÀNH CÔNG">' in user and user.startswith("Mục tiêu: gợi ý món ăn")
 
 

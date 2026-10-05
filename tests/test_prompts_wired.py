@@ -1,5 +1,4 @@
-"""Prompt nằm ở prompt/*.md và code chạy thật đọc từ đó (spec 2026-09-25 mục 2).
-Gate/classifier/offer_context phải giống từng ký tự bản cũ: tests/golden/* chụp từ code trước khi chuyển."""
+"""Prompt nằm ở prompt/*.md và code chạy thật đọc từ đó; golden files chốt nội dung được gửi."""
 import asyncio
 import json
 import sys
@@ -43,7 +42,16 @@ def test_gate_builder_is_byte_identical():
     assert router_prompts.build_gate_system_prompt(True) == _golden("gate_system_attachment.txt")
 
 
-def test_gate_runtime_prompt_unchanged(monkeypatch):
+def test_gate_prompt_loads_all_route_skills_with_or_without_attachment():
+    for has_attachment in (False, True):
+        prompt = router_prompts.build_gate_system_prompt(has_attachment)
+        for name in ("general", "general_knowledge", "orchestrator", "attachment_clarify"):
+            skill_path = ROOT / "skills" / "router" / name / "SKILL.md"
+            skill = skill_path.read_text(encoding="utf-8").strip()
+            assert skill and skill in prompt, f"route skill not loaded: {name}"
+
+
+def test_gate_runtime_prompt_matches_golden(monkeypatch):
     assert _gate_system(monkeypatch) == _golden("gate_system.txt")
     assert _gate_system(monkeypatch, ATT) == _golden("gate_system_attachment.txt")
 

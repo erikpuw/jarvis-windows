@@ -9,6 +9,7 @@ Same interface as browser.py — drop-in replacement.
 """
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -619,6 +620,27 @@ class JarvisScraplingBrowser:
         except Exception as e:
             log.warning("visit_product_listing failed for '%s': %s — falling back to visit()", url, e)
             return await self.visit(url)
+
+    async def fetch_listing_html(self, url: str) -> str:
+        """HTML đã render (StealthyFetcher) của trang liệt kê sản phẩm, để engine/tools/shop_sources đọc đúng
+        chỗ chứa dữ liệu. Text thô của trang không dùng được: menu/popup chiếm hết phần đầu, phụ kiện lẫn vào."""
+        page = await asyncio.wait_for(
+            asyncio.to_thread(
+                StealthyFetcher.fetch,
+                url,
+                headless=True,
+                solve_cloudflare=True,
+                timeout=TIMEOUT_MS,
+                **stealth_fetch_kwargs(),
+            ),
+            timeout=TIMEOUT_MS / 1000,
+        )
+        return str(page.html_content) if page else ""
+
+    async def post_json(self, url: str, body: dict, headers: dict | None = None) -> dict:
+        """POST JSON tới API công khai của chính trang (không cần trình duyệt), trả về JSON đã parse."""
+        page = await AsyncFetcher.post(url, json=body, stealthy_headers=True, headers=headers or {}, timeout=TIMEOUT_MS)
+        return json.loads(page.body)
 
     # ------------------------------------------------------------------
     # Visit & Evaluate (custom JS — adapted for Scrapling parser)

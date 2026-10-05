@@ -13,7 +13,7 @@ import {
   Paperclip, Send, LoaderCircle, Check, CircleDashed,
   Save, PlugZap, Upload, Trash2, RefreshCw, type IconNode,
   AppWindow, Monitor, Moon, Mail, Bird, Image, Scale, Music, NotebookPen, FolderOpen,
-  Wrench, FileText, Search, Shield, Ticket, Eye, Camera, Bot, Slash, AtSign,
+  Wrench, FileText, Search, Shield, Ticket, Eye, Camera, Bot, Slash, AtSign, Orbit, CircleOff,
 } from "lucide";
 
 defineMorphIcon();
@@ -36,7 +36,7 @@ const SPECS: Spec[] = [
   { btn: "btn-mute", on: cls("muted"), off: Mic, onIcon: MicOff, size: 18 },
   { btn: "btn-tts-toggle", on: cls("muted"), off: Volume2, onIcon: VolumeX, size: 18 },
   { btn: "btn-cmd-bar", on: cls("active"), off: SquareTerminal, onIcon: ChevronDown, size: 18 },
-  { btn: "btn-history", on: cls("active"), off: History, onIcon: X, size: 18 },
+  { btn: "btn-orb-toggle", on: cls("orb-off"), off: Orbit, onIcon: CircleOff, size: 18 },
   { btn: "btn-map", on: cls("active"), off: MapPin, onIcon: X, size: 18 },
   { btn: "btn-menu", watch: "menu-dropdown", on: shown, off: EllipsisVertical, onIcon: X, size: 18 },
   { btn: "btn-upload", watch: "file-pinned-container", on: shown, off: Plus, onIcon: Paperclip, size: 14, stroke: 2.5 },

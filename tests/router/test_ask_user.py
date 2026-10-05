@@ -168,3 +168,17 @@ def test_extract_M5_strips_stray_action_run_close():
     out = f.filter_chunk("A </action_run> B") + f.flush()
     assert "</action_run>" not in out, out
     assert out == "A  B"
+
+
+def test_extract_drops_the_template_brackets_the_model_copies():
+    """Log 2026-10-04: model chép nguyên "[việc]" của khuôn → câu lệnh gửi classifier có dấu "[" ("[mở bài hát ...")."""
+    clean, ask = extract("Ngài có muốn tôi <ask_user>[mở bài hát Making My Way]</ask_user> không?<action_run>search_media</action_run>")
+    assert ask == "mở bài hát Making My Way"
+    assert clean == "Ngài có muốn tôi mở bài hát Making My Way không?"
+    assert extract("Ngài có muốn tôi <ask_user>mở Notepad</ask_user> không?")[1] == "mở Notepad"
+
+
+def test_stream_filter_drops_template_brackets_inside_the_ask():
+    f = StreamTagFilter()
+    out = f.filter_chunk("Ngài có muốn tôi <ask_user>[mở bài") + f.filter_chunk(" hát]</ask_user> không?") + f.flush()
+    assert "[" not in out and "]" not in out and "mở bài hát" in out

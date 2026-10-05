@@ -4,8 +4,12 @@ File này chỉ chứa hằng số, không import module nặng ở đây."""
 
 # Đích planner được chọn → (agent trong AGENT_REGISTRY, tools bắt buộc hoặc None). Chỉ đích ĐỌC.
 PLAN_TARGETS: dict[str, tuple[str, list[str] | None]] = {
-    "search": ("search", None),
-    "web": ("search", ["web_research"]),
+    "weather": ("weather", None),
+    "news": ("news", None),
+    "market": ("market", None),
+    "shop": ("shop", None),
+    "places": ("places", None),
+    "web": ("web", None),
     "history": ("history", None),
 }
 

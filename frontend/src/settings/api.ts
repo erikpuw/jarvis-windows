@@ -1,11 +1,22 @@
 // /api/settings/status probes GPUs/NPUs via PowerShell (~2–4s), so 8s timed out under load.
 export const REQUEST_TIMEOUT_MS = 20000;
 
+// Memory Control, chat history and the system log are locked on the backend (engine/UIUX/memory_lock.py): its data endpoints need the token the lock screen got.
+const MEMORY_API = /^\/api\/(learnings|memories|workflows|outcomes|conversations|notes|evolution|memory-control|history|logs)(\/|\?|$)/;
+export const MEMORY_LOCKED_EVENT = "jarvis:memory-locked";
+let memoryToken = "";
+export function setMemoryToken(token: string): void { memoryToken = token; }
+
 export async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  const memory = MEMORY_API.test(url);
   try {
-    return await fetch(url, { ...init, signal: ctrl.signal });
+    const headers = new Headers(init?.headers);
+    if (memory && memoryToken) headers.set("X-Memory-Token", memoryToken);
+    const res = await fetch(url, { ...init, headers, signal: ctrl.signal });
+    if (memory && res.status === 401) window.dispatchEvent(new Event(MEMORY_LOCKED_EVENT));
+    return res;
   } catch (err) {
     if (ctrl.signal.aborted) throw new Error(`Máy chủ không phản hồi sau ${REQUEST_TIMEOUT_MS / 1000}s`);
     throw err;

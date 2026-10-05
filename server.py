@@ -26,9 +26,10 @@ import json
 import logging
 import logging.handlers
 import time
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Optional, Any
+from typing import Optional
 
 from openai import AsyncOpenAI, OpenAI
 import httpx
@@ -41,6 +42,8 @@ from engine.core.memory import (
     SemanticMemoryEngine,
 )
 from engine.main.greeting_engine import send_greeting
+from engine.core.session_context import set_session
+from engine.server.ws_sessions import ActiveSessions
 
 LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -67,100 +70,6 @@ _telegram_bot_task: Optional[asyncio.Task] = None
 _mcp_connect_task: Optional[asyncio.Task] = None
 _reflection_lock = asyncio.Lock()
 _uvicorn_server = None
-_active_input_channel: str | None = None
-_active_input_owner: object | None = None
-_input_channel_lock = asyncio.Lock()
-
-
-# Created lazily: an asyncio.Event built at import time binds to whichever loop
-# first awaits it, which makes the module unusable from any other loop.
-_input_channel_free: asyncio.Event | None = None
-_previous_input_channel: str | None = None
-_channel_release_hooks: dict[str, Any] = {}
-
-
-def _get_input_channel_free() -> asyncio.Event:
-    global _input_channel_free
-    if _input_channel_free is None:
-        _input_channel_free = asyncio.Event()
-        _input_channel_free.set()
-    return _input_channel_free
-
-
-def register_channel_release_hook(channel: str, hook) -> None:
-    """Register how a channel drops its per-session buffers when it hands over.
-
-    Only one channel owns the conversation at a time. The one stepping aside
-    should not keep holding state the incoming one is about to rebuild, so it
-    frees whatever it can reconstruct (history caches, not in-flight user
-    intent).
-    """
-    _channel_release_hooks[channel] = hook
-
-
-def _run_channel_release_hook(previous: str, incoming: str) -> None:
-    hook = _channel_release_hooks.get(previous)
-    if hook is None:
-        return
-    try:
-        hook()
-        log.info(
-            "Input channel handover: %s suspended for %s; its cached session buffers were freed",
-            previous, incoming,
-        )
-    except Exception:
-        log.warning("Channel release hook for %s failed", previous, exc_info=True)
-
-
-async def try_acquire_input_channel(channel: str, wait_seconds: float | None = None) -> object | None:
-    global _active_input_channel, _active_input_owner, _previous_input_channel
-
-    # Previously this failed instantly, so speaking on one channel while the
-    # other was mid-turn just produced "try again later". Wait for the active
-    # turn to finish first — it is normally seconds — and only give up after
-    # that.
-    if wait_seconds is None:
-        wait_seconds = float(os.getenv("INPUT_CHANNEL_WAIT_SECONDS", "25"))
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + max(0.0, wait_seconds)
-
-    owner = object()
-    while True:
-        async with _input_channel_lock:
-            if _active_input_channel is None:
-                if _previous_input_channel and _previous_input_channel != channel:
-                    _run_channel_release_hook(_previous_input_channel, channel)
-                _active_input_channel = channel
-                _active_input_owner = owner
-                _previous_input_channel = channel
-                _get_input_channel_free().clear()
-                log.info("Input channel acquired: channel=%s", channel)
-                return owner
-            active = _active_input_channel
-
-        remaining = deadline - loop.time()
-        if remaining <= 0:
-            log.info("Input channel rejected: requested=%s active=%s", channel, active)
-            return None
-        try:
-            await asyncio.wait_for(_get_input_channel_free().wait(), timeout=remaining)
-        except asyncio.TimeoutError:
-            log.info(
-                "Input channel rejected after waiting %.0fs: requested=%s active=%s",
-                wait_seconds, channel, active,
-            )
-            return None
-
-
-async def release_input_channel(channel: str, owner: object) -> None:
-    global _active_input_channel, _active_input_owner
-
-    async with _input_channel_lock:
-        if _active_input_channel == channel and _active_input_owner is owner:
-            _active_input_channel = None
-            _active_input_owner = None
-            _get_input_channel_free().set()
-            log.info("Input channel released: channel=%s", channel)
 
 
 def request_restart() -> bool:
@@ -308,6 +217,24 @@ def _sync_tts_gate(ws) -> None:
     ws.cancel_requested = blocked
 
 
+def _apply_tts_gate_now(ws, msg: dict) -> None:
+    """Nút TTS và trình phát media có tác dụng ngay, kể cả giữa một lượt trả lời.
+
+    Gọi từ ws_reader (task chạy song song, như "cancel"), vì vòng lặp chính đang await generate_response_stream nên không đọc message_queue
+    cho tới khi lượt cũ xong: toggle_tts xếp hàng ở đó thì luồng TTS vẫn chạy tiếp hết lượt. Chỉ đặt ws.tts_disabled (voice_streamer và
+    tts_manager poll cờ này) và KHÔNG đặt cancel_requested: tắt tiếng không được giết luôn phần chữ đang stream. Vòng lặp chính vẫn xử lý
+    tin như cũ khi rảnh (huỷ greeting, _sync_tts_gate).
+    """
+    kind = msg.get("type")
+    if kind == "toggle_tts":
+        ws.user_tts_disabled = not msg.get("enabled", True)
+    elif kind == "media_state":
+        ws.media_active = bool(msg.get("active", False))
+    else:
+        return
+    ws.tts_disabled = getattr(ws, "user_tts_disabled", False) or getattr(ws, "media_active", False)
+
+
 async def _watch_vieneu_warmup(started: float, timeout: float = 240.0) -> None:
     """Theo dõi /tts/health của stream_tts và ghi vào jarvis.log khi VieNeu warm-up xong."""
     announced = False
@@ -378,6 +305,7 @@ async def _free_stale_stream_tts_port(port: int) -> None:
 _latest_webcam_image: Optional[str] = None
 _webcam_image_event: Optional[asyncio.Event] = None
 _active_ws_session: Optional[WebSocket] = None
+_ws_sessions = ActiveSessions()
 
 # Usage tracking — logs every call with timestamp, persists to disk
 _USAGE_FILE = Path(__file__).parent / "data" / "usage_log.jsonl"
@@ -656,7 +584,6 @@ async def lifespan(application: FastAPI):
             _telegram_bot = TelegramBot(
                 telegram_token, allowed_telegram_chat_ids, sys.modules[__name__]
             )
-            register_channel_release_hook("telegram", _telegram_bot.release_session_buffers)
             try:
                 if await _telegram_bot.send_pending_restart_notice():
                     log.info("Telegram restart completion notice sent")
@@ -904,16 +831,15 @@ async def voice_handler(ws: WebSocket):
         return
 
     await ws.accept()
-    from engine.server.ws_dispatcher import WebSocketEventDispatcher, close_superseded_websocket
+    from engine.server.ws_dispatcher import WebSocketEventDispatcher
     dispatcher = WebSocketEventDispatcher(ws)
     await dispatcher.start()
     ws._event_dispatcher = dispatcher
-    previous_ws = _active_ws_session
+    # Mỗi kết nối là một phiên chat riêng: tab khác không bị đóng, hội thoại không trộn.
+    ws.session_id = f"web-{uuid.uuid4().hex[:8]}"
+    set_session(ws.session_id)
+    _ws_sessions.add(ws)
     _active_ws_session = ws
-    if previous_ws is not None and previous_ws is not ws:
-        prev_dev = getattr(previous_ws, "device_type", "unknown")
-        log.info(f"Closing superseded Voice WebSocket session (superseded by {device_type}, closed {prev_dev})")
-        await close_superseded_websocket(previous_ws)
 
     _active_voice_connections += 1
     history: list[dict] = []
@@ -929,7 +855,7 @@ async def voice_handler(ws: WebSocket):
     # Self-awareness — track last spoken response to avoid repetition
     last_jarvis_response = ""
 
-    log.info(f"Voice WebSocket connected ({device_type}) from {client_host}")
+    log.info(f"Voice WebSocket connected ({device_type}) from {client_host} session={ws.session_id}")
 
     try:
         ws.cancel_requested = False
@@ -960,6 +886,8 @@ async def voice_handler(ws: WebSocket):
                         # sẵn poll cờ này thường xuyên nên chỉ cần đặt sớm.
                         ws.cancel_requested = True
                         log.info("Cancel requested by client (barge-in)")
+                    # Nút TTS / media: đặt cờ ngay (luồng TTS đang chạy dừng ở lượt poll tiếp theo), không chờ vòng lặp chính rảnh.
+                    _apply_tts_gate_now(ws, msg)
                     await message_queue.put(msg)
             except WebSocketDisconnect:
                 log.info("Voice WebSocket disconnected")
@@ -1226,23 +1154,6 @@ async def voice_handler(ws: WebSocket):
                     from engine.core.learning import get_learning_engine
                     learning_engine = get_learning_engine()
 
-                    channel_owner = await try_acquire_input_channel("webui")
-                    if channel_owner is None:
-                        busy_response = (
-                            "Jarvis vẫn đang bận với một yêu cầu từ Telegram. "
-                            "Vui lòng thử lại sau."
-                        )
-                        await ft.fail_all_active()
-                        await fa.fail_all_active()
-                        await safe_ws_send_json(
-                            ws, {"type": "text_chunk", "text": busy_response}
-                        )
-                        await safe_ws_send_json(ws, {"type": "stream_end"})
-                        await safe_ws_send_json(
-                            ws, {"type": "status", "state": "idle"}
-                        )
-                        continue
-
                     try:
                         learning_engine.begin_interactive_chat()
                         # Tags this task (and everything it spawns) as a live
@@ -1262,7 +1173,6 @@ async def voice_handler(ws: WebSocket):
                         finally:
                             learning_engine.end_interactive_chat()
                     finally:
-                        await release_input_channel("webui", channel_owner)
                         if attachment_id:
                             from engine.core.attachment_store import discard_attachment
                             discard_attachment(str(attachment_id))
@@ -1323,7 +1233,7 @@ async def voice_handler(ws: WebSocket):
                         outcome_id=turn_outcome_id,
                         outcome_status=turn_outcome_status,
                     )
-                    log.info("Conversation learning queued for idle processing")
+                    log.info("Conversation learning queued for idle processing session=%s", ws.session_id)
                 except Exception as le_task_err:
                     log.warning(f"Failed to queue conversation learning: {le_task_err}")
 
@@ -1371,8 +1281,8 @@ async def voice_handler(ws: WebSocket):
         ws.greeting_task = None
         await dispatcher.close()
         ws._event_dispatcher = None
-        if _active_ws_session is ws:
-            _active_ws_session = None
+        _ws_sessions.remove(ws)
+        _active_ws_session = _ws_sessions.latest
         _active_voice_connections = max(0, _active_voice_connections - 1)
 
 

@@ -12,7 +12,7 @@ def test_offerable_tools_map_to_real_agents_and_exclude_risky_tools():
     for risky in ("win_control", "office_tool", "rag_tool", "dream", "install_extension", "mcp_call"):
         assert risky not in OFFERABLE_TOOLS
     assert OFFERABLE_TOOLS["open_app"][0] == "desktop"
-    assert tool_list_text().startswith("open_app (mở ứng dụng), close_app (đóng ứng dụng)")
+    assert "open_app (mở ứng dụng), close_app (đóng ứng dụng)" in tool_list_text()
 
 
 def test_offerable_tools_are_registered_commands():

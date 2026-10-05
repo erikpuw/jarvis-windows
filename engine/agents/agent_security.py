@@ -39,7 +39,7 @@ async def run_security_agent(
 
     log.info(f"Agent Security activated for query: '{user_text}'")
 
-    tool_names = ["check_security"]
+    tool_names = list(kwargs.get("tools") or ["check_security"])
     sec_tools = get_agent_context_and_tools(tool_names)
     try:
         async with flow_tracker.step("Agent Security"):

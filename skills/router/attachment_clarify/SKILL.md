@@ -1,0 +1,1 @@
+Chỉ dùng attachment_clarify khi có tệp đính kèm và người dùng chưa nói rõ muốn làm gì với nó (ví dụ: “giúp tôi với file này”, “cái này là sao?”). Nếu nêu thao tác như đọc, tóm tắt, trích xuất, dịch, sửa hay tạo thì chọn orchestrator.

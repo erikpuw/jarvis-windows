@@ -179,7 +179,7 @@ async def _execute_tool_inner(name: str, arguments: dict, ws=None, safe_ws_send_
         elif name == "weather_search":
             location = arguments.get("location", "Hồ Chí Minh")
             from engine.tools.weather_engine import weather_search as _weather
-            return await _weather(location)
+            return await _weather(location, hourly=str(arguments.get("hourly", "")).lower() in ("1", "true", "yes", "có"))
 
         elif name == "map_route":
             from engine.tools.map_engine import map_route as _map_route
@@ -359,6 +359,10 @@ async def _execute_tool_inner(name: str, arguments: dict, ws=None, safe_ws_send_
             from engine.security.monitor import run_security_check
             return run_security_check()
 
+        elif name == "check_system":
+            from engine.security.system_check import run_system_check
+            return await asyncio.to_thread(run_system_check)
+
         elif name == "dream":
             from engine.core.dream import trigger_dream_cycle_now
             trigger_dream_cycle_now()
@@ -502,7 +506,7 @@ async def handle_user_intent_with_tools(user_text: str, add_tools: str, conversa
 
     # 2. Định nghĩa các nhóm công cụ tối ưu
     internal_llm_tools = {"read_screen", "read_webcam", "office_tool", "rag_tool"}
-    direct_tools = {"open_app", "close_app", "win_control", "search_news", "get_market_data", "search_products", "weather_search", "search_media","cap_screen", "map_route", "map_pois", "get_vannien_data", "get_zodiac_data", "get_cgv_movies", "get_epic_free_games", "take_note", "query_history", "read_note", "check_security", "check_project", "upscale_image", "check_mail", "check_calendar", "dream", "web_research"}
+    direct_tools = {"open_app", "close_app", "win_control", "search_news", "get_market_data", "search_products", "weather_search", "search_media","cap_screen", "map_route", "map_pois", "get_vannien_data", "get_zodiac_data", "get_cgv_movies", "get_epic_free_games", "take_note", "query_history", "read_note", "check_security", "check_system", "check_project", "upscale_image", "vietlott_analysis", "legal_lookup", "vietnam_data_lookup", "check_mail", "check_calendar", "dream", "web_research"}
 
     active_internal_llm_tools = []
     active_direct_tools = []
@@ -595,7 +599,7 @@ async def handle_user_intent_with_tools(user_text: str, add_tools: str, conversa
 
             for active_tool in active_direct_tools:
                 args = {"user_text": user_text}
-                if active_tool in ("search_news", "get_market_data", "search_products", "weather_search", "search_media", "get_vannien_data", "win_control", "get_zodiac_data", "get_cgv_movies", "get_epic_free_games", "web_research"):
+                if active_tool in ("search_news", "get_market_data", "search_products", "weather_search", "search_media", "get_vannien_data", "win_control", "get_zodiac_data", "get_cgv_movies", "get_epic_free_games", "vietlott_analysis", "legal_lookup", "vietnam_data_lookup", "web_research"):
                     args["query"] = clean_query(user_text)
                     if active_tool == "weather_search":
                         args["location"] = args["query"]

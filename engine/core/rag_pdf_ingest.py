@@ -277,7 +277,6 @@ class RAGPDFIngestor:
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": prompt},
                             {
                                 "type": "image_url",
                                 "image_url": {
@@ -286,14 +285,14 @@ class RAGPDFIngestor:
                                     )
                                 },
                             },
+                            {"type": "text", "text": prompt},
                         ],
                     }
                 ],
                 max_tokens=4096,
                 timeout=float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "180")),
-                # OCR: tắt thinking (tránh <think> lẫn vào Markdown), temp 0 và không phạt lặp token
-                # (presence_penalty làm hỏng số/ký tự lặp lại trong văn bản gốc).
-                **{**vision_request_kwargs(), "temperature": 0.0, "presence_penalty": 0.0},
+                # OCR: tắt thinking, temp 0, không phạt lặp token (vision_request_kwargs đã đặt sẵn).
+                **vision_request_kwargs(),
             )
             if not response or not getattr(response, "choices", None):
                 raise RuntimeError(

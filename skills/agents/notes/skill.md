@@ -1,6 +1,6 @@
 ---
 name: notes
-title: Agent Notes Manager
+title: Agent Notes
 aliases:
 - agent_notes
 description: Ghi lại, hiển thị danh sách, hoặc xoá note.

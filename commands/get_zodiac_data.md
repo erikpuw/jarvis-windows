@@ -1,6 +1,6 @@
 ---
 name: get_zodiac_data
-description: Tra cứu thông tin tử vi hàng ngày của 12 cung hoàng đạo thời gian thực (Bạch Dương, Kim Ngưu, Song Tử, Cự Giải, Sư Tử, Xử Nữ, Thiên Bình, Hổ Cáp, Nhân Mã, Ma Kết, Bảo Bình, Song Ngư).
+description: Tra cứu tử vi hàng ngày theo 12 cung hoàng đạo (cung theo ngày sinh dương lịch, không phải tử vi theo năm sinh/tuổi âm lịch) thời gian thực (Bạch Dương, Kim Ngưu, Song Tử, Cự Giải, Sư Tử, Xử Nữ, Thiên Bình, Hổ Cáp, Nhân Mã, Ma Kết, Bảo Bình, Song Ngư).
 usage: '{"query": "tên cung hoàng đạo cần tra cứu (ví dụ: Bạch Dương)"}'
 category: info
 tags: ["horoscope", "zodiac"]

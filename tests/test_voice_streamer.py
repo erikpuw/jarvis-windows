@@ -160,7 +160,27 @@ def test_worker_crash_does_not_cancel_the_text_stream():
     assert ws.cancel_requested is False, "audio failure wrongly cancelled the whole turn"
 
 
+def test_no_waiting_status_after_the_last_sentence():
+    """Sau câu cuối không còn câu nào để chờ: không được gửi "Đang trả lời 2..."
+    ngay trước idle, nếu không nhãn đó kẹt trên UI khi client hoãn idle lúc audio còn phát."""
+    async def scenario():
+        ws = FakeWS()
+        sent = Sent()
+        s = VoiceStreamer(ws, speech_gen_fn=_gen(), send_fn=sent.send)
+        s.start()
+        await s.put("cau mot.")
+        await s.put("cau hai.")
+        await s.stop()
+        return sent
+    sent = asyncio.run(scenario())
+    statuses = [p for p in sent.payloads if p["type"] == "status"]
+    assert statuses[-1]["state"] == "idle", statuses
+    with_message = [p for p in statuses if p.get("message")]
+    assert len(with_message) == 1, statuses  # chỉ trạng thái chuẩn bị ban đầu
+
+
 if __name__ == "__main__":
+    test_no_waiting_status_after_the_last_sentence()
     test_double_stop_returns_promptly()
     test_stop_does_not_block_when_worker_already_exited()
     test_stop_is_idempotent_many_times()

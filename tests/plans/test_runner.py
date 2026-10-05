@@ -53,15 +53,14 @@ def test_no_step_hands_back_to_chat(monkeypatch):
 
 
 def test_full_loop_maps_targets_runs_silent_and_delivers_once(monkeypatch):
-    calls = _wire(monkeypatch, [[_s("search", "thời tiết"), _s("web", "món ngày mưa")], [_s("history", "món đã ăn")]])
+    calls = _wire(monkeypatch, [[_s("weather", "thời tiết"), _s("web", "món ngày mưa")], [_s("history", "món đã ăn")]])
     out = asyncio.run(runner.run_plan("gợi ý món ăn", _ctx()))
     assert out == "KẾT LUẬN" and calls["deliver"] == ["KẾT LUẬN"]
     assert calls["plan"] == 3  # vòng 3 trả [] → dừng
     first_tasks, kw = calls["dispatch"][0]
-    assert first_tasks == [{"agent": "search", "query": "thời tiết"},
-                           {"agent": "search", "query": "món ngày mưa", "runner_kwargs": {"tools": ["web_research"]}}]
+    assert first_tasks == [{"agent": "weather", "query": "thời tiết"}, {"agent": "web", "query": "món ngày mưa"}]
     assert kw["silent"] is True and kw["step_timeout"] == STEP_TIMEOUT_S and kw["user_text"] == "gợi ý món ăn"
-    assert [r["target"] for r in calls["solve"]] == ["search", "web", "history"]
+    assert [r["target"] for r in calls["solve"]] == ["weather", "web", "history"]
 
 
 def test_stops_after_max_rounds(monkeypatch):

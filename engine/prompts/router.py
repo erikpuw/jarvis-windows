@@ -1,16 +1,23 @@
-"""Quản lý các prompt định tuyến: gate, classifier, offer_context (spec 2026-09-25 mục 2).
-Giống từng ký tự bản cũ trong code — tests/golden/ giữ bản chụp."""
+"""Quản lý prompt định tuyến và nạp bốn hướng dẫn route skill."""
 import json
+from pathlib import Path
 
 from engine.prompts import load
 
+_ROUTING_SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills" / "router"
+_ROUTING_SKILLS = ("general", "general_knowledge", "orchestrator", "attachment_clarify")
+
 
 def build_gate_system_prompt(has_attachment: bool = False) -> str:
-    att_opt = (
-        "- attachment_clarify: có tệp đính kèm đáng tin cậy nhưng chưa rõ người dùng muốn đọc/phân tích hay tạo/sửa nó "
-        "(nếu đã rõ thì chọn orchestrator).\n" if has_attachment else ""
+    attachment_context = (
+        "Ngữ cảnh user có metadata của tệp đính kèm đáng tin cậy."
+        if has_attachment else "Lượt này không có metadata tệp đính kèm; không chọn attachment_clarify."
     )
-    return load("router_gate", attachment_option=att_opt)
+    skills = "\n\n".join(
+        (_ROUTING_SKILLS_DIR / name / "SKILL.md").read_text(encoding="utf-8").strip()
+        for name in _ROUTING_SKILLS
+    )
+    return f"{load('router_gate').rstrip()}\n{attachment_context}\n\n{skills}"
 
 
 def build_classifier_system_prompt(

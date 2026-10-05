@@ -7,6 +7,7 @@ enable voice output and it never makes approval decisions on a user's behalf.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import functools
 import json
 import logging
@@ -22,6 +23,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
 from uuid import uuid4
+
+from engine.core.session_context import get_session, set_session
 
 
 logger = logging.getLogger(__name__)
@@ -335,23 +338,12 @@ class TelegramBot:
         # needs several to_thread slots per turn.
         self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="telegram")
 
-    def release_session_buffers(self) -> None:
-        """Drop cached chat histories when WebUI takes over the conversation.
-
-        Only the reconstructable cache goes: _pending_* hold work the user is
-        part-way through (an attachment awaiting a caption, a command awaiting
-        its argument) and dropping those would lose their input.
-        """
-        cached = len(self._histories)
-        self._histories.clear()
-        if cached:
-            logger.info("Telegram released %d cached chat histories on handover", cached)
-
     async def _to_thread(self, fn, *args, **kwargs):
         loop = asyncio.get_running_loop()
         if kwargs:
             fn = functools.partial(fn, **kwargs)
-        return await loop.run_in_executor(self._executor, fn, *args)
+        # run_in_executor không sao chép contextvars (asyncio.to_thread thì có): thiếu dòng này thread nền mất session id.
+        return await loop.run_in_executor(self._executor, contextvars.copy_context().run, fn, *args)
 
     def queue_restart_notice(self, chat_id: int) -> bool:
         """Persist the requesting chat so the replacement worker can confirm startup."""
@@ -852,6 +844,7 @@ class TelegramBot:
         attachment_id: str | None = None,
         sender_info: dict[str, str] | None = None,
     ) -> None:
+        set_session(f"tg-{chat_id}")
         pending_command = self._pending_commands.get(chat_id)
         if pending_command:
             command = self._load_command(pending_command)
@@ -901,21 +894,12 @@ class TelegramBot:
         learning_engine = get_learning_engine()
         flow_agents = FlowAgents(telegram_session, self._server.safe_ws_send_json)
 
-        channel_owner = await self._server.try_acquire_input_channel("telegram")
-        if channel_owner is None:
-            if attachment_id:
-                self._pending_attachments[chat_id] = attachment_id
-            await self._send_text(
-                chat_id,
-                "Jarvis vẫn đang bận với một yêu cầu từ WebUI. Vui lòng thử lại sau.",
-            )
-            return
-
-        await self._save_user_message(text)
-        typing_task = asyncio.create_task(self._typing_loop(chat_id))
+        typing_task = None
         learning_started = False
         turn_started_at = time.time()
         try:
+            await self._save_user_message(text)
+            typing_task = asyncio.create_task(self._typing_loop(chat_id))
             learning_engine.begin_interactive_chat()
             from engine.core.activity_gate import mark_interactive_turn
             mark_interactive_turn()
@@ -943,10 +927,10 @@ class TelegramBot:
             try:
                 if learning_started:
                     learning_engine.end_interactive_chat()
-                typing_task.cancel()
-                await asyncio.gather(typing_task, return_exceptions=True)
+                if typing_task is not None:
+                    typing_task.cancel()
+                    await asyncio.gather(typing_task, return_exceptions=True)
             finally:
-                await self._server.release_input_channel("telegram", channel_owner)
                 if attachment_id:
                     from engine.core.attachment_store import discard_attachment
                     discard_attachment(attachment_id)
@@ -1004,7 +988,7 @@ class TelegramBot:
                 outcome_id=outcome_id,
                 outcome_status=outcome_status,
             )
-            logger.info("Telegram learning queued for idle processing")
+            logger.info("Telegram learning queued for idle processing session=%s", get_session())
         except Exception:
             logger.warning("Telegram learning queue failed", exc_info=True)
 

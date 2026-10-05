@@ -78,10 +78,6 @@ const commandInput = document.getElementById("command-input") as HTMLTextAreaEle
 const filePinnedContainer = document.getElementById("file-pinned-container")!;
 const filePinnedName = document.getElementById("file-pinned-name")!;
 const btnFileRemove = document.getElementById("btn-file-remove")!;
-const btnHistory = document.getElementById("btn-history")!;
-const historyPanel = document.getElementById("history-panel")!;
-const historyList = document.getElementById("history-list")!;
-const btnCloseHistory = document.getElementById("btn-close-history")!;
 const btnMap = document.getElementById("btn-map")!;
 const mapPanel = document.getElementById("map-panel")!;
 const btnCloseMap = document.getElementById("btn-close-map")!;
@@ -281,8 +277,8 @@ export function formatMarkdown(text: string): string {
     .replace(/^# (.*$)/gm, '<h1 style="color:var(--accent-blue);margin:8px 0 4px 0;font-size:16px;letter-spacing:0.5px;font-weight:700;">$1</h1>')
     .replace(/\*\*(.*?)\*\*/g, '<strong style="color:#fff;font-weight:600">$1</strong>')
     .replace(/\*(.*?)\*/g, '<em style="opacity:0.9">$1</em>')
-    .replace(/^[\s]*[\*\-] (.*)/gm, '<div style="display:flex;gap:4px;margin:2px 0"><span>•</span><span>$1</span></div>')
-    .replace(/^[\s]*(\d+)\. (.*)/gm, '<div style="display:flex;gap:4px;margin:2px 0"><span>$1.</span><span>$2</span></div>')
+    .replace(/^[\s]*[\*\-] (.*)/gm, '<div style="display:flex;gap:4px;margin:2px 0"><span style="flex:none">•</span><span style="min-width:0">$1</span></div>')
+    .replace(/^[\s]*(\d+)\. (.*)/gm, '<div style="display:flex;gap:4px;margin:2px 0"><span style="flex:none;white-space:nowrap">$1.</span><span style="min-width:0">$2</span></div>')
     .replace(/`(.*?)`/g, '<code style="background:rgba(255,255,255,0.1);padding:1px 3px;border-radius:4px;font-family:monospace;font-size:0.9em;color:#00d4ff">$1</code>');
 
   // Hỗ trợ hiển thị bảng biểu đơn giản (Parse Table)
@@ -459,10 +455,6 @@ function addChatMessage(role: "user" | "assistant", text: string): HTMLElement |
 
   if (role === "user") {
     bubble.innerHTML = formatMarkdown(text);
-    // Append to history panel in real-time (no API call)
-    if (!historyPanel.classList.contains("hidden")) {
-      appendHistoryEntry("user", text, Date.now() / 1000);
-    }
     // Scroll to bottom (force since user just sent a message)
     requestAnimationFrame(() => {
       scrollToBottomIfNeeded(true);
@@ -666,7 +658,9 @@ function renderInteractiveCard(container: HTMLElement, data: any) {
     if (existingName) {
       existingName.textContent = agentBadge(data.title).name;
     }
-    existingCard!.querySelector(".tracker-label")!.textContent = trackerLabel(data.label);
+    const existingLabel = existingCard!.querySelector<HTMLElement>(".tracker-label")!;
+    existingLabel.textContent = trackerLabel(data.label);
+    existingLabel.title = trackerLabel(data.label);
     setStatusIcon(existingIcon, data.status, "tracker", 14);
     return;
   }
@@ -858,6 +852,7 @@ function renderInteractiveCard(container: HTMLElement, data: any) {
     const label = document.createElement("div");
     label.className = "tracker-label";
     label.textContent = trackerLabel(data.label);
+    label.title = trackerLabel(data.label); // the card shows one cut line; hovering shows the whole task
 
     if (data.image) {
       body.style.flexDirection = "column";
@@ -1313,6 +1308,16 @@ function captureAndSendWebcamFrame() {
 const canvas = document.getElementById("orb-canvas") as HTMLCanvasElement;
 const orb = createOrb(canvas);
 
+// Orb on/off button (top-right controls). Off = no drawing at all and the WebGL context goes back to the GPU; always on at page load.
+const btnOrb = document.getElementById("btn-orb-toggle")!;
+btnOrb.addEventListener("click", () => {
+  const turnOn = btnOrb.classList.contains("orb-off");
+  orb.setEnabled(turnOn);
+  btnOrb.classList.toggle("orb-off", !turnOn);
+  btnOrb.setAttribute("aria-pressed", String(turnOn));
+  btnOrb.title = turnOn ? "Tắt orb (ngừng vẽ, trả GPU)" : "Bật orb";
+});
+
 // Something covers the screen (settings, map, media): stop the orb and every decorative loop together.
 const pauseScene = () => { orb.pause(); setAnimPaused(true); };
 const resumeScene = () => { orb.resume(); setAnimPaused(false); };
@@ -1320,63 +1325,6 @@ const resumeScene = () => { orb.resume(); setAnimPaused(false); };
 const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
 const WS_URL = `${wsProto}//${window.location.host}/ws/voice`;
 const socket = createSocket(WS_URL);
-
-function showSupersededBanner(reason: string, onReconnect: () => void) {
-  let banner = document.getElementById("superseded-banner");
-  if (!banner) {
-    banner = document.createElement("div");
-    banner.id = "superseded-banner";
-    banner.style.cssText = `
-      position: fixed;
-      top: 16px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(24, 24, 27, 0.95);
-      border: 1px solid rgba(239, 68, 68, 0.4);
-      color: #f87171;
-      padding: 10px 18px;
-      border-radius: 20px;
-      font-size: 13px;
-      font-weight: 500;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-      z-index: 9999;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    `;
-    document.body.appendChild(banner);
-  }
-
-  const otherDevice = socket.getDeviceType() === "mobile" ? "Desktop" : "Mobile";
-  banner.innerHTML = `
-    <span>⚠️ Phiên kết nối đã chuyển sang thiết bị khác (${otherDevice}). Tự động ngắt để tránh xung đột.</span>
-    <button id="reconnect-btn" style="
-      background: #ef4444;
-      color: white;
-      border: none;
-      padding: 5px 12px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-    ">Kết nối lại tại đây</button>
-  `;
-
-  const btn = banner.querySelector("#reconnect-btn");
-  if (btn) {
-    btn.addEventListener("click", () => {
-      if (banner) banner.remove();
-      onReconnect();
-    });
-  }
-}
-
-socket.onSuperseded((reason) => {
-  console.warn(`[ws] Superseded: ${reason}`);
-  showSupersededBanner(reason, () => {
-    socket.reconnectManual();
-  });
-});
 
 const audioPlayer = createAudioPlayer();
 orb.setAnalyser(audioPlayer.getAnalyser());
@@ -1395,7 +1343,7 @@ function updateStatus(state: State, message?: string) {
     listening: "Đang nghe…",
     thinking: "Đang nghĩ…",
     working: "Đang làm việc…",
-    speaking: "Đang trả lời…",
+    speaking: "Đang đọc…",
     restarting: "Đang khởi động lại…",
   };
 
@@ -1700,10 +1648,6 @@ socket.onMessage((msg) => {
     }
     activeAssistantBubble = null;
     // Giữ flow bubble để nhận các flow_step completed gửi sau stream_end.
-    // Auto-refresh history panel after response completes
-    if (!historyPanel.classList.contains("hidden")) {
-      appendHistoryEntry("assistant", activeAssistantText, Date.now() / 1000);
-    }
   } else if (type === "status") {
     const state = msg.state as string;
     const message = msg.message as string;
@@ -1771,14 +1715,6 @@ socket.onMessage((msg) => {
       });
       // Reset ID
       delete (window as any)._activeScreenshotTrackerId;
-    }
-  } else if (type === "history") {
-
-    const history = msg.history as any[];
-    console.log(`[UI] Synchronizing HUD Chat History with ${history?.length} records.`);
-    if (history && history.length > 0) {
-      // Direct update to HUD, not chat bubbles
-      renderHistory(history);
     }
   } else if (type === "interactive") {
     const cardData = (msg as any).card;
@@ -1983,73 +1919,6 @@ btnSettings.addEventListener("click", (e) => {
   menuDropdown.style.display = "none";
   openSettings();
 });
-
-// Logs Modal UI -----------------------------------------------------------
-const btnLogs = document.getElementById("btn-logs");
-if (btnLogs) {
-  btnLogs.addEventListener("click", (e) => {
-    e.stopPropagation();
-    menuDropdown.style.display = "none";
-    openLogViewer();
-  });
-}
-
-function openLogViewer() {
-  const overlay = document.createElement("div");
-  overlay.className = "log-viewer-overlay";
-
-  const panel = document.createElement("div");
-  panel.className = "log-viewer-panel";
-
-  panel.innerHTML = `
-    <div class="log-header">
-      <h3>SYSTEM DIAGNOSTICS (JARVIS.LOG)</h3>
-      <button class="log-close">CLOSE</button>
-    </div>
-    <div class="log-content"><div class="log-loading">Loading logs...</div></div>
-  `;
-
-  overlay.appendChild(panel);
-  document.body.appendChild(overlay);
-
-  requestAnimationFrame(() => overlay.classList.add("open"));
-
-  const closeBtn = panel.querySelector(".log-close")!;
-  const contentEl = panel.querySelector(".log-content")!;
-
-  closeBtn.addEventListener("click", () => {
-    overlay.classList.remove("open");
-    setTimeout(() => {
-      overlay.remove();
-    }, 350);
-  });
-
-  loadLogs(contentEl);
-}
-
-async function loadLogs(container: Element) {
-  try {
-    const res = await fetchWithTimeout("/api/logs?lines=300");
-    const data = await res.json();
-    if (data.success) {
-      const lines = data.logs.split("\n");
-      container.textContent = "";
-      for (const line of lines as string[]) { // textContent: a log line holding "<" must not become markup
-        const row = document.createElement("div");
-        row.className = "log-line" + (line.includes("ERROR") ? " error" : line.includes("WARNING") ? " warning" : line.includes("INFO") ? " info" : "");
-        row.textContent = line;
-        container.appendChild(row);
-      }
-      // Scroll to bottom
-      container.scrollTop = container.scrollHeight;
-    } else {
-      container.textContent = "Không thể tải log: " + data.error;
-    }
-  } catch (e) {
-    container.textContent = "Lỗi kết nối khi tải log.";
-  }
-}
-
 
 // First-time setup detection — check after a short delay for server readiness
 setTimeout(() => {
@@ -2435,6 +2304,11 @@ commandInput.addEventListener("input", () => {
   }
 });
 
+// Phone keyboards have no Shift+Enter: there Enter starts a new line and the send button sends. Desktop: Enter sends, Shift+Enter new line.
+const enterMakesNewLine = matchMedia("(pointer: coarse)").matches;
+commandInput.enterKeyHint = enterMakesNewLine ? "enter" : "send";
+if (enterMakesNewLine) cmdSend.title = "Gửi";
+
 // Send on Enter, history on Up/Down, navigation in suggestions
 commandInput.addEventListener("keydown", (e) => {
   // Navigation in suggestions dropdown if open
@@ -2462,7 +2336,7 @@ commandInput.addEventListener("keydown", (e) => {
     }
   }
 
-  if (e.key === "Enter" && !e.shiftKey) {
+  if (e.key === "Enter" && !e.shiftKey && !enterMakesNewLine) {
     e.preventDefault();
     dismissKeyboardOnMobile();
     sendCommand();
@@ -2522,116 +2396,6 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     toggleCommandBar(true);
   }
-});
-
-async function toggleHistory(forceShow?: boolean) {
-  const isOpening = forceShow !== undefined ? forceShow : historyPanel.classList.contains("hidden");
-  historyPanel.classList.toggle("hidden", !isOpening);
-  btnHistory.classList.toggle("active", isOpening);
-  if (isOpening) {
-    loadHistory();
-  }
-}
-
-async function loadHistory() {
-  historyList.innerHTML = '<div class="history-loading"><span></span><span></span><span></span></div>';
-  try {
-    const res = await fetchWithTimeout("/api/history?limit=100");
-    const data = await res.json();
-    if (data.success && data.history) {
-      renderHistory(data.history);
-    } else {
-      historyList.innerHTML = '<div class="history-empty">Không có lịch sử hội thoại.</div>';
-    }
-  } catch (e) {
-    historyList.innerHTML = '<div class="history-empty">Lỗi khi tải lịch sử.</div>';
-  }
-}
-
-function appendHistoryEntry(role: string, content: string, created_at: number) {
-  if (historyList.classList.contains("history-empty") || historyList.querySelector(".history-empty, .history-loading")) {
-    historyList.innerHTML = "";
-  }
-  const date = new Date(created_at * 1000);
-  const dateKey = date.toLocaleDateString();
-  const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  // Date separator
-  const lastSep = historyList.querySelector(".history-date-sep:last-child");
-  const today = new Date();
-  const isToday = dateKey === today.toLocaleDateString();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const label = isToday ? "Hôm nay" : dateKey === yesterday.toLocaleDateString() ? "Hôm qua" : dateKey;
-  if (!lastSep || lastSep.textContent !== label) {
-    const sep = document.createElement("div");
-    sep.className = "history-date-sep";
-    sep.textContent = label;
-    historyList.appendChild(sep);
-  }
-  const item = document.createElement("div");
-  item.className = `history-item ${role}`;
-  const text = formatMarkdown(content.trim());
-  item.innerHTML = `
-    <div class="history-content">${text}</div>
-    <span class="history-time">${timeStr}</span>
-  `;
-  historyList.appendChild(item);
-  historyList.scrollTop = historyList.scrollHeight;
-}
-
-function renderHistory(history: any[]) {
-  historyList.innerHTML = "";
-  if (history.length === 0) {
-    historyList.innerHTML = '<div class="history-empty">Không có dữ liệu hội thoại</div>';
-    return;
-  }
-
-  let lastDate = "";
-
-  history.forEach((msg, idx) => {
-    const date = new Date(msg.created_at * 1000);
-    const dateKey = date.toLocaleDateString();
-    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    if (dateKey !== lastDate) {
-      lastDate = dateKey;
-      const sep = document.createElement("div");
-      sep.className = "history-date-sep";
-      const today = new Date();
-      const isToday = dateKey === today.toLocaleDateString();
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const label = isToday ? "Hôm nay" : dateKey === yesterday.toLocaleDateString() ? "Hôm qua" : dateKey;
-      sep.textContent = label;
-      historyList.appendChild(sep);
-    }
-
-    const item = document.createElement("div");
-    item.className = `history-item ${msg.role}`;
-    item.style.animationDelay = `${idx * 15}ms`;
-
-    const content = msg.content.trim();
-    const text = formatMarkdown(content);
-
-    item.innerHTML = `
-      <div class="history-content">${text}</div>
-      <span class="history-time">${timeStr}</span>
-    `;
-    historyList.appendChild(item);
-  });
-
-  requestAnimationFrame(() => {
-    historyList.scrollTop = historyList.scrollHeight;
-  });
-}
-
-btnHistory.addEventListener("click", () => {
-  menuDropdown.style.display = "none";
-  toggleHistory();
-});
-
-btnCloseHistory.addEventListener("click", () => {
-  toggleHistory();
 });
 
 // ---------------------------------------------------------------------------
@@ -3250,12 +3014,14 @@ window.addEventListener("jarvis:overlay", (event) => {
   }
   const mapFullScreen = isMapFullScreen && !mapPanel.classList.contains("hidden");
   const mediaOpen = !mediaPlayer.classList.contains("hidden");
-  if (!mapFullScreen && !mediaOpen) resumeScene();
+  if (mapFullScreen) return; // the map still covers the screen
+  if (mediaOpen) setAnimPaused(false); // a video is open: the big orb stays paused, the small orb and the avatar run again
+  else resumeScene();
 });
 
 function openMediaPlayer(title: string, embedHtml: string) {
   document.body.classList.add("media-playing");
-  pauseScene();
+  orb.pause(); // only the big WebGL orb: the status orb and the avatar stay visible next to the video and keep animating
   socket.send({ type: "media_state", active: true });
   // Server chỉ chặn TTS mới; audio đã xếp lịch trong trình duyệt phải dừng ngay, không đọc chồng lên media.
   audioPlayer.stop();

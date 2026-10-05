@@ -47,19 +47,15 @@ def test_delete_memory_works_with_leftover_registry_table(db):
 
 def test_registry_kind_is_gone_from_memory_control(db):
     assert not hasattr(memory, "list_registry_records")
+    assert not hasattr(memory, "list_memory_records")
     assert "registry" not in memory.get_memory_control_counts()
-    for fn, args in ((memory.preview_memory_dependencies, ("registry", 1)),
-                     (memory.update_memory_control_record, ("registry", 1, {"wiki_scope": "x"})),
-                     (memory.delete_memory_control_record, ("registry", 1))):
-        with pytest.raises(ValueError, match="unsupported_kind"):
-            fn(*args)
-
-
-def test_memory_preview_has_no_registry_fields(db):
-    mem_id = memory.save_memory("Người dùng thích cà phê sữa", "preference", "test", 5)
-    preview = memory.preview_memory_dependencies("memory", mem_id)
-    assert "registry_ids" not in preview["will_delete"]
-    assert len(preview["will_delete"]["records"]) == 1
+    assert "memories" not in memory.get_memory_control_counts()
+    for kind in ("registry", "memory"):
+        for fn, args in ((memory.preview_memory_dependencies, (kind, 1)),
+                         (memory.update_memory_control_record, (kind, 1, {"wiki_scope": "x"})),
+                         (memory.delete_memory_control_record, (kind, 1))):
+            with pytest.raises(ValueError, match="unsupported_kind"):
+                fn(*args)
 
 
 def test_ui_and_frontend_no_longer_expose_registry():
@@ -70,8 +66,6 @@ def test_ui_and_frontend_no_longer_expose_registry():
 
 
 def _load_script():
-    if not (ROOT / "scripts" / "drop_memory_registry.py").exists():
-        pytest.skip("scripts/drop_memory_registry.py không có trong repo (script dọn dữ liệu cũ, chỉ có ở máy tác giả)")
     spec = importlib.util.spec_from_file_location("drop_memory_registry", ROOT / "scripts" / "drop_memory_registry.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

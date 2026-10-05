@@ -188,8 +188,8 @@ async def webcam_analyze(client, prompt: str = "What do you see through the webc
             messages=[{
                 "role": "user",
                 "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
                     {"type": "text", "text": f"{prompt}{lang_instruction}"},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}}
                 ],
             }],
             **vision_request_kwargs(),

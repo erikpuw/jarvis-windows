@@ -1,6 +1,6 @@
 ---
 name: media
-title: Agent Media Stream
+title: Agent Media
 aliases:
 - agent_media
 description: Nghe nhạc, xem phim, xem livestream, xem video Youtube.

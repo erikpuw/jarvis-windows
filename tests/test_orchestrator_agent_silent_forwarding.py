@@ -1,6 +1,7 @@
 """Confirms every non-**kwargs-forwarding agent passes `silent` through to
 handle_user_intent_with_tools. Run: python tests/test_orchestrator_agent_silent_forwarding.py"""
 import asyncio
+import functools
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -41,6 +42,8 @@ def test_every_agent_forwards_silent():
             for module_name, runner_name, text in _CASES:
                 module = importlib.import_module(module_name)
                 runner = getattr(module, runner_name)
+                if module_name == "engine.agents.agent_search":  # agent tra cứu luôn được registry gắn sẵn tool
+                    runner = functools.partial(runner, tools=["weather_search"])
                 seen_silent.clear()
                 # agent_rag and agent_office short-circuit before calling
                 # handle_user_intent_with_tools when attachment_context is None (both

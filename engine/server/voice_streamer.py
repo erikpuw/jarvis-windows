@@ -218,9 +218,9 @@ class VoiceStreamer:
 
     async def _tts_worker(self):
         try:
-            # Đặt trạng thái ban đầu là thinking với message "stream..." trong lúc chờ gom chunk
+            # Trạng thái đầu: chưa có tiếng, đang chờ câu đầu tiên được tổng hợp
             if not self.is_cancelled():
-                await self._send({"type": "status", "state": "speaking", "message": "stream...", "source": "tts"})
+                await self._send({"type": "status", "state": "speaking", "message": "Đang chuẩn bị…", "source": "tts"})
             
             while True:
                 if self.is_cancelled():
@@ -274,9 +274,6 @@ class VoiceStreamer:
                     if _SENTENCE_GAP:
                         await asyncio.sleep(_SENTENCE_GAP)
 
-                # Quay lại trạng thái thinking với message "stream..." nếu đang chờ câu tiếp theo
-                if not self.is_cancelled():
-                    await self._send({"type": "status", "state": "speaking", "message": "stream...", "source": "tts"})
                 self.audio_queue.task_done()
         except Exception as e:
             # KHÔNG set ws.cancel_requested ở đây: cờ này dùng chung để dừng

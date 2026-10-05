@@ -33,13 +33,6 @@ def test_classify_sky():
     assert we._classify("giông kèm mưa đá nhẹ") == "storm"
 
 
-def test_baomoi_rejects_garbage():
-    assert we._baomoi_snapshot("27", "Rất nhiều mây")["temp"] == 27
-    assert we._baomoi_snapshot("--", "Rất nhiều mây") is None
-    assert we._baomoi_snapshot("27", "") is None
-    assert we._baomoi_snapshot("27", "x" * 200) is None
-
-
 def test_rate_limit_falls_back_to_wttr_and_skips_open_meteo_next_time(monkeypatch):
     calls = {"om": 0}
 

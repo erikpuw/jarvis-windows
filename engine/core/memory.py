@@ -22,6 +22,8 @@ from typing import Optional, Any, Callable
 import numpy as np
 from turbovec import IdMapIndex
 
+from engine.core.session_context import get_session
+
 log = logging.getLogger("jarvis.memory")
 
 _EMOJI_RE = re.compile(
@@ -63,7 +65,7 @@ SEMANTIC_META_PATH = SEMANTIC_DIR / "semantic_metadata.json"
 
 def _get_db() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
@@ -219,23 +221,6 @@ def _list_memory_table(
     }
 
 
-def list_memory_records(
-    q: str = "", limit: int = 50, offset: int = 0
-) -> dict:
-    return _list_memory_table(
-        "memories",
-        (
-            "id, type, content, source, importance, created_at, "
-            "last_accessed, access_count"
-        ),
-        ("type", "content", "source"),
-        "created_at",
-        q,
-        limit,
-        offset,
-    )
-
-
 def list_conversation_records(
     q: str = "", limit: int = 50, offset: int = 0
 ) -> dict:
@@ -254,27 +239,12 @@ def get_memory_control_counts() -> dict[str, int]:
     conn = _get_db()
     try:
         return {
-            "memories": conn.execute(
-                "SELECT COUNT(*) FROM memories"
-            ).fetchone()[0],
             "conversations": conn.execute(
                 "SELECT COUNT(*) FROM messages"
             ).fetchone()[0],
         }
     finally:
         conn.close()
-
-
-def get_memory_by_id(mem_id: int) -> dict | None:
-    conn = _get_db()
-    row = conn.execute(
-        """SELECT id, type, content, source, importance,
-                  created_at, last_accessed, access_count
-           FROM memories WHERE id=?""",
-        (mem_id,),
-    ).fetchone()
-    conn.close()
-    return dict(row) if row else None
 
 
 def _invalidate_semantic_memory_cache(
@@ -405,10 +375,6 @@ def update_memory_control_record(
     kind: str, record_id: int, values: dict
 ) -> bool:
     schemas = {
-        "memory": (
-            "memories",
-            {"type", "content", "source", "importance"},
-        ),
         "conversation": (
             "messages",
             {"role", "content", "session_id"},
@@ -420,17 +386,6 @@ def update_memory_control_record(
     clean = {key: value for key, value in values.items() if key in allowed}
     if not clean or clean.keys() != values.keys():
         raise ValueError("invalid_payload")
-    if kind == "memory":
-        current = get_memory_by_id(record_id)
-        if not current:
-            return False
-        return update_memory(
-            record_id,
-            str(clean.get("content", current["content"])),
-            int(clean.get("importance", current["importance"])),
-            str(clean.get("type", current["type"])),
-            source=str(clean.get("source", current["source"])),
-        )
     conn = _get_db()
     if kind == "conversation" and "role" in clean:
         if clean["role"] not in {"user", "assistant", "system", "tool"}:
@@ -448,7 +403,6 @@ def update_memory_control_record(
 
 def preview_memory_dependencies(kind: str, record_id: int) -> dict:
     table = {
-        "memory": "memories",
         "conversation": "messages",
     }.get(kind)
     if not table:
@@ -465,15 +419,13 @@ def preview_memory_dependencies(kind: str, record_id: int) -> dict:
             "records": [dict(row)],
             "wiki_paths": [],
         },
-        "will_update": ["memory_fts"] if kind == "memory" else [],
+        "will_update": [],
         "related_only": [],
     }
 
 
 def delete_memory_control_record(kind: str, record_id: int) -> bool:
     preview_memory_dependencies(kind, record_id)  # kiểm tra loại hợp lệ và bản ghi tồn tại
-    if kind == "memory":
-        return delete_memory(record_id)
     if kind == "conversation":
         conn = _get_db()
         affected = conn.execute(
@@ -491,18 +443,19 @@ def delete_memory_control_record(kind: str, record_id: int) -> bool:
 
 def save_message(role: str, content: str, session_id: str = "", ask_user: str = "", action_run: str = "") -> int:
     content = strip_images(strip_emojis(content))
+    session_id = session_id or get_session()
     conn = _get_db()
 
-    # Duplicate = same role AND content as the very last row of the whole table.
-    # Comparing against the last row "of the same role" (old behaviour) skipped a
-    # genuine repeat like a second "ừ" whenever an assistant turn came in between,
-    # which then hid it from get_pending_ask() (spec §6).
+    # Duplicate = same role AND content as the very last row OF THIS SESSION. A
+    # genuine repeat like a second "ừ" (with an assistant turn in between) must
+    # not be skipped, and another session's rows must not count (spec §6).
     last = conn.execute(
-        "SELECT id, role, content FROM messages ORDER BY id DESC LIMIT 1"
+        "SELECT id, role, content FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT 1",
+        (session_id,),
     ).fetchone()
     if last and last["role"] == role and last["content"] == content:
         conn.close()
-        log.info(f"💬 Message duplicate skipped: role={role}")
+        log.info(f"💬 Message duplicate skipped: role={role} session={session_id or '-'}")
         return last["id"]
 
     cur = conn.execute(
@@ -511,7 +464,7 @@ def save_message(role: str, content: str, session_id: str = "", ask_user: str = 
     )
     conn.commit()
     conn.close()
-    log.info(f"💬 Message [{role}]")
+    log.info(f"💬 Message [{role}] session={session_id or '-'}")
     return cur.lastrowid
 
 
@@ -520,7 +473,10 @@ def get_pending_offer(max_age_seconds: int = 600) -> tuple[str, str]:
     Có lượt khác chen vào hoặc quá max_age_seconds → ("", "").
     action_run trả về chỉ nếu ask_user cũng có (spec §11)."""
     conn = _get_db()
-    rows = conn.execute("SELECT role, ask_user, action_run, created_at FROM messages ORDER BY id DESC LIMIT 2").fetchall()
+    rows = conn.execute(
+        "SELECT role, ask_user, action_run, created_at FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT 2",
+        (get_session(),),
+    ).fetchall()
     conn.close()
     if len(rows) == 2 and rows[0]["role"] == "user" and rows[1]["role"] == "assistant":
         if time.time() - (rows[1]["created_at"] or 0) > max_age_seconds:
@@ -541,12 +497,12 @@ def get_messages(limit: int = 100, session_id: str = "") -> list[dict]:
     conn = _get_db()
     if session_id:
         rows = conn.execute(
-            "SELECT role, content, created_at, ask_user, action_run FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT ?",
+            "SELECT role, content, created_at, ask_user, action_run, session_id FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT ?",
             (session_id, limit),
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT role, content, created_at, ask_user, action_run FROM messages ORDER BY id DESC LIMIT ?",
+            "SELECT role, content, created_at, ask_user, action_run, session_id FROM messages ORDER BY id DESC LIMIT ?",
             (limit,),
         ).fetchall()
     conn.close()
@@ -563,7 +519,7 @@ def build_unified_routing_history(
 ) -> list[dict]:
     safe_limit = max(1, min(int(limit), 30))
     try:
-        history = get_messages(limit=safe_limit)
+        history = get_messages(limit=safe_limit, session_id=get_session())
     except Exception as exc:
         log.warning("Routing history DB fallback: %s", exc)
         history = list(fallback_history or [])[-safe_limit:]
@@ -910,49 +866,7 @@ class SemanticMemoryEngine:
         return results
 
 
-# ---------------------------------------------------------------------------
-# Context Builder
-# ---------------------------------------------------------------------------
 
-def filter_context_memories(memories: list[dict]) -> list[dict]:
-    """Keep unverified legacy distillations out of live LLM context."""
-    return [
-        memory for memory in memories
-        if memory.get("source") not in {
-            "conversation_learning",
-            "conversation_distillation",
-        }
-    ]
-
-
-def build_memory_context(user_message: str) -> str:
-    """Nạp memory cho general route.
-
-    Không tính điểm/vector/từ khóa theo câu hỏi (semantic_recall và FTS recall
-    từng ở đây gây "mù" — luôn trả top-k dù không liên quan, hoặc trật lất
-    khi trùng chữ ngẫu nhiên). Thay vào đó nạp cố định top memory quan trọng
-    nhất theo importance đã gán lúc lưu — cùng một tập hợp mỗi lượt, dễ đoán,
-    không phụ thuộc embedding server.
-    """
-    if len(user_message) <= 5:
-        return ""
-
-    parts: list[str] = []
-
-    important = filter_context_memories(get_important_memories(limit=5))
-    if important:
-        imp_lines = [f"  - [{m['type']}] {m['content']}" for m in important]
-        parts.append("KEY FACTS:\n" + "\n".join(imp_lines))
-
-    try:
-        from engine.router.replay import recent_outcomes_context as get_session_tool_context
-        sess_tools = get_session_tool_context(limit=3)
-        if sess_tools:
-            parts.append(sess_tools)
-    except Exception:
-        pass
-
-    return "\n\n".join(parts) if parts else ""
 
 
 # ---------------------------------------------------------------------------

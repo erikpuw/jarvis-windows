@@ -1,6 +1,6 @@
 ---
 name: history
-title: Agent History Query
+title: Agent History
 aliases:
 - agent_history
 description: Tra cứu và xem lại lịch sử trò chuyện cũ.

@@ -1,6 +1,6 @@
 ---
 name: image
-title: Agent Image Upscaler
+title: Agent Upscaler
 aliases:
 - agent_image
 - upscale

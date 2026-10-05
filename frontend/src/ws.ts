@@ -3,21 +3,16 @@
  */
 
 export type MessageHandler = (msg: Record<string, unknown>) => void;
-export type SupersededHandler = (reason: string) => void;
 
 export interface JarvisSocket {
   /** Returns false when the socket was not open and the message was dropped. */
   send(data: Record<string, unknown>): boolean;
   onMessage(handler: MessageHandler): void;
-  onSuperseded(handler: SupersededHandler): void;
   onReconnect(handler: () => void): void;
   close(): void;
-  reconnectManual(): void;
   /** Tries to connect right now (resets the backoff) unless a socket is already open or connecting. */
   retryNow(): void;
   isConnected(): boolean;
-  isSuperseded(): boolean;
-  getDeviceType(): 'mobile' | 'desktop';
 }
 
 export function getDeviceType(): 'mobile' | 'desktop' {
@@ -31,11 +26,9 @@ export function getDeviceType(): 'mobile' | 'desktop' {
 export function createSocket(url: string): JarvisSocket {
   let ws: WebSocket | null = null;
   let handlers: MessageHandler[] = [];
-  let supersededHandlers: SupersededHandler[] = [];
   let reconnectHandlers: (() => void)[] = [];
   let reconnectDelay = 1000;
   let closed = false;
-  let closedBySupersede = false;
   let connected = false;
   let everConnected = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -91,7 +84,7 @@ export function createSocket(url: string): JarvisSocket {
   }
 
   function scheduleReconnect() {
-    if (closed || closedBySupersede) return;
+    if (closed) return;
     clearReconnectTimer();
     console.log(`[ws] reconnecting in ${reconnectDelay}ms`);
     reconnectTimer = setTimeout(() => {
@@ -102,7 +95,7 @@ export function createSocket(url: string): JarvisSocket {
   }
 
   function connect() {
-    if (closed || closedBySupersede) return;
+    if (closed) return;
     // Single-flight. A pending reconnect timer plus a manual reconnect used to
     // open two live sockets that shared one handler list, so every message was
     // handled twice — duplicated audio and duplicated chat bubbles.
@@ -117,7 +110,6 @@ export function createSocket(url: string): JarvisSocket {
     socket.onopen = () => {
       connecting = false;
       connected = true;
-      closedBySupersede = false;
       reconnectDelay = 1000;
       startHeartbeat(socket);
       if (everConnected) {
@@ -138,12 +130,6 @@ export function createSocket(url: string): JarvisSocket {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === "pong") return;  // transport-level, not for handlers
-        if (msg.type === "superseded") {
-          closedBySupersede = true;
-          const reason = String(msg.reason || "Phiên làm việc đã chuyển sang thiết bị khác.");
-          console.warn("[ws] superseded by another device:", reason);
-          for (const sh of supersededHandlers) sh(reason);
-        }
         for (const h of handlers) h(msg);
       } catch {
         console.warn("[ws] bad message", event.data);
@@ -152,20 +138,11 @@ export function createSocket(url: string): JarvisSocket {
 
     socket.onclose = (event) => {
       connecting = false;
-      if (ws !== socket) return;  // a superseded socket closing late
+      if (ws !== socket) return;  // a stale socket closing late
       connected = false;
       stopHeartbeat();
 
-      // Close code 4001 = Session Superseded by another device
-      if (event.code === 4001 || (event.reason && event.reason.toLowerCase().includes("superseded"))) {
-        closedBySupersede = true;
-        const reason = "Phiên làm việc đã chuyển sang thiết bị khác.";
-        console.warn("[ws] disconnected due to session supersede (code 4001). Pausing auto-reconnect.");
-        for (const sh of supersededHandlers) sh(reason);
-        return;
-      }
-
-      if (!closed && !closedBySupersede) scheduleReconnect();
+      if (!closed) scheduleReconnect();
     };
 
     socket.onerror = (err) => {
@@ -198,9 +175,6 @@ export function createSocket(url: string): JarvisSocket {
     onMessage(handler) {
       handlers.push(handler);
     },
-    onSuperseded(handler) {
-      supersededHandlers.push(handler);
-    },
     onReconnect(handler) {
       reconnectHandlers.push(handler);
     },
@@ -211,31 +185,12 @@ export function createSocket(url: string): JarvisSocket {
       ws?.close();
     },
     retryNow() {
-      if (closed || closedBySupersede || connected || connecting) return;
+      if (closed || connected || connecting) return;
       reconnectDelay = 1000;
       connect();
     },
-    reconnectManual() {
-      closed = false;
-      closedBySupersede = false;
-      // Drop any pending auto-reconnect first, otherwise it fires later and
-      // leaves a second socket alive alongside this one.
-      clearReconnectTimer();
-      reconnectDelay = 1000;
-      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-        ws.close();  // onclose schedules the reconnect
-      } else {
-        connect();
-      }
-    },
     isConnected() {
       return connected;
-    },
-    isSuperseded() {
-      return closedBySupersede;
-    },
-    getDeviceType() {
-      return deviceType;
     },
   };
 }

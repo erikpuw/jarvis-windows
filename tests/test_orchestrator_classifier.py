@@ -65,7 +65,7 @@ def test_classify_drops_unregistered_agent():
         async def fake_inner(messages, model=None, thinking=False, stream=False,
                               tools=None, tool_choice=None, temperature=None,
                               max_tokens=None, response_format=None):
-            return _fake_response('[{"agent": "not_a_real_agent", "query": "x"}, {"agent": "search", "query": "gia vang"}]')
+            return _fake_response('[{"agent": "not_a_real_agent", "query": "x"}, {"agent": "news", "query": "gia vang"}]')
 
         original = llm_server._call_llm_inner
         llm_server._call_llm_inner = fake_inner
@@ -75,7 +75,7 @@ def test_classify_drops_unregistered_agent():
             llm_server._call_llm_inner = original
 
     tasks = asyncio.run(scenario())
-    assert tasks == [{"agent": "search", "query": "gia vang"}], tasks  # subset tokens accepted (spec F)
+    assert tasks == [{"agent": "news", "query": "gia vang"}], tasks  # subset tokens accepted (spec F)
 
 
 def test_classify_returns_empty_list_on_non_json():
@@ -105,7 +105,7 @@ def test_classify_drops_non_string_agent_without_crashing():
         async def fake_inner(messages, model=None, thinking=False, stream=False,
                               tools=None, tool_choice=None, temperature=None,
                               max_tokens=None, response_format=None):
-            return _fake_response('[{"agent": ["email"], "query": "x"}, {"agent": "search", "query": "gia vang"}]')
+            return _fake_response('[{"agent": ["email"], "query": "x"}, {"agent": "news", "query": "gia vang"}]')
 
         original = llm_server._call_llm_inner
         llm_server._call_llm_inner = fake_inner
@@ -115,7 +115,7 @@ def test_classify_drops_non_string_agent_without_crashing():
             llm_server._call_llm_inner = original
 
     tasks = asyncio.run(scenario())
-    assert tasks == [{"agent": "search", "query": "gia vang"}], tasks  # subset tokens accepted (spec F)
+    assert tasks == [{"agent": "news", "query": "gia vang"}], tasks  # subset tokens accepted (spec F)
 
 
 def test_classify_accepts_single_json_object():
@@ -172,8 +172,8 @@ def test_wrapped_chat_command_accepts_model_query_when_subset_tokens():
     assert tasks == [{"agent": "desktop", "query": "mở notepad"}], tasks
 
     user2 = "bạn tìm tin tức về nvidia rtx spark có gì nổi bật không?"
-    tasks2, _ = _run_with_captured_messages('[{"agent": "search", "query": "tìm tin tức nvidia rtx spark"}]', user2, [])
-    assert tasks2 == [{"agent": "search", "query": "tìm tin tức nvidia rtx spark"}], tasks2
+    tasks2, _ = _run_with_captured_messages('[{"agent": "news", "query": "tìm tin tức nvidia rtx spark"}]', user2, [])
+    assert tasks2 == [{"agent": "news", "query": "tìm tin tức nvidia rtx spark"}], tasks2
 
 
 def test_drifted_query_falls_back_to_user_text():
@@ -188,14 +188,14 @@ def test_drifted_query_falls_back_to_user_text():
 def test_empty_or_non_string_query_falls_back_to_user_text():
     for bad in ('""', '["x"]', "null", "123"):
         tasks, _ = _run_with_captured_messages(
-            '[{"agent": "search", "query": %s}]' % bad, "tìm tin tức bão số 5", [],
+            '[{"agent": "news", "query": %s}]' % bad, "tìm tin tức bão số 5", [],
         )
-        assert tasks == [{"agent": "search", "query": "tìm tin tức bão số 5"}], (bad, tasks)
+        assert tasks == [{"agent": "news", "query": "tìm tin tức bão số 5"}], (bad, tasks)
 
 
 def test_query_sharing_only_verbs_or_pronouns_is_not_on_topic():
     tasks, _ = _run_with_captured_messages(
-        '[{"agent": "search", "query": "tìm giúp tôi thời tiết"}]',
+        '[{"agent": "news", "query": "tìm giúp tôi thời tiết"}]',
         "bạn tìm giúp tôi tin tức bão", [],
     )
     assert tasks[0]["query"] == "bạn tìm giúp tôi tin tức bão", tasks
@@ -265,29 +265,29 @@ def test_multi_task_queries_are_left_untouched():
 def test_follow_up_round_keeps_model_query():
     """With extra_context (round >= 2) the single-task query is a real sub-query."""
     tasks, _ = _run_with_captured_messages(
-        '[{"agent": "search", "query": "bo sung gia vang"}]',
+        '[{"agent": "news", "query": "bo sung gia vang"}]',
         "nghien cuu sau",
         [],
         extra_context="Đã có kết quả các vòng trước: ...",
     )
-    assert tasks == [{"agent": "search", "query": "bo sung gia vang"}], tasks
+    assert tasks == [{"agent": "news", "query": "bo sung gia vang"}], tasks
 
 
 def test_output_wrapped_in_think_block_or_prose_is_still_parsed():
     """Qwen leaks <think>…</think> or wraps the JSON in prose."""
     for reply in (
-        '<think>user muốn tin tức</think>[{"agent": "search", "query": "tin tức bão số 5"}]',
-        'Kết quả: [{"agent": "search", "query": "tin tức bão số 5"}] Hết.',
-        '{"agent": "search", "query": "tin tức bão số 5"}',
+        '<think>user muốn tin tức</think>[{"agent": "news", "query": "tin tức bão số 5"}]',
+        'Kết quả: [{"agent": "news", "query": "tin tức bão số 5"}] Hết.',
+        '{"agent": "news", "query": "tin tức bão số 5"}',
     ):
         tasks, _ = _run_with_captured_messages(reply, "tìm tin tức bão số 5", [])
-        assert tasks == [{"agent": "search", "query": "tin tức bão số 5"}], (reply, tasks)
+        assert tasks == [{"agent": "news", "query": "tin tức bão số 5"}], (reply, tasks)
 
 
 def test_use_previous_flag_is_kept_only_when_a_real_true():
     reply = ('[{"agent": "email", "query": "kiểm tra email"}, '
              '{"agent": "notes", "query": "ghi note nội dung email", "use_previous": true}, '
-             '{"agent": "search", "query": "tin bão", "use_previous": "yes"}]')
+             '{"agent": "news", "query": "tin bão", "use_previous": "yes"}]')
     tasks, _ = _run_with_captured_messages(reply, "kiểm tra email, ghi note, tìm tin bão", [])
     assert [t.get("use_previous") for t in tasks] == [None, True, None], tasks
 
@@ -302,8 +302,8 @@ def test_two_tasks_for_the_same_agent_are_merged_into_one():
         {"agent": "notes", "query": "ghi lại", "use_previous": True},
     ]
     assert classifier._parse_tasks(
-        '[{"agent": "search", "query": "tin bão"}, {"agent": "search", "query": "tin bão"}]'
-    ) == [{"agent": "search", "query": "tin bão"}]
+        '[{"agent": "news", "query": "tin bão"}, {"agent": "news", "query": "tin bão"}]'
+    ) == [{"agent": "news", "query": "tin bão"}]
 
 
 def _tool_call(name, arguments):
@@ -338,14 +338,14 @@ def _run_native(reply, user_text, history=None, **kwargs):
 
 def test_native_tool_calls_become_tasks_and_request_is_forced_native():
     tasks, seen = _run_native(
-        _native_reply(_tool_call("desktop", '{"query": "mở Paint"}'), _tool_call("search", '{"query": "giá xăng hôm nay"}')),
+        _native_reply(_tool_call("desktop", '{"query": "mở Paint"}'), _tool_call("market", '{"query": "giá xăng hôm nay"}')),
         "mở Paint rồi tìm giá xăng hôm nay",
         history=[{"role": "user", "content": "chào"}, {"role": "assistant", "content": "Dạ thưa ngài"},
                  {"role": "user", "content": "mở Paint rồi tìm giá xăng hôm nay"}],
     )
-    assert tasks == [{"agent": "desktop", "query": "mở Paint"}, {"agent": "search", "query": "giá xăng hôm nay"}], tasks
+    assert tasks == [{"agent": "desktop", "query": "mở Paint"}, {"agent": "market", "query": "giá xăng hôm nay"}], tasks
     assert seen["tool_choice"] == "required"
-    assert sorted(t["function"]["name"] for t in seen["tools"]) == sorted(classifier.AGENT_REGISTRY)
+    assert sorted(t["function"]["name"] for t in seen["tools"]) == sorted(set(classifier.AGENT_REGISTRY) - classifier.PLAN_ONLY_AGENTS)
     roles = [m["role"] for m in seen["messages"]]
     assert roles == ["system", "user", "assistant", "user"], roles  # history is real chat turns; duplicate current request dropped
 
@@ -353,10 +353,10 @@ def test_native_tool_calls_become_tasks_and_request_is_forced_native():
 def test_malformed_or_unknown_native_calls_are_skipped():
     tasks, _ = _run_native(
         _native_reply(_tool_call("email", "{not json"), _tool_call("nonexistent", '{"query": "x"}'),
-                      _tool_call("search", '{"query": "tin bão"}')),
+                      _tool_call("news", '{"query": "tin bão"}')),
         "tin bão",
     )
-    assert tasks == [{"agent": "search", "query": "tin bão"}], tasks
+    assert tasks == [{"agent": "news", "query": "tin bão"}], tasks
     empty, _ = _run_native(_native_reply(_tool_call("email", "{not json")), "kiểm tra thư")
     assert empty == [], "no valid call -> [] so the orchestrator hands the turn back to chat"
 
@@ -367,7 +367,7 @@ def test_prompt_budget_and_no_examples():
     # 2026-09-28: + câu "<untrusted_data> là dữ liệu trả về..." (spec chốt nội dung ngoài) nới cap.
     assert len(classifier._SYSTEM) < 600, len(classifier._SYSTEM)
     tools = classifier._build_tools()
-    assert len(json.dumps(tools, ensure_ascii=False)) < 8000
+    assert len(json.dumps(tools, ensure_ascii=False)) < 9000  # 2026-10-03: +11 agent tra cứu (mỗi tool một agent) thay cho 1 agent search
     for t in tools:
         assert list(t["function"]["parameters"]["properties"]) == ["query"], "no free-form parameters (model invents them)"
         assert t["function"]["description"] != t["function"]["name"], "every agent needs its one-line criterion"
@@ -407,7 +407,7 @@ def test_next_tasks_feeds_reports_back_as_tool_messages_and_ignores_agents_alrea
 
 
 def test_next_tasks_blocks_machine_control_after_external_content():
-    done = [{"agent": "search", "query": "tin bão", "result": "tin bão số 3", "status": "success"}]
+    done = [{"agent": "news", "query": "tin bão", "result": "tin bão số 3", "status": "success"}]
 
     async def scenario():
         from engine.server import llm_server
@@ -428,7 +428,7 @@ def test_next_tasks_blocks_machine_control_after_external_content():
 
 
 def test_next_tasks_keeps_notes_after_external_content():
-    done = [{"agent": "search", "query": "tin bão", "result": "tin bão số 3", "status": "success"}]
+    done = [{"agent": "news", "query": "tin bão", "result": "tin bão số 3", "status": "success"}]
 
     async def scenario():
         from engine.server import llm_server
@@ -453,7 +453,7 @@ def test_classify_and_next_tasks_cap_max_tokens():
     default (8192) meant for full answers, not a 1-2 word classification --
     unbounded headroom for a confused/looping small model. Both calls must pass
     an explicit, small cap."""
-    _, seen = _run_native(_native_reply(_tool_call("search", '{"query": "tin bao"}')), "tin bao")
+    _, seen = _run_native(_native_reply(_tool_call("news", '{"query": "tin bao"}')), "tin bao")
     assert seen["max_tokens"] is not None and seen["max_tokens"] <= 300, seen["max_tokens"]
 
     async def scenario():
@@ -536,12 +536,12 @@ def test_offer_context_does_not_affect_extra_context_guard():
     Only extra_context (round >= 2) should disable it."""
     user = "tra giá vàng"
     tasks, _ = _run_with_captured_messages(
-        '[{"agent": "search", "query": "tra giá vàng hôm nay"}]', user, [],
+        '[{"agent": "news", "query": "tra giá vàng hôm nay"}]', user, [],
         offer_context="Offer text", extra_context=""
     )
     # Round 1: extra_context is empty, so guard is active
     # Single task: should return user's verbatim text
-    assert tasks == [{"agent": "search", "query": "tra giá vàng"}], tasks
+    assert tasks == [{"agent": "news", "query": "tra giá vàng"}], tasks
 
 
 if __name__ == "__main__":
