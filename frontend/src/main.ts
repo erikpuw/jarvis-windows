@@ -61,6 +61,7 @@ let lastStreamRenderAt = 0;
 let streamTail: Text | null = null; // last text node of the rendered stream: plain chunks are appended to it
 let streamPendingFull = false; // a full markdown render was skipped (throttle) and is still owed
 let streamDirty = false; // plain chunks were appended since the last full render
+let streamHeld = false; // the last full render left out newlines at the very end of the text (they wait for the next letter)
 let streamLastAppendAt = 0;
 let wasStreamed = false;
 let audioChunkBuffer: Uint8Array[] | null = null;
@@ -164,6 +165,18 @@ function lastTextNode(el: HTMLElement): Text | null {
   return last;
 }
 
+/** The last text node, but only when nothing (a <br>, a block) follows it: letters appended to it must land at the very end. */
+function tailAtEnd(el: HTMLElement): Text | null {
+  const t = lastTextNode(el);
+  if (!t) return null;
+  for (let n: Node = t; n !== el; n = n.parentNode!) if (n.nextSibling) return null;
+  return t;
+}
+
+/** Newlines at the very end of the streamed text are not shown yet: they would open blank lines under the last line before the
+ *  next paragraph has a single letter, and the letters would then jump to where the blank lines are. They appear with the next letter. */
+const withoutTrailingNewlines = (s: string) => s.replace(/\n+$/, "");
+
 /**
  * Shows the newly revealed `chunk`. Re-parsing all the markdown and rewriting innerHTML every frame re-lays
  * out the whole bubble (and cost grew with the square of the reply length), which read as jitter. So a chunk
@@ -171,7 +184,7 @@ function lastTextNode(el: HTMLElement): Text | null {
  * the settle after a pause does the full render (throttled as the text grows).
  */
 function renderStreamText(container: HTMLElement, chunk: string, now: number, final = false) {
-  if (!final && !streamPendingFull && streamTail?.isConnected && !STREAM_MARKUP.test(chunk)) {
+  if (!final && !streamPendingFull && !streamHeld && streamTail?.isConnected && !STREAM_MARKUP.test(chunk)) {
     streamTail.appendData(chunk);
     streamDirty = true;
     return;
@@ -180,8 +193,10 @@ function renderStreamText(container: HTMLElement, chunk: string, now: number, fi
   if (!final && now - lastStreamRenderAt < gap) { streamPendingFull = true; return; }
   lastStreamRenderAt = now;
   streamPendingFull = streamDirty = false;
-  container.innerHTML = formatMarkdown(streamTextBuffer);
-  streamTail = lastTextNode(container);
+  const shown = withoutTrailingNewlines(streamTextBuffer);
+  streamHeld = shown.length < streamTextBuffer.length;
+  container.innerHTML = formatMarkdown(shown);
+  streamTail = tailAtEnd(container);
 }
 
 function startStreamTypewriter() {
@@ -190,7 +205,7 @@ function startStreamTypewriter() {
   streamTargetText = "";
   lastStreamRenderAt = 0;
   streamTail = null;
-  streamPendingFull = streamDirty = false;
+  streamPendingFull = streamDirty = streamHeld = false;
   let acc = 0; // characters owed to the reader (fractional)
   let prev = performance.now();
 
@@ -250,7 +265,7 @@ function stopStreamTypewriter() {
     const textContainer = activeAssistantBubble.querySelector(".bubble-text") as HTMLElement | null;
     if (textContainer) {
       streamTextBuffer = streamTargetText;
-      textContainer.innerHTML = formatMarkdown(streamTextBuffer);
+      textContainer.innerHTML = formatMarkdown(withoutTrailingNewlines(streamTextBuffer));
       scrollToBottomIfNeeded();
     }
   }
@@ -970,7 +985,6 @@ function updateFlowMonitor() {
           <polyline points="6 9 12 15 18 9"></polyline>
         </svg>
       </div>
-      <div class="flow-progress"><i></i></div>
       <div class="flow-accordion-body">
         <div class="flow-content-inline"></div>
       </div>
@@ -980,8 +994,6 @@ function updateFlowMonitor() {
   setStatusIcon(summary.querySelector(".flow-summary-icon")!, summaryStatus, "flow", 12);
   summary.querySelector(".flow-summary-label")!.textContent = splitStepLabel(summaryLabel)[0];
   summary.querySelector(".flow-step-count")!.textContent = `${completedCount}/${totalCount}`;
-  const bar = activeFlowBubble.querySelector<HTMLElement>(".flow-progress > i");
-  if (bar) bar.style.width = `${totalCount ? (completedCount / totalCount) * 100 : 0}%`;
   activeFlowBubble.dataset.status = summaryStatus;
 
   // Chi tiết tất cả các bước (hiển thị khi expand), khớp theo step.id
@@ -1590,6 +1602,11 @@ socket.onMessage((msg) => {
     if (chunkText && activeAssistantBubble) {
       if (activeAssistantBubble.classList.contains("typing-loader")) {
         clearStreamLoader(activeAssistantBubble);
+        if (!activeAssistantBubble.querySelector(".bubble-text")) {
+          const textContainer = document.createElement("div");
+          textContainer.className = "bubble-text";
+          activeAssistantBubble.appendChild(textContainer);
+        }
       }
       activeAssistantText += chunkText;
       streamTargetText = activeAssistantText; // Feed typewriter target buffer
@@ -1635,15 +1652,19 @@ socket.onMessage((msg) => {
     // Đảm bảo xả toàn bộ chữ còn lại ra màn hình
     if (activeAssistantBubble) {
       if (activeAssistantBubble.classList.contains("typing-loader")) {
-        clearStreamLoader(activeAssistantBubble);
+        clearStreamLoader(activeAssistantBubble, true);
       }
+      activeAssistantBubble.querySelectorAll(".stream-bubble-host, .sl-defs").forEach((el) => el.remove());
+      [...activeAssistantBubble.childNodes].forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) node.remove();
+      });
       let textContainer = activeAssistantBubble.querySelector(".bubble-text") as HTMLElement;
       if (!textContainer) {
         textContainer = document.createElement("div");
         textContainer.className = "bubble-text";
         activeAssistantBubble.appendChild(textContainer);
       }
-      textContainer.innerHTML = formatMarkdown(activeAssistantText);
+      textContainer.innerHTML = formatMarkdown(withoutTrailingNewlines(activeAssistantText));
       scrollToBottomIfNeeded();
     }
     activeAssistantBubble = null;
@@ -2002,25 +2023,24 @@ function deliverTranscript(text: string): boolean {
   return false;
 }
 
+/** Touch screens: after sending, drop the focus so the on-screen keyboard goes away and the main screen is back (desktop keeps the caret in the box). */
 function dismissKeyboardOnMobile() {
   commandInput.blur();
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
-  if (isMobile) {
-    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-    document.body.scrollTop = 0;
-    document.documentElement.scrollTop = 0;
-  }
+  window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  document.body.scrollTop = 0;
+  document.documentElement.scrollTop = 0;
 }
 
 async function sendCommand() {
-  dismissKeyboardOnMobile();
   const text = commandInput.value.trim();
   if (!text && !pendingFile) return;
   void audioPlayer.unlock(); // the first chat is a user gesture: start the audio context now so the TTS reply can play (skipped when running)
 
-  // Clear input immediately for responsiveness
+  // Clear input immediately for responsiveness; desktop keeps the caret focused, a phone drops the keyboard
   commandInput.value = "";
   commandInput.style.height = "24px"; // Reset height
+  if (enterMakesNewLine) dismissKeyboardOnMobile();
+  else commandInput.focus();
 
   // Trigger hiệu ứng morphicons: máy bay giấy -> Check (đã gửi) -> quay lại máy bay giấy
   cmdSend.classList.add("sent");
@@ -2338,7 +2358,6 @@ commandInput.addEventListener("keydown", (e) => {
 
   if (e.key === "Enter" && !e.shiftKey && !enterMakesNewLine) {
     e.preventDefault();
-    dismissKeyboardOnMobile();
     sendCommand();
   } else if (e.key === "Escape") {
     toggleCommandBar(false);
@@ -2360,8 +2379,10 @@ commandInput.addEventListener("keydown", (e) => {
 
 // Send button click
 cmdSend.addEventListener("click", () => {
-  dismissKeyboardOnMobile();
   sendCommand();
+});
+cmdSend.addEventListener("mousedown", (e) => {
+  e.preventDefault();
 });
 
 // Auto-mute when input is focused or clicked and prefetch suggestions

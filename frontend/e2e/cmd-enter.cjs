@@ -2,6 +2,7 @@
 //  Máy tính: Enter gửi, Shift+Enter xuống dòng (như cũ).
 //  Điện thoại (màn cảm ứng): bàn phím không có Shift+Enter nên Enter chỉ XUỐNG DÒNG, gửi bằng nút gửi.
 //  Khi danh sách gợi ý (/ hoặc @) đang mở thì Enter vẫn chọn gợi ý, không xuống dòng.
+//  Sau khi gửi: máy tính giữ con trỏ trong ô nhập để gõ tiếp; điện thoại BỎ focus để bàn phím ảo tụt xuống, trả về màn hình chính.
 // WebSocket và /api bị mock. Chạy: PW=<module playwright> node frontend/e2e/cmd-enter.cjs   (cần `npm run dev` ở :5173)
 const { chromium } = require(process.env.PW || "playwright");
 const BASE = process.env.BASE_URL || "http://localhost:5173/";
@@ -33,6 +34,7 @@ const userBubbles = (page) => page.$$eval(".chat-bubble.user", (b) => b.map((x) 
   const sent = await userBubbles(page);
   check((await val(page)) === "" && sent.length === 1 && /dong mot/.test(sent[0]) && /dong hai/.test(sent[0]), "1b. máy tính: Enter gửi cả hai dòng", JSON.stringify(sent));
   check((await page.$eval("#command-input", (e) => e.enterKeyHint)) === "send", "1c. máy tính: phím Enter của bàn phím gợi ý là \"gửi\"");
+  check(await page.evaluate(() => document.activeElement?.id === "command-input"), "1d. máy tính: sau khi gửi, con trỏ vẫn ở ô nhập để gõ tiếp");
   await page.context().close();
 
   // điện thoại
@@ -50,6 +52,11 @@ const userBubbles = (page) => page.$$eval(".chat-bubble.user", (b) => b.map((x) 
   await page.click("#cmd-send"); await page.waitForTimeout(500);
   const sent2 = await userBubbles(page);
   check((await val(page)) === "" && sent2.length === 1 && /dong 1/.test(sent2[0]) && /dong 3/.test(sent2[0]), "2g. điện thoại: nút gửi gửi cả ba dòng", JSON.stringify(sent2));
+
+  check(await page.evaluate(() => document.activeElement?.id !== "command-input" && document.activeElement === document.body), "2i. điện thoại: bấm nút gửi xong ô nhập mất focus → bàn phím ảo tụt xuống, không còn treo", await page.evaluate(() => document.activeElement?.tagName + "#" + document.activeElement?.id));
+  await page.click("#command-input"); await page.keyboard.type("tam"); await page.keyboard.press("Enter");
+  check(await page.evaluate(() => document.activeElement?.id === "command-input"), "2j. điện thoại: Enter chỉ xuống dòng nên bàn phím vẫn mở để gõ tiếp");
+  await page.fill("#command-input", "");
 
   // gợi ý đang mở: Enter chọn gợi ý, không xuống dòng
   await page.click("#command-input"); await page.keyboard.type("/check"); await page.waitForTimeout(500);

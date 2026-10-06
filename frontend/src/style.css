@@ -397,6 +397,10 @@ body {
   /* Keep bubbles interactive */
   transition: opacity 0.3s ease, transform 0.3s ease, filter 0.3s ease;
   position: relative;
+  /* The bubbles are flex items of the scrolling #chat-history. With an explicit min-height (the assistant bubble has 32px) they stop
+     being protected by the automatic content minimum, so a list that overflows squeezed every bubble down to 32px and the text spilled
+     out of its frame (and no longer pushed the chat up). A bubble never shrinks below its text. */
+  flex-shrink: 0;
 }
 
 /* Khử khoảng cách margin dư thừa của các đoạn văn bên trong bong bóng chat */
@@ -440,6 +444,10 @@ body {
   border: 1px solid rgba(14, 165, 233, 0.15);
   color: rgba(14, 165, 233, 0.95);
   border-bottom-left-radius: 4px;
+  min-height: 32px;
+  min-width: 48px;
+  padding: 6px 12px;
+  box-sizing: border-box;
 }
 
 /* System Flow Chat Bubble styling */
@@ -449,7 +457,8 @@ body {
   border: 1px solid rgba(14, 165, 233, 0.15);
   color: rgba(255, 255, 255, 0.85);
   border-bottom-left-radius: 4px;
-  width: 240px !important; /* the agent cards under it have the same width */
+  width: 240px !important;
+  /* the agent cards under it have the same width */
   max-width: 90% !important;
   box-sizing: border-box;
   padding: 8px 12px !important;
@@ -460,31 +469,6 @@ body {
   font-size: 12px;
   line-height: 1.35;
   white-space: normal !important;
-}
-
-/* thin progress bar under the header */
-.chat-bubble.system-flow .flow-progress {
-  height: 2px;
-  margin: 7px 0 2px;
-  border-radius: 2px;
-  background: rgba(148, 163, 184, 0.15);
-  overflow: hidden;
-}
-
-.chat-bubble.system-flow .flow-progress>i {
-  display: block;
-  height: 100%;
-  width: 0;
-  background: #38bdf8;
-  transition: width 0.3s ease;
-}
-
-.chat-bubble.system-flow[data-status="completed"] .flow-progress>i {
-  background: #22c55e;
-}
-
-.chat-bubble.system-flow[data-status="failed"] .flow-progress>i {
-  background: #ef4444;
 }
 
 /* timeline: one dot per step on a vertical rail */
@@ -1542,7 +1526,10 @@ body {
 }
 
 @keyframes panel-in-scale {
-  from { opacity: 0; transform: scale(0.9) translateY(16px); }
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(16px);
+  }
 }
 
 .map-body {
@@ -1981,6 +1968,7 @@ body {
     top: 56px;
     aspect-ratio: 16 / 9;
   }
+
   #chat-history {
     pointer-events: auto;
   }
@@ -2621,7 +2609,8 @@ body {
 /* agent header: lucide icon tile + name / task, status glyph on the right
    (the surrounding chat bubble already draws the frame) */
 .interactive-card.tracker-card:has(.tracker-agent-icon) {
-  width: 100%; /* fixed: the bubble has a fixed width, whatever the task text says */
+  width: 100%;
+  /* fixed: the bubble has a fixed width, whatever the task text says */
   margin: 0;
   padding: 0;
 }
@@ -2788,8 +2777,10 @@ body {
 #jarvis-bot {
   position: absolute;
   right: 4px;
-  bottom: calc(100% - 12px); /* sits on the bar's top edge; the send button (z-index 12) stays on top of it */
-  z-index: 11; /* above #chat-history (10) so it stays clickable, below #cmd-send-wrap */
+  bottom: calc(100% - 12px);
+  /* sits on the bar's top edge; the send button (z-index 12) stays on top of it */
+  z-index: 11;
+  /* above #chat-history (10) so it stays clickable, below #cmd-send-wrap */
   width: 32px;
   height: 32px;
   cursor: pointer;
@@ -2807,7 +2798,9 @@ body {
 }
 
 @media (max-width: 768px) {
-  #jarvis-bot { right: 6px; }
+  #jarvis-bot {
+    right: 6px;
+  }
 }
 
 /* Flip clock (src/clock.ts), HTC Sense style without the card: one digit per
@@ -3030,7 +3023,8 @@ body {
 /* send: paper-plane icon centred in a liquid-metal ring (src/metal-ring.ts) */
 #cmd-send-wrap {
   position: relative;
-  z-index: 12; /* above the bot (#jarvis-bot, 11) that perches over it */
+  z-index: 12;
+  /* above the bot (#jarvis-bot, 11) that perches over it */
   flex-shrink: 0;
   width: 30px;
   height: 30px;

@@ -42,14 +42,14 @@ const check = (ok, name, extra = "") => {
       text: rows.map((r) => r.querySelector(".flow-step-text").textContent).join("|"),
       detail: rows[1].querySelector(".flow-step-detail")?.textContent || "",
       pill: b.querySelector(".flow-step-count").textContent,
-      bar: b.querySelector(".flow-progress > i")?.style.width || "",
+      hasBar: !!b.querySelector(".flow-progress"),
     };
   });
   check(!/mono|consolas|cascadia/i.test(f.font + f.rowFont), "1. khung bước dùng font giao diện, không monospace", f.font);
   check(f.ids === 0, "2. bỏ số thứ tự '1. 2. 3.'");
   check(f.statuses === "completed,completed,active", "3. mỗi bước có trạng thái (chấm dòng thời gian)", f.statuses);
   check(f.text === "Nhận: xin chào jarvis|Định tuyến|Đang gọi LLM" && f.detail === "general", "4. tách '→ chi tiết' thành chữ phụ, bỏ '...'", `${f.text} / ${f.detail}`);
-  check(f.pill === "2/3" && f.bar.startsWith("66"), "5. số đếm + thanh tiến độ", `${f.pill} ${f.bar}`);
+  check(f.pill === "2/3" && !f.hasBar, "5. số đếm bước (đã bỏ thanh tiến độ)", f.pill);
 
   const t = await page.evaluate(() => [...document.querySelectorAll(".tracker-card")].map((c) => ({
     name: c.querySelector(".tracker-name")?.textContent,

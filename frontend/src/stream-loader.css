@@ -8,7 +8,9 @@
   align-items: center;
   justify-content: center;
   min-height: 32px;
-  padding: 8px 12px;
+  min-width: 48px;
+  padding: 6px 12px;
+  box-sizing: border-box;
   overflow: visible;
 }
 
@@ -99,6 +101,35 @@
   background: #38bdf8;
 }
 
+/* Exit animation when the text stream begins (460 ms, COLLAPSE_MS in stream-loader.ts): the four balls keep flying (stream-spin is
+   untouched) and, as one cluster, swell a little (a light pump, like hopping up) and then shrink back to the centre and dissolve.
+   Nothing else changes: same place (the host is positioned where the flex-centred loader host sat), same balls, same sizes, still four separate balls until they are tiny. */
+.stream-bubble-host.collapsing {
+  position: absolute;
+  top: 8px; /* = where the flex-centred loader host sat: 1px border + 6px padding + 1px to centre 14px in 18px */
+  left: 12px; /* 1px border + 12px padding - 1px: the host is 22px wide in a 46px-wide inner box */
+  pointer-events: none;
+  z-index: 2;
+  animation: stream-collapse-host 0.46s linear forwards;
+}
+
+@keyframes stream-collapse-host {
+  0% {
+    transform: scale(0.72);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1);
+  }
+  30% {
+    transform: scale(0.82);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  100% {
+    transform: scale(0.05);
+    opacity: 0;
+  }
+}
+
 @keyframes stream-spin {
   to {
     transform: rotate(360deg);
@@ -124,7 +155,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bc-1, .bc-2, .bc-3, .bc-4, .loader-layer-pin {
+  .bc-1, .bc-2, .bc-3, .bc-4, .loader-layer-pin, .stream-bubble-host.collapsing {
     animation: none;
+    transition: none;
   }
 }
