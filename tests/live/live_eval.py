@@ -92,8 +92,6 @@ CASES = [
     dict(id="webcam-look", text="xem webcam giúp tôi", gate={"orchestrator"}, agents=["webcam"]),
     dict(id="project-check", text="kiểm tra dự án", gate={"orchestrator"}, agents=["project"]),
     dict(id="security-scan", text="kiểm tra an ninh mạng và quét cổng giúp tôi", gate={"orchestrator"}, agents=["security"]),
-    dict(id="legal-labor", text="bộ luật lao động quy định nghỉ phép năm bao nhiêu ngày?", gate={"orchestrator"}, agents=["legal"], any_of=["lao động", "nghỉ phép"]),
-    dict(id="vietlott-645", text="phân tích kết quả mega 6/45 gần đây", gate={"orchestrator"}, agents=["vietlott"]),
     # ---- chat about Jarvis's own voice/TTS must NOT reach a tool (jarvis.log 2026-09-20 09:54: went to desktop/open_app)
     dict(id="chat-tts-retry", text="thử lại để tôi nghe giọng đọc TTS xem ra sao", history=TTS_HISTORY, gate={"general"}, agents=None),
     dict(id="chat-tts-retry-short", text="thử lại giọng đọc TTS", history=TTS_HISTORY, gate={"general"}, agents=None),

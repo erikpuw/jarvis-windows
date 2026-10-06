@@ -54,7 +54,7 @@ def test_empty_plans_mention_and_normal_text_keep_old_routing(monkeypatch):
 
 
 def test_chat_no_longer_knows_plan_goal(monkeypatch):
-    assert "plan_goal" not in catalog.tool_list_text() and len(catalog.offerable_tools()) == 19
+    assert "plan_goal" not in catalog.tool_list_text() and len(catalog.offerable_tools()) == 17
     assert not hasattr(catalog, "offer_choices")
     assert extract_action("x <ask_user>tìm hiểu</ask_user> không?<action_run>plan_goal</action_run>") == ""
     # lời đề nghị cũ còn trong DB (trước khi gỡ) không được mở chế độ mục tiêu

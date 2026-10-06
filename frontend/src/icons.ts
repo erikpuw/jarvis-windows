@@ -12,8 +12,8 @@ import {
   History, MapPin, EllipsisVertical, Plus, ChevronDown,
   Paperclip, Send, LoaderCircle, Check, CircleDashed,
   Save, PlugZap, Upload, Trash2, RefreshCw, type IconNode,
-  AppWindow, Monitor, Moon, Mail, Bird, Image, Scale, Music, NotebookPen, FolderOpen,
-  Wrench, FileText, Search, Shield, Ticket, Eye, Camera, Bot, Slash, AtSign, Orbit, CircleOff,
+  AppWindow, Monitor, Moon, Mail, Bird, Image, Music, NotebookPen, FolderOpen,
+  Wrench, FileText, Search, Shield, Eye, Camera, Bot, Slash, AtSign, Orbit, CircleOff,
 } from "lucide";
 
 defineMorphIcon();
@@ -170,9 +170,9 @@ export async function runAction(
 // Keyed by the name after "Agent "; an agent missing here still renders, with Bot.
 const AGENT_ICON: Record<string, IconNode> = {
   control: AppWindow, desktop: Monitor, dream: Moon, email: Mail, goose: Bird,
-  history: History, image: Image, legal: Scale, media: Music, notes: NotebookPen,
+  history: History, image: Image, media: Music, notes: NotebookPen,
   office: FolderOpen, project: Wrench, rag: FileText, search: Search, security: Shield,
-  vietlott: Ticket, vision: Eye, webcam: Camera,
+  vision: Eye, webcam: Camera,
 };
 
 /** "💻 Agent Desktop" → { name: "Agent Desktop", icon }. */

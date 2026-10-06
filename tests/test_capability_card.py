@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from engine import prompts  # noqa: E402
 from engine.prompts import catalog  # noqa: E402
-from engine.prompts.chat import build_chat_system_prompt  # noqa: E402
+from engine.prompts.chat import build_chat_system_prompt, load_offer_protocol  # noqa: E402
 from engine.orchestrator.registry import AGENT_REGISTRY  # noqa: E402
 
 # Thẻ tự nhận thức thật sự nằm trong prompt là <capabilities> + <offer_protocol> ghép lại
@@ -22,7 +22,7 @@ from engine.orchestrator.registry import AGENT_REGISTRY  # noqa: E402
 _CAPABILITY_CARD = (
     prompts.load("capabilities")
     + "\n\n"
-    + prompts.load("offer_protocol", offerable_tools=catalog.tool_list_text())
+    + load_offer_protocol()
 )
 
 
@@ -53,7 +53,7 @@ def test_card_says_no_tool_runs_this_turn_and_no_promises():
 
 def test_card_still_lists_what_jarvis_can_do():
     card = _card().lower()
-    for concept in ("ứng dụng", "email", "thời tiết", "tin tức", "màn hình", "ghi chú", "nhạc", "pháp luật"):
+    for concept in ("ứng dụng", "email", "thời tiết", "tin tức", "màn hình", "ghi chú", "nhạc"):
         assert concept in card, concept
 
 
