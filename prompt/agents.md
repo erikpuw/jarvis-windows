@@ -2,7 +2,18 @@
 - office: Chỉ khi có tệp đính kèm Word/Excel/PowerPoint đáng tin cậy VÀ người dùng yêu cầu tạo/sửa/định dạng nội dung file đó. KHÔNG chọn chỉ vì nhắc tới Word/Excel/PowerPoint — mở/đóng ứng dụng là desktop.
 - email: Chỉ khi kiểm tra 10 email gần nhất hoặc lịch hẹn 7 ngày tới trong Outlook.
 - desktop: Mở, đóng, bật, tắt ứng dụng Windows (bao gồm cả Word/Excel/PowerPoint/Outlook-email khi chỉ là mở/đóng ứng dụng, không phải đọc nội dung).
-- search: Tra cứu thời gian thực dạng văn bản: thời tiết, tin tức, giá vàng/xăng/usd, giá tổng hợp/giá thị trường hôm nay (vàng, xăng dầu, tỷ giá, gas, điện, nước), bản đồ, lịch vạn niên, cung hoàng đạo, lịch chiếu CGV, game miễn phí. KHÔNG dùng để xem video/livestream.
+- weather: Thời tiết, nhiệt độ, dự báo của một nơi.
+- news: Tin tức, bản tin thời sự trên báo trong nước, kể cả tin về giá cả, kinh tế.
+- market: Chỉ giá vàng, tỷ giá ngoại tệ, giá xăng dầu, giá gas, giá điện nước hôm nay (giá tổng hợp thị trường). Giá hàng hóa, thực phẩm, sản phẩm là mua sắm.
+- shop: Mua sắm: tra giá, đánh giá, so sánh, chọn sản phẩm và hàng hóa (điện tử, đồ gia dụng, thực phẩm).
+- route: Chỉ đường đi từ nơi này đến nơi khác.
+- places: Tìm địa điểm, quán xung quanh.
+- cinema: Phim đang chiếu và sắp chiếu ở rạp CGV (không phải xem video hay phim trực tuyến).
+- games: Game miễn phí trên Epic Games Store.
+- lunar: Lịch vạn niên hôm nay gồm ngày âm lịch kèm can chi, giờ hoàng đạo, mệnh ngày, tuổi xung khắc, hướng xuất hành.
+- zodiac: Tử vi hằng ngày của 12 cung hoàng đạo (cung theo ngày sinh dương lịch), không phải tử vi theo năm sinh/tuổi âm lịch.
+- vn_data: Đơn vị hành chính Việt Nam: tỉnh, huyện, xã, mã hành chính.
+- vietlott: Phân tích kết quả Mega 6/45, Power 6/55.
 - vision: Chỉ khi người dùng yêu cầu chụp/xem màn hình ngay bây giờ.
 - webcam: Chỉ khi người dùng yêu cầu xem/dùng webcam hoặc camera trực tiếp.
 - media: Nghe nhạc, xem phim, xem livestream, xem video Youtube.
@@ -10,7 +21,9 @@
 - notes: Ghi lại, hiển thị danh sách, hoặc xoá note.
 - project: Kiểm tra project, quét lỗi cú pháp, báo cáo sức khỏe, lịch sử vá lỗi.
 - security: Kiểm tra an ninh mạng, quét cổng, giám sát firewall, nhật ký xâm nhập.
+- system: Xem hoạt động hệ thống máy tính: CPU, RAM, ổ đĩa, tiến trình đang chạy, tình trạng máy.
 - image: Tăng độ phân giải ảnh bằng AI Upscayl.
+- legal: Tra cứu văn bản pháp luật Việt Nam.
 - win_control: Chỉ khi người dùng gọi rõ điều khiển UI/Explorer Windows.
 - rag: Chỉ khi có tệp đính kèm đáng tin cậy VÀ người dùng yêu cầu đọc/tóm tắt/phân tích nội dung file đó.
 - dream: Chỉ khi người dùng chủ động yêu cầu dọn dẹp/tóm tắt hội thoại cũ hoặc kích hoạt chu kỳ Dream ngay.
