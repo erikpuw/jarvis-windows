@@ -154,25 +154,6 @@
  {
   "type": "function",
   "function": {
-   "name": "legal",
-   "description": "Tra cứu văn bản pháp luật Việt Nam.",
-   "parameters": {
-    "type": "object",
-    "properties": {
-     "query": {
-      "type": "string",
-      "description": "yêu cầu ngắn gọn cho agent"
-     }
-    },
-    "required": [
-     "query"
-    ]
-   }
-  }
- },
- {
-  "type": "function",
-  "function": {
    "name": "lunar",
    "description": "Lịch vạn niên hôm nay gồm ngày âm lịch kèm can chi, giờ hoàng đạo, mệnh ngày, tuổi xung khắc, hướng xuất hành.",
    "parameters": {
@@ -420,46 +401,8 @@
  {
   "type": "function",
   "function": {
-   "name": "vietlott",
-   "description": "Phân tích kết quả Mega 6/45, Power 6/55.",
-   "parameters": {
-    "type": "object",
-    "properties": {
-     "query": {
-      "type": "string",
-      "description": "yêu cầu ngắn gọn cho agent"
-     }
-    },
-    "required": [
-     "query"
-    ]
-   }
-  }
- },
- {
-  "type": "function",
-  "function": {
    "name": "vision",
    "description": "Chỉ khi người dùng yêu cầu chụp/xem màn hình ngay bây giờ.",
-   "parameters": {
-    "type": "object",
-    "properties": {
-     "query": {
-      "type": "string",
-      "description": "yêu cầu ngắn gọn cho agent"
-     }
-    },
-    "required": [
-     "query"
-    ]
-   }
-  }
- },
- {
-  "type": "function",
-  "function": {
-   "name": "vn_data",
-   "description": "Đơn vị hành chính Việt Nam: tỉnh, huyện, xã, mã hành chính.",
    "parameters": {
     "type": "object",
     "properties": {

@@ -37,9 +37,6 @@ QUY TẮC khi thêm 1 handler vào TOOL_REGISTRY:
 KNOWN_TOOL_NAMES: frozenset[str] = frozenset({
     "check_mail",
     "check_calendar",
-    "vietlott_analysis",
-    "legal_lookup",
-    "vietnam_data_lookup",
     "get_market_data",
     "search_products",
     "get_zodiac_data",
@@ -99,21 +96,6 @@ async def _h_check_calendar(arguments, ws, safe_ws_send_json, conversation_histo
     )
 
 
-async def _h_vietlott_analysis(arguments, ws, safe_ws_send_json, conversation_history, **kwargs):
-    from engine.tools.vietlott_engine.service import run_vietlott_analysis
-    return await run_vietlott_analysis(arguments)
-
-
-async def _h_legal_lookup(arguments, ws, safe_ws_send_json, conversation_history, **kwargs):
-    from engine.tools.legal_engine import legal_lookup
-    return await legal_lookup(arguments.get("query", ""))
-
-
-async def _h_vietnam_data_lookup(arguments, ws, safe_ws_send_json, conversation_history, **kwargs):
-    from engine.tools.search_engine import handle_vietnam_data_query
-    return await handle_vietnam_data_query(arguments.get("query", ""), ws=ws)
-
-
 async def _h_get_market_data(arguments, ws, safe_ws_send_json, conversation_history, **kwargs):
     from engine.tools.search_engine import handle_market_query
     query = arguments.get("query", "")
@@ -160,9 +142,6 @@ async def _h_web_research(arguments, ws, safe_ws_send_json, conversation_history
 TOOL_REGISTRY: dict[str, Callable[..., Awaitable]] = {
     "check_mail": _h_check_mail,
     "check_calendar": _h_check_calendar,
-    "vietlott_analysis": _h_vietlott_analysis,
-    "legal_lookup": _h_legal_lookup,
-    "vietnam_data_lookup": _h_vietnam_data_lookup,
     "get_market_data": _h_get_market_data,
     "search_products": _h_search_products,
     "get_zodiac_data": _h_get_zodiac_data,

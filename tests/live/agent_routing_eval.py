@@ -69,7 +69,6 @@ CASES = [
     ("tuần này epic tặng game gì", {"get_epic_free_games"}),
     ("tử vi cung sư tử hôm nay", {"get_zodiac_data"}),
     ("hôm nay âm lịch ngày bao nhiêu", {"get_vannien_data"}),
-    ("xã Tân Phú thuộc huyện nào", {"vietnam_data_lookup"}),
     ("thời tiết và tin tức hôm nay", {W, N}),
     # --- câu nối tiếp: chỉ đúng khi nhìn được lượt trước (từ khóa không có lịch sử nên đoán mò)
     ("còn pin thì sao", {P}, HIST_PRODUCT),
@@ -89,8 +88,6 @@ OTHER = [  # (câu, agent mong đợi)
     ("chụp màn hình xem đang có gì", "vision"),
     ("kiểm tra an ninh mạng máy này", "security"),
     ("quét lỗi dự án", "project"),
-    ("tra luật giao thông về nồng độ cồn", "legal"),
-    ("kết quả mega 6/45 kỳ gần nhất", "vietlott"),
     ("xem lại lịch sử trò chuyện hôm qua", "history"),
 ]
 
@@ -123,8 +120,6 @@ HELD_OUT = [
     ("game nào đang free trên epic", {"get_epic_free_games"}),
     ("mai là mùng mấy âm", {"get_vannien_data"}),
     ("cung song ngư hôm nay có may mắn không", {"get_zodiac_data"}),
-    ("phường Bến Nghé thuộc quận mấy", {"vietnam_data_lookup"}),
-    ("mã hành chính tỉnh Lâm Đồng", {"vietnam_data_lookup"}),
 ]
 HELD_OTHER = [
     ("tắt zalo giúp tôi", "desktop"),
@@ -132,7 +127,6 @@ HELD_OTHER = [
     ("lưu ý tưởng này vào ghi chú", "notes"),
     ("bật nhạc piano thư giãn", "media"),
     ("quét cổng mạng", "security"),
-    ("luật đất đai quy định gì về sổ đỏ", "legal"),
 ]
 
 

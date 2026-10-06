@@ -12,8 +12,6 @@
 - games: Game miễn phí trên Epic Games Store.
 - lunar: Lịch vạn niên hôm nay gồm ngày âm lịch kèm can chi, giờ hoàng đạo, mệnh ngày, tuổi xung khắc, hướng xuất hành.
 - zodiac: Tử vi hằng ngày của 12 cung hoàng đạo (cung theo ngày sinh dương lịch), không phải tử vi theo năm sinh/tuổi âm lịch.
-- vn_data: Đơn vị hành chính Việt Nam: tỉnh, huyện, xã, mã hành chính.
-- vietlott: Phân tích kết quả Mega 6/45, Power 6/55.
 - vision: Chỉ khi người dùng yêu cầu chụp/xem màn hình ngay bây giờ.
 - webcam: Chỉ khi người dùng yêu cầu xem/dùng webcam hoặc camera trực tiếp.
 - media: Nghe nhạc, xem phim, xem livestream, xem video Youtube.
@@ -23,7 +21,6 @@
 - security: Kiểm tra an ninh mạng, quét cổng, giám sát firewall, nhật ký xâm nhập.
 - system: Xem hoạt động hệ thống máy tính: CPU, RAM, ổ đĩa, tiến trình đang chạy, tình trạng máy.
 - image: Tăng độ phân giải ảnh bằng AI Upscayl.
-- legal: Tra cứu văn bản pháp luật Việt Nam.
 - win_control: Chỉ khi người dùng gọi rõ điều khiển UI/Explorer Windows.
 - rag: Chỉ khi có tệp đính kèm đáng tin cậy VÀ người dùng yêu cầu đọc/tóm tắt/phân tích nội dung file đó.
 - dream: Chỉ khi người dùng chủ động yêu cầu dọn dẹp/tóm tắt hội thoại cũ hoặc kích hoạt chu kỳ Dream ngay.

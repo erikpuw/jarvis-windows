@@ -28,7 +28,9 @@ def is_archive(filename: str) -> bool:
 
 def tar_exe() -> str:
     system_tar = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "tar.exe"
-    return str(system_tar) if system_tar.exists() else (shutil.which("tar") or "tar")
+    # System32\tar.exe trên Windows chính là bsdtar (đọc được zip/7z/rar). Nơi khác (CI Linux) ưu tiên bsdtar
+    # vì GNU tar chỉ đọc tar/gz.
+    return str(system_tar) if system_tar.exists() else (shutil.which("bsdtar") or shutil.which("tar") or "tar")
 
 
 def _list(archive: Path) -> list[tuple[str, int, bool]]:

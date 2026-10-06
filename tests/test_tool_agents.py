@@ -12,7 +12,7 @@ from engine.prompts import catalog
 TOOL_AGENTS = {
     "weather": "weather_search", "news": "search_news", "market": "get_market_data", "shop": "search_products",
     "route": "map_route", "places": "map_pois", "cinema": "get_cgv_movies", "games": "get_epic_free_games",
-    "lunar": "get_vannien_data", "zodiac": "get_zodiac_data", "vn_data": "vietnam_data_lookup",
+    "lunar": "get_vannien_data", "zodiac": "get_zodiac_data",
     "web": "web_research",
 }
 

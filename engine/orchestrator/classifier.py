@@ -20,7 +20,7 @@ _SYSTEM = build_classifier_system_prompt() + (
 _REPORT_CHARS = 1500  # agent report fed back to the model as a `tool` message
 
 # ponytail: danh sách tay; thêm agent mới có quyền điều khiển máy thì thêm vào đây.
-_EXTERNAL_CONTENT_AGENTS = {"media", "rag", "legal", "vietlott"} | {n for n, e in AGENT_REGISTRY.items() if "tool" in e}
+_EXTERNAL_CONTENT_AGENTS = {"media", "rag"} | {n for n, e in AGENT_REGISTRY.items() if "tool" in e}
 _MACHINE_CONTROL_AGENTS = {"win_control", "desktop", "goose"}
 
 # Task 19 I1: Words that indicate user agrees with / points at offer, not own request

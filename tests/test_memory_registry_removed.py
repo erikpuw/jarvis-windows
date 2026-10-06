@@ -66,6 +66,8 @@ def test_ui_and_frontend_no_longer_expose_registry():
 
 
 def _load_script():
+    if not (ROOT / "scripts" / "drop_memory_registry.py").exists():
+        pytest.skip("scripts/drop_memory_registry.py không có trong repo (script dọn dữ liệu cũ, chỉ có ở máy tác giả)")
     spec = importlib.util.spec_from_file_location("drop_memory_registry", ROOT / "scripts" / "drop_memory_registry.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
