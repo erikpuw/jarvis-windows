@@ -105,3 +105,35 @@ def kill_descendants(root_pid: int) -> int:
     if not pids:
         return 0
     return force_kill_pids(pids)
+
+
+def find_listening_pids(port: int) -> list:
+    """Find all PIDs listening on a given TCP port on Windows."""
+    try:
+        result = subprocess.run(
+            ["netstat", "-ano"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return []
+
+    pids = set()
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 5 and parts[0].upper() == "TCP" and parts[-1].upper() == "LISTENING":
+            local_addr = parts[1]
+            if local_addr.endswith(f":{port}"):
+                try:
+                    pids.add(int(parts[-2]))
+                except ValueError:
+                    continue
+    return sorted(pids)
+
+
+def free_port(port: int) -> list:
+    """Force-kill whatever is already LISTENING on `port`, if anything."""
+    pids = find_listening_pids(port)
+    if pids:
+        force_kill_pids(pids)
+    return pids
+

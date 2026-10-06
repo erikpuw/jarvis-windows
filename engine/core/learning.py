@@ -66,8 +66,9 @@ def outcome_for_turn(session, turn_started_at: float) -> tuple[int | None, str |
     )
 
 
-LEXICAL_DUPLICATE_THRESHOLD = 0.55
-LEXICAL_CLOSEST_MIN = 0.2
+LEXICAL_DUPLICATE_THRESHOLD = 0.40
+LEXICAL_CONTAINMENT_THRESHOLD = 0.70
+LEXICAL_CLOSEST_MIN = 0.10
 
 
 def _lexical_tokens(text: str) -> set[str]:
@@ -77,10 +78,20 @@ def _lexical_tokens(text: str) -> set[str]:
 
 
 def _lexically_similar(a: str, b: str) -> bool:
-    """Jaccard on accent-folded words. Fallback for when embeddings are off or
-    the two phrasings differ too much for cosine to reach the threshold."""
+    """Độ tương đồng từ vựng kết hợp Jaccard và Containment (tỷ lệ bao hàm từ của câu ngắn trong câu dài)."""
     ta, tb = _lexical_tokens(a), _lexical_tokens(b)
-    return bool(ta and tb) and len(ta & tb) / len(ta | tb) >= LEXICAL_DUPLICATE_THRESHOLD
+    if not ta or not tb:
+        return False
+    inter = len(ta & tb)
+    if not inter:
+        return False
+    jaccard = inter / len(ta | tb)
+    if jaccard >= LEXICAL_DUPLICATE_THRESHOLD:
+        return True
+    min_len = min(len(ta), len(tb))
+    if min_len >= 3 and (inter / min_len) >= LEXICAL_CONTAINMENT_THRESHOLD:
+        return True
+    return False
 
 
 class LearningEngine:
@@ -690,11 +701,11 @@ class LearningEngine:
             return False
 
     def _find_closest_existing_learning(self, kind: str, key: str, content: str) -> dict | None:
-        """Tìm mục học hiện có gần nhất (khớp semantic_key, sau đó Jaccard)."""
+        """Tìm mục học hiện có gần nhất (khớp semantic_key, tương đồng key, sau đó tương đồng văn bản)."""
         learn_type = {"behaviour_lesson": "lesson", "user_fact": "user_fact", "preference": "preference"}.get(kind, "lesson")
         conn = self._get_learning_db()
 
-        # Kiểm tra khớp semantic_key trước
+        # 1. Khớp tuyệt đối semantic_key cùng loại
         row = conn.execute(
             "SELECT id, type, semantic_key, content FROM learnings WHERE type=? AND semantic_key=? LIMIT 1",
             (learn_type, key),
@@ -703,21 +714,43 @@ class LearningEngine:
             conn.close()
             return dict(row)
 
-        # Không có semantic_key trùng, kiểm tra lexical similarity
+        # 2. Quét toàn bộ learnings để tính độ tương đồng từ vựng và key
         rows = conn.execute(
-            "SELECT id, type, semantic_key, content FROM learnings WHERE type=?",
-            (learn_type,),
+            "SELECT id, type, semantic_key, content FROM learnings"
         ).fetchall()
 
         best_match = None
         best_score = 0.0
+        ta_content = _lexical_tokens(content)
+        ta_key = _lexical_tokens(key.replace("_", " "))
+
         for r in rows:
-            ta = _lexical_tokens(content)
-            tb = _lexical_tokens(r["content"])
-            if ta and tb:
-                score = len(ta & tb) / len(ta | tb)
-                if score > best_score:
-                    best_score, best_match = score, dict(r)
+            tb_content = _lexical_tokens(r["content"])
+            tb_key = _lexical_tokens(str(r["semantic_key"] or "").replace("_", " "))
+
+            score_content = 0.0
+            if ta_content and tb_content:
+                inter = len(ta_content & tb_content)
+                if inter:
+                    jaccard = inter / len(ta_content | tb_content)
+                    containment = inter / min(len(ta_content), len(tb_content))
+                    score_content = max(jaccard, containment * 0.85)
+
+            score_key = 0.0
+            if ta_key and tb_key:
+                inter_k = len(ta_key & tb_key)
+                if inter_k:
+                    score_key = inter_k / len(ta_key | tb_key)
+
+            base_score = max(score_content, score_key * 0.9)
+            if base_score > 0:
+                type_bonus = 0.1 if r["type"] == learn_type else 0.0
+                total_score = base_score + type_bonus
+            else:
+                total_score = 0.0
+
+            if total_score > best_score:
+                best_score, best_match = total_score, dict(r)
 
         conn.close()
 
@@ -989,19 +1022,20 @@ class LearningEngine:
             decision = c_parsed.get("decision", "skip") if isinstance(c_parsed, dict) else "skip"
             merged_content = c_parsed.get("merged_content", "") if isinstance(c_parsed, dict) else ""
 
-            # Nếu yêu cầu học tường minh, kiểm tra ngoài lệnh
-            if is_explicit and decision == "skip":
-                # Kiểm tra xem mục cũ có trùng từ vựng không
-                if closest:
-                    is_lexical_dup = _lexically_similar(content, closest.get("content", ""))
-                    if not is_lexical_dup:
-                        # Mục cũ không trùng ⇒ đổi quyết định thành new
-                        decision = "new"
-                        log.info("Critique skip bị bỏ qua: ngài yêu cầu học rõ ràng")
-                else:
-                    # Không có mục cũ ⇒ đổi thành new
+            # Xử lý quyết định phản biện & chống trùng lặp:
+            if decision == "skip":
+                if is_explicit and not closest:
+                    # Người dùng yêu cầu ghi nhớ rõ ràng và trong DB chưa có bài nào tương tự ⇒ vẫn ghi nhận
                     decision = "new"
-                    log.info("Critique skip bị bỏ qua: ngài yêu cầu học rõ ràng")
+                    log.info("Critique skip bị bỏ qua: ngài yêu cầu học rõ ràng và chưa có bài học nào trong bộ nhớ")
+                else:
+                    log.info("⏭️ Critique bỏ qua bài học trùng lặp/không bền vững: %s", content)
+            elif decision == "new" and closest:
+                # Nếu Critique trả về new nhưng trong DB đã có bài học tương đồng từ vựng/bao hàm ⇒ viết chồng lên thay vì tạo bản ghi trùng
+                if _lexically_similar(content, closest.get("content", "")):
+                    decision = "merge"
+                    merged_content = content
+                    log.info("🔄 Tự động chuyển new thành merge để viết chồng lên bài học cũ id=%s", closest.get("id"))
 
             applied = await asyncio.to_thread(
                 self._apply_critique_decision,
