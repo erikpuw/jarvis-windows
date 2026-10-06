@@ -16,7 +16,7 @@ Bạn nói hoặc gõ bằng tiếng Việt, JARVIS hiểu và **làm việc th�
 
 - 🎙️ **Trò chuyện bằng giọng nói** tiếng Việt, theo thời gian thực.
 - 🖥️ **Điều khiển máy**: mở/đóng ứng dụng, đọc màn hình, dùng webcam, tạo và sửa tệp Word/Excel/PowerPoint.
-- 🔎 **Tra cứu**: tin tức, thời tiết, giá vàng và tỷ giá, YouTube, luật Việt Nam.
+- 🔎 **Tra cứu**: tin tức, thời tiết, giá vàng và tỷ giá, YouTube.
 - 📄 **Hỏi đáp trên tài liệu của bạn** (RAG).
 - 🧠 **Nhớ và tự học** từ các cuộc trò chuyện, có bản chiếu sang Obsidian để bạn đọc lại.
 
@@ -35,7 +35,7 @@ Bạn nói hoặc gõ bằng tiếng Việt, JARVIS hiểu và **làm việc th�
 3. [Một Lượt Hội Thoại Chạy Thế Nào](#-một-lượt-hội-thoại-chạy-thế-nào)
 4. [Prompt Tập Trung Một Nơi](#-prompt-tập-trung-một-nơi)
 5. [Lời Đề Nghị, "ừ" và Chống Bịa](#-lời-đề-nghị-ừ-và-chống-bịa)
-6. [16 Chuyên Viên Tác Vụ (Agents)](#-16-chuyên-viên-tác-vụ-agents)
+6. [27 Chuyên Viên Tác Vụ (Agents)](#-27-chuyên-viên-tác-vụ-agents)
 7. [Tự Học, Tự Tiến Hóa, Dream, Tự Vá Lỗi](#-tự-học-tự-tiến-hóa-dream-tự-vá-lỗi)
 8. [Bộ Nhớ, Memory Center và Obsidian Wiki](#️-bộ-nhớ-memory-center-và-obsidian-wiki)
 9. [Giao Diện (Frontend)](#-giao-diện-frontend)
@@ -60,7 +60,7 @@ Bạn nói hoặc gõ bằng tiếng Việt, JARVIS hiểu và **làm việc th�
 
 | Tính năng | Mô tả |
 |-----------|-------|
-| **LLM local** | Gemma 4 E4B-it QAT (profile đang dùng) hoặc Qwen3.5-9B, chạy qua llama.cpp tại `http://localhost:8080/v1`, xử lý được cả văn bản lẫn hình ảnh |
+| **LLM local** | Gemma 4 E4B-it QAT (profile đang dùng), Qwen3.5-9B hoặc Bonsai (chọn bằng cờ trong `.env`), chạy qua llama.cpp tại `http://localhost:8080/v1`, xử lý được cả văn bản lẫn hình ảnh |
 | **Embeddings local** | `nomic-embed-text-v1.5-q8_0` tại `http://localhost:8081/v1`, dùng cho RAG và bộ nhớ ngữ nghĩa |
 | **Giọng nói tiếng Việt** | Nhận giọng bằng Web Speech API (`vi-VN`), có sửa lỗi nhận dạng. Đọc thành tiếng bằng Edge-TTS (`vi-VN-NamMinhNeural`) hoặc VieNeu streaming (port 8082); chỉ bật một trong hai |
 | **Điều khiển Windows** | Agent `win_control` dùng cua-driver (UI Automation) điều khiển app chạy nền, không chiếm chuột; xác nhận trước mỗi thao tác đổi máy. Cách cài cua-driver: xem [chi tiết](#-công-cụ-nền-tảng-cào-web-và-điều-khiển-windows) |
@@ -69,7 +69,7 @@ Bạn nói hoặc gõ bằng tiếng Việt, JARVIS hiểu và **làm việc th�
 | **Lời đề nghị có kiểm soát** | Khi bạn chỉ trò chuyện, Jarvis đề nghị việc có thể làm bằng thẻ `<ask_user>`/`<action_run>`. Bạn đáp "ừ" thì code chạy đúng tool đã đề nghị, không cần LLM đoán lại |
 | **Prompt tập trung** | Chữ của mọi prompt nằm trong `prompt/*.md`, code ghép prompt nằm trong `engine/prompts/` |
 | **Chống bịa kết quả** | Mọi lượt chat đều có chỉ thị `<tool_status>` nói rằng ở lượt này không có công cụ nào chạy, nên chat không được tự nói "đã kiểm tra" hay nêu trạng thái hệ thống |
-| **An ninh** | Guardrails chống prompt injection, firewall IP + kiểm tra Origin (chống CSRF/WebSocket hijacking) cho REST và WebSocket, theo dõi kết nối |
+| **An ninh** | Guardrails chống prompt injection, firewall IP + kiểm tra Origin (chống CSRF/WebSocket hijacking) cho REST và WebSocket, theo dõi kết nối. Bộ nhớ, lịch sử chat và nhật ký khoá bằng mật khẩu `MEMORY_PASSWORD` |
 
 ### 🧠 Trí nhớ và tự học
 
@@ -83,7 +83,7 @@ Bạn nói hoặc gõ bằng tiếng Việt, JARVIS hiểu và **làm việc th�
 
 ### 🇻🇳 Tiện ích thêm (tùy chọn)
 
-Mỗi tiện ích là một agent riêng trong `engine/agents/` (danh sách đầy đủ ở mục [16 chuyên viên tác vụ](#-16-chuyên-viên-tác-vụ-agents)):
+Mỗi tiện ích là một agent riêng trong `engine/agents/` (danh sách đầy đủ ở mục [27 chuyên viên tác vụ](#-27-chuyên-viên-tác-vụ-agents)):
 
 - **Đời sống Việt Nam**: thời tiết, tin tức, giá vàng/xăng/tỷ giá, lịch vạn niên, cung hoàng đạo, lịch chiếu CGV, game miễn phí Epic, bản đồ và chỉ đường.
 - **Giải trí**: nghe nhạc, YouTube, livestream.
@@ -97,14 +97,16 @@ Mỗi tiện ích là một agent riêng trong `engine/agents/` (danh sách đ�
 
 | # | Bước | Khi nào | Kết quả |
 |---|------|---------|---------|
-| 0 | `@plans` | Câu bắt đầu bằng `@plans <mục tiêu>`, ví dụ `@plans hôm nay không biết ăn gì` | Chế độ mục tiêu ([engine/plans](engine/plans)): lập kế hoạch tra cứu → gọi agent đọc (search/web/history) → lập lại khi cần → một kết luận. Chat **không** tự đề nghị chế độ này |
-| 0b | `@rag` | Câu bắt đầu bằng `@rag` | Kho tài liệu lâu dài ([engine/rag](engine/rag)), xem mục "Kho tài liệu (`@rag`)". Chạy trước `@mention`, nên `@rag` không còn rơi vào agent RAG bắt buộc có tệp |
-| 1 | `@mention` | Câu bắt đầu bằng `@desktop`, `@mail`… (danh bạ ở `prompt/tools.md`) | Gọi thẳng agent đó |
-| 2 | Đáp lời đề nghị | Lượt trước Jarvis đã hỏi `<ask_user>`, giờ bạn đáp "ừ", "đồng ý", "không"… | Code chạy đúng tool trong `<action_run>`, không qua LLM |
-| 3 | Điều khiển bằng giọng | Lệnh âm lượng, tắt máy… | Agent `win_control` |
-| 4 | Phàn nàn định tuyến | "sai rồi, tôi chỉ hỏi thôi" | Gỡ workflow vừa chạy nhầm và ghi `routing_correction` |
-| 5 | Dùng lại workflow | Câu **khớp nguyên văn** một lệnh đã chạy thành công trước đó | Chạy thẳng chuỗi tool đã lưu |
-| 6 | Gate (LLM, `temperature 0`) | Mọi câu còn lại | `general`, `general_knowledge`, `orchestrator`, hoặc `attachment_clarify` khi có tệp đính kèm |
+| 0 | Lệnh tường minh | `/tên_lệnh …` (Command Bar), `@commands/<tool>.md …` hoặc "Dùng lệnh `<tool>` …" | Chạy thẳng agent sở hữu tool đó, không qua gate hay classifier |
+| 1 | `@plans` | Câu bắt đầu bằng `@plans <mục tiêu>`, ví dụ `@plans hôm nay không biết ăn gì` | Chế độ mục tiêu ([engine/plans](engine/plans)): lập kế hoạch tra cứu → gọi agent đọc (search/web/history) → lập lại khi cần → một kết luận. Chat **không** tự đề nghị chế độ này |
+| 2 | `@jobs` | Câu bắt đầu bằng `@jobs`, hoặc đang phỏng vấn / duyệt thư | Tìm việc ([engine/jobs](engine/jobs)), xem mục "Tìm việc (`@jobs`)" |
+| 3 | `@rag` | Câu bắt đầu bằng `@rag` | Kho tài liệu lâu dài ([engine/rag](engine/rag)), xem mục "Kho tài liệu (`@rag`)". Chạy trước `@mention`, nên `@rag` không rơi vào agent RAG bắt buộc có tệp |
+| 4 | `@mention` | Câu bắt đầu bằng `@desktop`, `@mail`… (tên và alias lấy từ `skills/agents/*/skill.md`) | Gọi thẳng agent đó |
+| 5 | Đáp lời đề nghị | Lượt trước Jarvis đã hỏi `<ask_user>`, giờ bạn đáp "ừ", "đồng ý", "không"… | Code chạy đúng tool trong `<action_run>`, không qua LLM |
+| 6 | Điều khiển bằng giọng | Lệnh âm lượng, tắt máy… | Agent `win_control` |
+| 7 | Phàn nàn định tuyến | "sai rồi, tôi chỉ hỏi thôi" | Gỡ workflow vừa chạy nhầm và ghi `routing_correction` |
+| 8 | Dùng lại workflow | Câu **khớp nguyên văn** một lệnh đã chạy thành công trước đó | Chạy thẳng chuỗi tool đã lưu |
+| 9 | Gate (LLM, `temperature 0`) | Mọi câu còn lại | `general`, `general_knowledge`, `orchestrator`, hoặc `attachment_clarify` khi có tệp đính kèm. Hướng dẫn từng nhãn nằm ở `skills/router/*/SKILL.md` |
 
 - **orchestrator**: classifier chọn agent. Với câu lệnh nằm lẫn trong lời chat, classifier được rút gọn câu (ví dụ "…bạn mở giúp tôi được không?" thành "mở Notepad"), nhưng chỉ khi câu rút gọn **chỉ bớt từ**, không thêm từ mới. Agent chạy xong, `next_tasks` quyết định có gọi thêm agent khác không. Nhiều kết quả được `synthesizer` gộp lại thành một câu trả lời.
 - **plan** (`@plans`): tối đa 3 vòng × 3 bước (tổng 5), mỗi bước 60 giây; model chỉ chọn đích và viết câu tra cứu (JSON có schema), không cầm tool; vòng nào không bước nào thành công thì dừng. Tra web qua tool `web_research` (Google News RSS rồi đọc 3 bài), mỗi trang được soát chèn lệnh. Sở thích trong `Preferences.md` chỉ bước kết luận thấy, không bao giờ nằm trong câu tra cứu gửi ra ngoài.
@@ -121,17 +123,18 @@ Muốn sửa prompt thì sửa file `.md`, không viết chữ prompt trong code
 | Nhóm | File trong `prompt/` | Code dùng (`engine/prompts/`) |
 |------|----------------------|-------------------------------|
 | Persona, luật cứng | `identity.md`, `soul.md`, `user.md`, `persona_short.md` | `persona.py` |
-| Chat | `capabilities.md`, `offer_protocol.md`, `voice_cues.md`, `style_lock.md`, `fallback.md`, `turn_status.md`, `tool_status_none.md`, `tool_status_declined.md` | `chat.py`, `results.py` |
-| Định tuyến | `router_gate.md`, `classifier.md`, `agents.md` (tiêu chí chọn agent) | `router.py` |
-| Danh bạ agent/tool | `tools.md` (tên `@`, alias, tool được phép đề nghị) | `catalog.py` |
+| Chat | `capabilities.md`, `voice_cues.md`, `style_lock.md`, `fallback.md`, `turn_status.md`, `tool_status_none.md`, `tool_status_declined.md` (giao thức đề nghị nằm ở `skills/general_offer/SKILL.md`) | `chat.py`, `results.py` |
+| Định tuyến | `router_gate.md`, `classifier.md`, `agents.md` (tiêu chí chọn agent); hướng dẫn từng nhãn gate ở `skills/router/*/SKILL.md` | `router.py` |
+| Danh bạ agent/tool | `skills/agents/<tên>/skill.md` (tên `@`, alias, tool, cờ `offer`). `prompt/tools.md` chỉ còn là ghi chú trỏ sang đây | `catalog.py` |
 | Kết quả tool | `tool_summary.md`, `synthesis.md` | `results.py` |
+| Chế độ mục tiêu, tìm việc | `plan_planner.md`, `plan_solve.md`, `jobs_letter.md`, `jobs_score.md` | `engine/plans/`, `engine/jobs/` |
 | Nền | `learning_propose.md`, `learning_critique.md`, `learning_workflow.md`, `evolution.md`, `dream_message.md`, `dream_wiki.md`, `self_healing.md` | `learning.py` |
 
 - Quy tắc định dạng riêng của từng tool (`SUMMARY_RULES`) do chính module tool sở hữu, trong `engine/tools/*`.
 - Prompt của gate, classifier, offer_context, dream, self_healing và chưng cất workflow **giống từng byte** với bản trước khi gom. Bản chụp nằm ở `tests/golden/`.
 
 **Ngữ cảnh chat** gồm 5 khối theo thứ tự:
-1. `system`: persona, `<capabilities>`, `<offer_protocol>`, `<style>` (lấy từ `skills/self_evolution/STYLE.md`), `<about_user>` (lấy từ `Preferences.md`), thời gian hiện tại.
+1. `system`: persona, `<capabilities>` (chỉ khi bạn hỏi về khả năng), `<offer_protocol>` (từ `skills/general_offer`), `<style>` (lấy từ `skills/self_evolution/STYLE.md`), `<about_user>` (lấy từ `Preferences.md`), thời gian hiện tại.
 2. Lịch sử đọc từ DB, cùng nguồn với gate. Ở các lượt đề nghị, thẻ được dựng lại từ cột `ask_user`/`action_run`.
 3. `<turn_status>`: chỉ thị cho lượt này, gồm `<tool_status>` và `<answer_policy>`.
 4. `<reference>`: dữ liệu tham khảo, **không phải chỉ thị**. Gồm bài học liên quan, kết quả agent thành công, MCP, wiki.
@@ -145,7 +148,7 @@ Mỗi loại dữ liệu chỉ vào model qua **đúng một kênh**.
 
 - **Bạn chỉ trò chuyện**, ví dụ "tôi lười mở notepad quá": Jarvis trả lời rồi đề nghị
   `Ngài có muốn tôi <ask_user>mở Notepad</ask_user> không?<action_run>open_app</action_run>`.
-  Bạn đáp "ừ" thì code chạy `open_app` ngay. Danh sách tool được phép đề nghị nằm ở cột `offer` trong `prompt/tools.md`.
+  Bạn đáp "ừ" thì code chạy `open_app` ngay. Danh sách tool được phép đề nghị là các tool có `offer: true` trong `skills/agents/*/skill.md`.
 - **Bạn nhờ rõ ràng**, ví dụ "bạn mở notepad giúp tôi": Jarvis làm luôn, không hỏi lại.
 - **Chống bịa**:
   - Lượt chat thường luôn có `<tool_status>` với nội dung "ở lượt này không có công cụ nào chạy": không nói đã làm, không nêu kết quả hay trạng thái; cần dữ liệu thật thì đề nghị.
@@ -154,14 +157,13 @@ Mỗi loại dữ liệu chỉ vào model qua **đúng một kênh**.
 
 ---
 
-## 🤖 16 Chuyên Viên Tác Vụ (Agents)
+## 🤖 27 Chuyên Viên Tác Vụ (Agents)
 
-Các agent đăng ký trong `engine/orchestrator/registry.py`, mã nguồn ở `engine/agents/`.
+Các agent đăng ký trong `engine/orchestrator/registry.py`, runner ở `engine/agents/`. Tên `@`, alias và tool của từng agent nằm ở `skills/agents/<tên>/skill.md`; tiêu chí để classifier chọn nằm ở `prompt/agents.md`.
 
 | Agent | Chức năng chính |
 |-------|-----------------|
 | **desktop** | Mở/đóng ứng dụng Windows, giữ đúng tên gốc ứng dụng |
-| **search** | Thời tiết, tin tức, giá vàng/xăng/tỷ giá, lịch vạn niên, cung hoàng đạo, lịch chiếu CGV, game miễn phí Epic, bản đồ và chỉ đường |
 | **media** | Nghe nhạc, xem YouTube, livestream (phát ngay trong giao diện) |
 | **notes** | Ghi, xem, xoá ghi chú |
 | **vision** | Chụp và phân tích màn hình bằng LLM Vision |
@@ -169,6 +171,7 @@ Các agent đăng ký trong `engine/orchestrator/registry.py`, mã nguồn ở `
 | **office** | Tạo/sửa tệp Word, Excel, PowerPoint đính kèm (skill `officecli`) |
 | **rag** | Đọc, tóm tắt, hỏi đáp trên tệp đính kèm hoặc tài liệu đã index |
 | **security** | Kiểm tra an ninh mạng, cổng, firewall |
+| **system** | Xem CPU, RAM, ổ đĩa, tiến trình đang chạy, tình trạng máy |
 | **email** | 10 email gần nhất và lịch hẹn 7 ngày tới trong Outlook |
 | **history** | Xem lại lịch sử trò chuyện |
 | **image** | Tăng độ phân giải ảnh bằng Upscayl |
@@ -177,25 +180,41 @@ Các agent đăng ký trong `engine/orchestrator/registry.py`, mã nguồn ở `
 | **win_control** | Điều khiển ứng dụng Windows chạy nền qua cua-driver (mở app, bấm, nhập chữ), đổi trạng thái cửa sổ |
 | **dream** | Chạy ngay một chu kỳ Dream |
 
+**Nhóm tra cứu**: mỗi tool là một agent riêng, cùng chạy qua `engine/agents/agent_search.py`, nên classifier chọn thẳng đúng tool trong một lần gọi LLM.
+
+| Agent | Tool | Chức năng |
+|-------|------|-----------|
+| **weather** | `weather_search` | Thời tiết, nhiệt độ, dự báo của một nơi |
+| **news** | `search_news` | Tin tức trên báo trong nước |
+| **market** | `get_market_data` | Giá vàng, tỷ giá, xăng dầu, gas, điện nước hôm nay |
+| **shop** | `search_products` | Tra giá, đánh giá, so sánh sản phẩm |
+| **route** | `map_route` | Chỉ đường đi |
+| **places** | `map_pois` | Tìm địa điểm, quán xung quanh |
+| **cinema** | `get_cgv_movies` | Phim đang chiếu và sắp chiếu ở CGV |
+| **games** | `get_epic_free_games` | Game miễn phí trên Epic Games Store |
+| **lunar** | `get_vannien_data` | Lịch vạn niên hôm nay |
+| **zodiac** | `get_zodiac_data` | Tử vi hằng ngày 12 cung hoàng đạo |
+| **web** | `web_research` | Tra web cho `@plans`. Chỉ vào bằng chế độ mục tiêu, classifier không thấy |
+
 ### ➕ Thêm agent mới
 
 Chat, WebUI (gợi ý `@`), Telegram `/agents` và classifier đều **tự lấy** danh sách agent từ các file dưới đây, không phải sửa prompt hay code chat. Chỉ cần làm đủ các bước:
 
 | # | File | Việc cần làm |
 |---|------|--------------|
-| 1 | `engine/agents/agent_<tên>.py` | Viết agent: hàm `run_<tên>_agent` |
-| 2 | `engine/orchestrator/registry.py` | Thêm `"<tên>": {"module": ..., "runner": ...}` vào `AGENT_REGISTRY` |
-| 3 | `prompt/tools.md` | Thêm mục `## @<tên>`: dòng `alias:`, một dòng mô tả, rồi mỗi tool một dòng `- tool | nhãn | offer` (hoặc `-` nếu chat không được đề nghị tool này). Chat sẽ tự thấy tên **"Agent <Tên>"** |
+| 1 | `engine/agents/agent_<tên>.py` | Viết agent: hàm `run_<tên>_agent` (agent tra cứu mới có thể dùng lại `run_search_agent`) |
+| 2 | `engine/orchestrator/registry.py` | Thêm `"<tên>": {"module": ..., "runner": ...}` vào `AGENT_REGISTRY`. Agent chỉ chạy một tool thì thêm `"tool": "<tên_tool>"` |
+| 3 | `skills/agents/<tên>/skill.md` | Phần frontmatter YAML: `name`, `title`, `aliases` (tên gọi `@`), `description`, `tools` (mỗi tool có `name`, `label`, `offer`). `offer: true` nghĩa là chat được đề nghị tool này. Chat sẽ tự thấy tên **"Agent <Tên>"** |
 | 4 | `prompt/agents.md` | Thêm dòng `- <tên>: <khi nào chọn agent này>`. Đây là mô tả tool mà classifier nhìn thấy |
 | 5 | `commands/<tool>.md` | Mỗi tool của agent cần một file lệnh |
 | 6 | Test | Cập nhật `EXPECTED_AGENT_CRITERIA` trong `tests/test_prompts_catalog.py` (và danh sách tool `offer` nếu có thêm), rồi chụp lại golden của classifier bằng lệnh bên dưới |
-| 7 | Chạy lại | `rtk python -m pytest tests -q --ignore=tests/live`, sau đó **khởi động lại JARVIS** (`tools.md` được đọc một lần và giữ trong bộ nhớ) |
+| 7 | Chạy lại | `python -m pytest tests -q --ignore=tests/live --ignore-glob="tests/test_live_*"`, sau đó **khởi động lại JARVIS** (danh bạ agent được đọc một lần và giữ trong bộ nhớ) |
 
 ```bash
-rtk python -c "import json; from engine.orchestrator.classifier import _build_tools; open('tests/golden/classifier_tools.json','w',encoding='utf-8').write(json.dumps(_build_tools(), ensure_ascii=False, indent=1))"
+python -c "import json; from engine.orchestrator.classifier import _build_tools; open('tests/golden/classifier_tools.json','w',encoding='utf-8').write(json.dumps(_build_tools(), ensure_ascii=False, indent=1))"
 ```
 
-Nếu thiếu một bước, `tests/test_prompts_catalog.py` sẽ báo lỗi. Test này đòi tập agent trong `tools.md`, `agents.md` và `AGENT_REGISTRY` phải giống hệt nhau, và mỗi tool phải có file lệnh cùng đúng agent sở hữu. Vì vậy không thể có agent chạy được mà chat hay classifier lại không biết.
+Nếu thiếu một bước, `tests/test_prompts_catalog.py` sẽ báo lỗi. Test này đòi tập agent trong `skills/agents/`, `agents.md` và `AGENT_REGISTRY` phải giống hệt nhau, và mỗi tool phải có file lệnh cùng đúng agent sở hữu. Vì vậy không thể có agent chạy được mà chat hay classifier lại không biết.
 
 ---
 
@@ -268,36 +287,44 @@ Mã nguồn ở `frontend/src/`:
 |------|---------|
 | `main.ts` | Máy trạng thái, Command Bar (Ctrl+K; gõ `/` gợi ý lệnh trong `commands/`, gõ `@` gợi ý agent), thẻ tương tác, trình phát media, bản đồ MapLibre |
 | `orb.ts` | Quả cầu hạt Three.js phản ứng theo âm thanh |
+| `bot.ts`, `bot-mouth.ts` | Linh vật (thư viện `bot-avatars`) nằm trên nút gửi, có hành vi riêng cho từng trạng thái: nhìn quanh, ngủ, gật đầu khi nghe, mở miệng khi nói, ba chấm khi suy nghĩ |
+| `status-orb.ts`, `status-label.ts` | Quả cầu chấm nhỏ (`thinking-orbs`) và dòng chữ trạng thái, đổi hình theo trạng thái JARVIS |
+| `clock.ts`, `edge-aura.ts`, `metal-ring.ts`, `stream-loader.ts` | Đồng hồ lật phía trên quả cầu, viền sáng quanh Command Bar, vòng kim loại quanh nút gửi (WebGL2), hiệu ứng chờ trước chữ đầu tiên của câu trả lời |
+| `anim-gate.ts` | Công tắc chung dừng mọi vòng lặp hoạt ảnh khi có thứ che màn hình (Settings, bản đồ, media) hoặc tab bị ẩn, để máy và điện thoại không nóng |
 | `voice.ts` | Web Speech API, micro, phát âm thanh, ngắt TTS tức thì |
 | `ws.ts` | WebSocket client, tự kết nối lại |
-| `dashboard-hud.ts` | Telemetry: RAM, CPU, VRAM GPU, NPU, agent đang chạy, token |
 | `icons.ts` | Icon morph (morphicons + lucide) cho nút, flow-step, tracker; `runAction` cho nút có vòng xoay → ✓/✗ |
+| `perf-debug.ts` | Bảng đo hiệu năng, chỉ nạp khi mở `?debug=1` (xem bên dưới) |
 | `settings/` | Dashboard cài đặt toàn màn hình (xem dưới) |
-| `style.css` | Giao diện HUD |
+| `style.css` | Giao diện chính |
 
-**Settings dashboard** (`frontend/src/settings/`): mở ra phủ toàn màn hình, orb tạm dừng; sidebar 15 trang, trên mobile thành ngăn kéo.
+**Debug hiệu năng**: mở `https://localhost:8340/?debug=1` (hoặc `:5173`). Mỗi giây bảng này in số khung hình/giây, số lần gọi `requestAnimationFrame` theo từng vòng lặp, tác vụ dài, cỡ DOM, số hoạt ảnh CSS đang chạy, trạng thái `anim-gate` và heap JS; dữ liệu cũng có ở `window.__perf`. Dùng cùng Edge DevTools khi máy nóng hoặc giật.
+
+**Settings dashboard** (`frontend/src/settings/`): mở ra phủ toàn màn hình, orb tạm dừng; sidebar 16 trang, trên mobile thành ngăn kéo.
 
 | File | Vai trò |
 |------|---------|
 | `index.ts` | Khung: mở/đóng, sidebar, chuyển trang, cài đặt lần đầu, nạp dữ liệu, các nút lưu/kiểm tra |
-| `pages.ts` | HTML các trang: Tổng quan, Kết nối & API, Giọng đọc, Người dùng, Hệ thống, Bộ nhớ, Agents, Hooks, Skills, Prompts (sửa và lưu được), Commands, Plugins, MCP Connect, Graphfy, Thông tin (README) |
+| `pages.ts` | HTML các trang: Tổng quan (telemetry phần cứng, dịch vụ), Kết nối & API, Giọng đọc, Người dùng, Hệ thống, Bộ nhớ, Nhật ký, Agents, Hooks, Skills, Prompts (sửa và lưu được), Commands, Plugins, MCP Connect, Graphfy, Thông tin (README) |
 | `memory.ts` | Memory Center: xem, sửa, xoá có kiểm tra quan hệ, chọn nhiều để xoá |
+| `logs.ts` | Trang Nhật ký: lịch sử chat (toàn bộ hoặc theo phiên), `jarvis.log`, log bảo mật, log TTS. Hiển thị bằng `textContent`, nội dung lưu trữ không chèn được HTML |
+| `lock.ts` | Màn hình nhập mật khẩu dùng chung cho Bộ nhớ và Nhật ký. Token chỉ giữ trong biến JS, không ghi vào storage |
 | `graphfy.ts` | Bản đồ cấu trúc **tự sinh từ code** qua `GET /api/graphfy` (`engine/UIUX/graphfy.py` quét import bằng `ast`): mỗi gói `engine/` một khối, riêng `core/` và `server/` tách theo file; đường tím = chỗ gọi LLM; khối LLM vẽ thành **bộ não mạch điện** (nửa não · nửa mạch có xung chạy, rộng 90%), đường từ dưới lên cắm vào chân tín hiệu. Làn: Đầu vào · Xử lý lượt · LLM (trục giữa) · Phản hồi / Bộ nhớ · Nạp tài liệu · Chạy nền · Hỗ trợ (mờ) · Khác. Module mới tự hiện ở làn "Khác" cho tới khi được gán trong `LANES`. Xung sáng mô phỏng luồng trên mọi đường; rê chuột lọc đường của khối và xem file; kéo thả, lưu bố cục `jarvis.graphfy.positions.v4` |
 | `api.ts`, `types.ts`, `styles.css` | Gọi API (timeout 20s, hiện đúng lỗi từ backend), kiểu dữ liệu, giao diện |
 
-Danh sách nặng (agents, hooks, skills, prompts, commands, plugins) lấy từ `/api/settings/catalog` khi mở trang cần, không nằm trong `/api/settings/status` (endpoint này được gọi mỗi 5 giây).
+Bộ nhớ, lịch sử chat và nhật ký bị khoá ở backend (`engine/UIUX/memory_lock.py`): phải đặt `MEMORY_PASSWORD` trong `.env`, chưa đặt thì các trang này **khoá hẳn**. Danh sách nặng (agents, hooks, skills, prompts, commands, plugins) lấy từ `/api/settings/catalog` khi mở trang cần, không nằm trong `/api/settings/status` (endpoint này được gọi mỗi 5 giây).
 
 ---
 
 ## 🔌 Mở Rộng: Lệnh, Skill, Hook, MCP, Telegram
 
-- **33 lệnh Markdown** trong `commands/` (`open_app`, `check_mail`, `search_media`, `rag_tool`, `win_control`, `dream`…), nạp nóng.
-- **2 skill** trong `skills/`: `officecli`, `self_evolution`.
+- **32 lệnh Markdown** trong `commands/` (`open_app`, `check_mail`, `search_media`, `rag_tool`, `win_control`, `dream`…), nạp nóng.
+- **Skill** trong `skills/`: `officecli` (hướng dẫn dùng OfficeCLI), `self_evolution` (`STYLE.md` giọng điệu). Ba thư mục còn lại là dữ liệu cho prompt: `agents/` (danh bạ agent), `router/` (hướng dẫn nhãn gate), `general_offer/` (giao thức đề nghị).
 - **Hook & plugin**: các sự kiện `on_startup`, `on_shutdown`, `ON_MESSAGE_RECEIVE`, `ON_RESPONSE_GENERATE`, nạp plugin `.py`/`.ts` động.
 - **Tự cài extension** (`install_extension`): nạp nóng plugin/skill/hook mới từ URL hoặc code, không cần khởi động lại.
 - **MCP** (`config/mcp_config.json`): `wikipedia-mcp` (bật sẵn); `gitnexus`, `headroom`, `codebase-memory-mcp` (có cấu hình, mặc định tắt). Scrapling và cua-driver **không** phải MCP server: JARVIS gọi trực tiếp, xem [Công cụ nền tảng](#-công-cụ-nền-tảng-cào-web-và-điều-khiển-windows).
 - **Command Bar**: `/tên_lệnh <tham số>` chạy lệnh trong `commands/` (gõ `/tên_lệnh` trống để JARVIS hỏi từng tham số); `@agent câu lệnh` gọi thẳng agent (bước 1 của router). Trang Commands và Agents trong Settings ghi đúng cú pháp này.
-- **Telegram Bot**: điều khiển từ xa, xác thực Chat ID. Lệnh `/agents` đọc danh bạ từ `prompt/tools.md`.
+- **Telegram Bot**: điều khiển từ xa, xác thực Chat ID. Lệnh `/agents` đọc danh bạ từ `skills/agents/`.
 
 ---
 
@@ -375,7 +402,7 @@ Dữ liệu nằm trong `data/jobs/` (hồ sơ, CV, danh sách chờ, nhật ký
                      Chrome / Web Client (https://localhost:8340)
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ voice.ts (STT/TTS) · orb.ts (Three.js) · main.ts (Cards, Media, Map)       │
-│ dashboard-hud.ts (Telemetry) · settings/ (Dashboard, Memory Center)      │
+│ bot.ts · status-orb.ts (trạng thái) · settings/ (Dashboard, Memory)      │
 └───────────────────────────────┬──────────────────────────────────────────┘
                                 │ WebSocket /ws/voice
                                 ▼
@@ -384,17 +411,18 @@ Dữ liệu nằm trong `data/jobs/` (hồ sơ, CV, danh sách chờ, nhật ký
 └───────────────────────────────┬──────────────────────────────────────────┘
                                 ▼
 ┌──────────── engine/router ────────────┐   ┌──── engine/prompts ──────────┐
-│ decide: @mention → "ừ" → voice →      │◄──│ prompt/*.md → persona, chat, │
-│ complaint → replay → gate             │   │ router, results, learning,   │
-└──────┬─────────────────────┬──────────┘   │ catalog                      │
-       │ orchestrator        │ general      └──────────────────────────────┘
+│ decide: lệnh → @plans/@jobs/@rag →    │◄──│ prompt/*.md → persona, chat, │
+│ @mention → "ừ" → voice → complaint →  │   │ router, results, learning,   │
+│ replay → gate                         │   │ catalog                      │
+└──────┬─────────────────────┬──────────┘   └──────────────────────────────┘
+       │ orchestrator        │ general
        ▼                     ▼
 ┌──── engine/orchestrator ───┐  ┌── chat (5 khối) ──┐
 │ classifier → agents →      │  │ system · lịch sử  │
 │ next_tasks → synthesizer   │  │ turn_status ·     │
 └──────┬─────────────────────┘  │ reference · user  │
        ▼                        └───────────────────┘
-┌── engine/agents (16) ──┐  ┌── engine/tools ───────────────┐  ┌── engine/core ─────────────┐
+┌── engine/agents (27) ──┐  ┌── engine/tools ───────────────┐  ┌── engine/core ─────────────┐
 │ desktop, search, media │─►│ desktop automation, scrapling,│  │ memory, learning, evolution│
 │ office, rag, ...       │  │ media, office, weather, ...   │  │ dream, self_healing, RAG   │
 └────────────────────────┘  └───────────────────────────────┘  └────────────────────────────┘
@@ -414,11 +442,12 @@ Dữ liệu nằm trong `data/jobs/` (hồ sơ, CV, danh sách chờ, nhật ký
 - llama.cpp server: LLM tại `:8080`, embeddings tại `:8081`.
 - Redis tại port 6379 (Windows native hoặc WSL).
 - `yt-dlp` trong PATH (cho tìm kiếm YouTube).
+- Đặt `MEMORY_PASSWORD` trong `.env` nếu muốn xem Bộ nhớ, Lịch sử chat và Nhật ký trong Settings.
 - Tùy chọn: [cua-driver](https://github.com/trycua/cua) cho agent `win_control`. Cài bằng PowerShell: `irm https://cua.ai/driver/install.ps1 | iex` (xem [chi tiết](#-công-cụ-nền-tảng-cào-web-và-điều-khiển-windows)).
 
 ### Lưu ý khi tải về
 
-- **Một số tính năng đã gỡ** khỏi bản công khai: tra cứu văn bản pháp luật, phân tích Vietlott, tra cứu đơn vị hành chính (tỉnh/thành, phường/xã). Hiện còn 16 agent.
+- **Một số tính năng đã gỡ** khỏi bản công khai: tra cứu văn bản pháp luật, phân tích Vietlott, tra cứu đơn vị hành chính (tỉnh/thành, phường/xã). Mỗi tool tra cứu là một agent riêng (đăng ký 27 agent).
 - **officecli**: skill `skills/officecli` chỉ chứa hướng dẫn dùng. Hãy cài officecli từ mã nguồn gốc và lấy thư mục `examples/` (ví dụ Word/Excel/PowerPoint) từ đó, thay cho bản sao trong repo này.
 - **Goose**: agent `goose` chỉ mở giao diện Goose (Windows GUI) và, khi bạn duyệt, nhờ Goose CLI sửa một tệp. Cần cài Goose CLI và Goose cho Windows. Không dùng thì bỏ qua, hoặc thay bằng công cụ khác bạn quen (xoá agent trong `engine/orchestrator/registry.py`, `skills/agents/goose/` và `commands/` liên quan).
 - **Dùng model lớn (Claude, Gemini, ChatGPT)**: đổi `LOCAL_URL`, `LOCAL_API_KEY`, `LOCAL_MODEL` trong `.env` sang endpoint tương thích OpenAI của nhà cung cấp. Nếu API của họ khác định dạng OpenAI, cần chỉnh hoặc viết lại [`engine/server/llm_server.py`](engine/server/llm_server.py) (cách gọi, tham số, stream). Prompt trong `prompt/` được tinh chỉnh cho model local nhỏ, model lớn có thể cần chỉnh lại.
@@ -455,7 +484,7 @@ openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -node
 cp .env.example .env           # PowerShell: Copy-Item .env.example .env
 # Chạy llama.cpp (8080, 8081) và Redis (6379)
 
-python server.py               # backend, tự bật Stream TTS :8082 khi dùng VieNeu
+python server.py               # backend, tự bật Stream TTS :8082 khi dùng VieNeu (hoặc chạy riêng: python run_vieneu.py)
 cd frontend && npm run dev     # frontend, mở terminal riêng
 # Mở Chrome: https://localhost:8340
 ```
@@ -474,6 +503,8 @@ Danh sách đầy đủ kèm giải thích nằm trong [`.env.example`](.env.exa
 | `EDGE_TTS_ENABLED` / `VIENEU_TTS_ENABLED` | `true` / `false` | Chọn engine TTS; không được bật cả hai |
 | `TTS_LOCAL_MODEL` | `vi-VN-NamMinhNeural` | Giọng Edge-TTS |
 | `USER_NAME` / `HONORIFIC` | (trống) | Chỉ được trang Settings lưu và hiển thị. Cách JARVIS xưng hô khi trò chuyện ("tôi" – "ngài") nằm ở `prompt/identity.md` và `prompt/user.md`, không lấy từ hai biến này |
+| `MEMORY_PASSWORD` | (trống) | Mật khẩu mở Bộ nhớ, Lịch sử chat và Nhật ký trong Settings. **Để trống thì các trang này bị khoá hẳn.** Không có API nào đặt hay đổi mật khẩu, chỉ sửa trong `.env` |
+| `STREAM_TTS_HOST` / `STREAM_TTS_PORT` | `127.0.0.1` / `8082` | Địa chỉ Stream TTS khi chạy riêng bằng `run_vieneu.py` |
 | `REDIS_URL` | `redis://localhost:6379` | Redis |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_ALLOWED_CHAT_IDS` | tùy chọn | Telegram Bot |
 | `JARVIS_CORS_ORIGINS` | `localhost:5173`, `localhost:8340` | Danh sách origin (phân cách dấu phẩy) được phép gọi API/WebSocket từ trình duyệt. `*` bị bỏ qua. Trang cùng host với server (`https://<ip>:8340`) luôn được phép |
@@ -501,15 +532,18 @@ Cách này không cần mở port trên router và không lộ IP ra ngoài.
 
 | Nhóm | Endpoint |
 |------|----------|
-| Sức khỏe | `GET /api/health`, `/api/health/detailed`, `/api/usage`, `/api/logs` |
+| Sức khỏe | `GET /api/health`, `/api/health/detailed`, `/api/usage` |
+| Khoá bộ nhớ | `GET /api/memory-lock/status`, `POST /api/memory-lock/unlock` (trả token, gửi lại ở header `X-Memory-Token`) |
 | Cài đặt | `/api/settings/status`, `/api/settings/catalog`, `/api/settings/keys` (chỉ nhận `LOCAL_API_KEY`, `TTS_LOCAL_KEY`, `LOCAL_URL`, `TTS_LOCAL_MODEL`, `USER_NAME`, `HONORIFIC`), `/api/settings/preferences`, `/api/settings/test-llm`, `/api/settings/test-tts`, `/api/settings/reset-tokens`, `POST /api/prompts/save`, `/api/system/readme`, `POST /api/restart` |
 | TTS/STT | `/api/tts/voices`, `/api/tts/voice`, `/api/tts/voices/clone`, `/api/tts-test`, `/api/stt` |
-| Memory Center | `/api/memory-control/{summary,dependencies,update,delete}`, `/api/learnings/*`, `/api/memories/*`, `/api/notes/*`, `/api/workflows/*`, `/api/outcomes/list`, `/api/memory-registry/list` |
-| Hội thoại | `/api/history`, `/api/conversations`, `/api/conversations/sessions`, `/api/conversations/session/{id}`, `/api/conversations/update`, `/api/conversations/delete` |
+| Memory Center 🔒 | `/api/memory-control/{summary,dependencies,update,delete}`, `/api/learnings/*`, `/api/notes/*`, `/api/workflows/*`, `/api/evolution/*`, `/api/outcomes/list` |
+| Hội thoại và nhật ký 🔒 | `/api/history`, `/api/logs`, `/api/logs/security`, `/api/logs/tts`, `/api/conversations`, `/api/conversations/sessions`, `/api/conversations/session/{id}`, `/api/conversations/update`, `/api/conversations/delete` |
 | Media | `/api/media/search`, `/api/media/resolve`, `/api/media/local/{path}` |
 | RAG & tệp | `/api/rag/status`, `DELETE /api/rag/document`, `/api/upload` |
-| MCP | `/api/mcp/servers` (trạng thái thật từ hub; `args` được che giá trị bí mật) |
-| Khác | `/api/command-bar/skills`, `/api/command-bar/context`, `/api/feedback`, `/api/feedback/stats`, `POST /api/dream/run`, `/api/agents/goose/launch` |
+| MCP | `/api/mcp/servers`, `POST /api/mcp/servers/{name}/enabled` (trạng thái thật từ hub; `args` được che giá trị bí mật) |
+| Khác | `GET /api/graphfy`, `/api/command-bar/skills`, `/api/command-bar/context`, `/api/feedback`, `/api/feedback/stats`, `POST /api/dream/run`, `/api/agents/goose/launch` |
+
+🔒 = cần token từ `/api/memory-lock/unlock`, nếu không trả `401 locked`.
 
 ---
 
@@ -518,28 +552,33 @@ Cách này không cần mở port trên router và không lộ IP ra ngoài.
 ```
 jarvis/
 ├── server.py              # FastAPI + WebSocket
-├── prompt/                # CHỮ của mọi prompt (*.md) + danh bạ tools.md, agents.md
-├── commands/              # 33 lệnh Markdown nạp nóng
-├── skills/                # officecli, self_evolution (STYLE.md)
+├── prompt/                # CHỮ của mọi prompt (*.md), gồm agents.md (tiêu chí chọn agent)
+├── commands/              # 32 lệnh Markdown nạp nóng
+├── skills/                # agents/ (danh bạ agent), router/, general_offer/, officecli, self_evolution (STYLE.md)
+├── hooks/, plugins/       # hook vòng đời và plugin nạp động
+├── run_vieneu.py          # chạy riêng Stream TTS VieNeu (giữ model trong RAM/VRAM)
 ├── config/                # mcp_config.json
-├── scripts/               # cleanup_learning_2026_09.py (mặc định chỉ xem, --apply mới dọn)
+├── scripts/               # bench_llama.py; cleanup_learning_2026_09.py (mặc định chỉ xem, --apply mới dọn)
 ├── data/                  # jarvis.db, wiki/ (Obsidian), documents/, backups/, dream_archive/
 ├── docs/superpowers/      # specs/, plans/, reports/ (tài liệu nội bộ, không đưa lên repo)
 ├── engine/
 │   ├── router/            # decide, gate, replay, ask_user, fast_paths, dispatch, chat
 │   ├── orchestrator/      # classifier, dispatcher, synthesizer, registry
 │   ├── prompts/           # ghép prompt: persona, chat, router, results, learning, catalog
-│   ├── agents/            # 16 agent
+│   ├── agents/            # runner của 27 agent (agent tra cứu dùng chung agent_search.py)
 │   ├── tools/             # công cụ thực thi (media_search, desktop_automation, ...)
 │   ├── core/              # memory, learning, evolution, dream, self_healing, RAG, guardrails
 │   ├── server/            # llm_server, tts_manager, stream_tts, telegram_bot
-│   ├── context/           # quản lý ngữ cảnh, ngân sách token
+│   ├── plans/             # chế độ mục tiêu @plans
+│   ├── jobs/              # tìm việc @jobs
+│   ├── rag/               # kho tài liệu @rag
 │   ├── security/          # firewall, connection monitor
 │   ├── UIUX/              # REST router, thẻ tương tác
 │   ├── main/              # FlowTracker, FlowAgents, xác nhận người dùng
 │   └── chunking/          # AST chunker (Tree-sitter)
-├── frontend/src/          # main.ts, orb.ts, voice.ts, ws.ts, icons.ts, dashboard-hud.ts, style.css
-│   └── settings/          # dashboard cài đặt: index, pages, memory, graphfy, api, styles
+├── frontend/src/          # main.ts, orb.ts, bot.ts, status-orb.ts, voice.ts, ws.ts, icons.ts, style.css, ...
+│   └── settings/          # dashboard cài đặt: index, pages, memory, logs, lock, graphfy, api, styles
+├── frontend/e2e/          # kịch bản Playwright (*.cjs)
 └── tests/                 # unit tests, golden/, live/probes/
 ```
 
@@ -548,10 +587,11 @@ jarvis/
 ## 🧪 Kiểm Thử và Đo Đạc
 
 ```bash
-rtk python -m pytest tests -q --ignore=tests/live
+python -m pytest tests -q --ignore=tests/live --ignore-glob="tests/test_live_*"
 ```
 
 - **Golden** (`tests/test_prompts_wired.py`): prompt của gate, classifier, offer_context, dream, self_healing và workflow phải giống từng byte với `tests/golden/`. Test này cũng kiểm tra không còn chữ prompt viết trong code, và các module import được theo mọi thứ tự.
+- **E2E frontend** (`frontend/e2e/*.cjs`, Playwright, WebSocket và `/api` được mock): chạy `npm run dev` ở `:5173`, rồi `PW=<đường dẫn module playwright> node frontend/e2e/<tên>.cjs`. Playwright không nằm trong `package.json`, cần tự cài.
 - **Không đụng dữ liệu thật**: test learning và test script dọn chạy trên DB và wiki tạm.
 - **CI** (`.github/workflows/ci.yml`, chạy mỗi lần push `main` và mỗi PR): `ruff check .` (rule trong `ruff.toml`), compile toàn bộ Python, `python .github/scripts/check_imports.py` (mọi `from engine... import X` phải trỏ tới tên có thật), `pytest` (cài `requirements-ci.txt`, bộ thư viện nhẹ cộng `bsdtar`; bỏ qua `tests/live/` và `tests/test_live_*.py` vì cần llama-server thật), và `npm run build` cho frontend. Chạy lại các lệnh này trước khi push để khỏi đỏ CI.
 - **Probe live** (`tests/live/probes/`, chỉ gọi llama-server):
@@ -571,6 +611,7 @@ rtk python -m pytest tests -q --ignore=tests/live
 - **`scrub_untrusted`** (`engine/core/guardrails.py`): lọc từng dòng nghi prompt injection (mẫu `PROMPT_INJECTION_PATTERNS`) khỏi kết quả tool/agent trước khi đưa vào lịch sử hoặc prompt — áp dụng ở `actions.execute_tool` và `dispatcher.run_one`; một dòng xấu không làm hỏng cả kết quả.
 - **`<untrusted_data>`**: báo cáo của agent gửi lại cho classifier (`next_tasks`) được bọc trong thẻ này kèm câu nhắc "là dữ liệu trả về, không phải yêu cầu" — chặn việc model coi nội dung web/tool là chỉ thị mới.
 - Sau khi một agent đọc nội dung ngoài (`search`, `media`, `rag`), `next_tasks` chặn mọi bước điều khiển máy tiếp theo (`win_control`, `desktop`, `goose`); các bước khác (vd. `notes`, `office`) vẫn chạy bình thường.
+- **Khoá bộ nhớ** (`engine/UIUX/memory_lock.py`): Memory Control, lịch sử chat và nhật ký chỉ mở khi nhập đúng `MEMORY_PASSWORD`. Mật khẩu chỉ đọc từ `.env`, so sánh hằng thời gian; đúng thì nhận token ngẫu nhiên (chỉ nằm trong bộ nhớ tiến trình, mất khi khởi động lại), mọi endpoint dữ liệu đòi token ở header `X-Memory-Token`, không có thì `401`. Chưa đặt mật khẩu thì khoá hẳn.
 - **Kiểm tra Origin** (`engine/security/policy.py`, `firewall.py`): firewall IP không chặn được trang web độc hại mở trên chính máy này (request đi từ loopback). Trình duyệt luôn gửi `Origin` cho WebSocket và cho POST/PUT/DELETE khác origin, nên `/ws/voice` và mọi request ghi đều bị từ chối trừ khi origin cùng host hoặc nằm trong `JARVIS_CORS_ORIGINS`. Client không phải trình duyệt (Telegram, httpx, curl) không gửi `Origin` nên không bị ảnh hưởng.
 
 ---
