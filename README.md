@@ -26,6 +26,10 @@ Bạn nói hoặc gõ bằng tiếng Việt, JARVIS hiểu và **làm việc th�
 
 **Xưng hô:** JARVIS tự xưng "tôi" và gọi người dùng là "ngài" (luật cứng trong [`prompt/identity.md`](prompt/identity.md); muốn đổi thì sửa file này và `prompt/user.md`). Tài liệu này gọi người đọc là "bạn".
 
+> [!IMPORTANT]
+> **Dự án do người Việt xây dựng cho người dùng tiếng Việt và chỉ hỗ trợ tiếng Việt.** Không có công tắc đổi ngôn ngữ. Prompt, nhận dạng giọng nói (`vi-VN`), giọng đọc, từ khoá lệnh ("mở", "tắt", "ừ", "đồng ý"…), luật chọn agent, test và chữ trên giao diện đều bằng tiếng Việt, nên nhập tiếng Anh thường không khớp. Tiếng Anh chỉ có ở `README.en.md` và changelog.
+> **Muốn dùng bằng tiếng Anh thì phải fork và chuyển đổi toàn bộ dự án**, không chỉ sửa `.env`. Danh sách việc cần làm ở mục [Fork sang ngôn ngữ khác](#fork-sang-ngôn-ngữ-khác).
+
 > **Trạng thái:** dự án cá nhân, đang phát triển liên tục. Gặp lỗi hoặc có ý tưởng? Mở [issue](https://github.com/erikpuw/jarvis-windows/issues) (có mẫu sẵn).
 
 ## 📑 Mục Lục
@@ -453,21 +457,27 @@ Dữ liệu nằm trong `data/jobs/` (hồ sơ, CV, danh sách chờ, nhật ký
 - **Dùng model lớn (Claude, Gemini, ChatGPT)**: đổi `LOCAL_URL`, `LOCAL_API_KEY`, `LOCAL_MODEL` trong `.env` sang endpoint tương thích OpenAI của nhà cung cấp. Nếu API của họ khác định dạng OpenAI, cần chỉnh hoặc viết lại [`engine/server/llm_server.py`](engine/server/llm_server.py) (cách gọi, tham số, stream). Prompt trong `prompt/` được tinh chỉnh cho model local nhỏ, model lớn có thể cần chỉnh lại.
 - **Test có thể lỗi trên máy bạn**: một số test phụ thuộc dịch vụ ngoài (llama.cpp, Redis, `bsdtar`, mạng). Sau khi tải về hãy chạy `python -m pytest tests -q --ignore=tests/live --ignore-glob="tests/test_live_*"` và kiểm tra lại các test lỗi trước khi sửa code.
 
-- **Dự án viết thuần tiếng Việt**: prompt, giọng đọc, nhận dạng giọng nói và nguồn dữ liệu đều theo tiếng Việt. Dùng ngôn ngữ khác thì xem mục [Đổi ngôn ngữ và giọng nói](#đổi-ngôn-ngữ-và-giọng-nói) ngay bên dưới.
+- **Chỉ tiếng Việt**: dự án không có công tắc ngôn ngữ. Dùng ngôn ngữ khác thì phải fork và chuyển đổi từ đầu đến cuối, xem danh sách ngay bên dưới.
 
-#### Đổi ngôn ngữ và giọng nói
+#### Fork sang ngôn ngữ khác
 
-1. **Giọng đọc (TTS)**. Mặc định Edge TTS (`vi-VN-NamMinhNeural`).
-   - Đổi sang ngôn ngữ khác trong `.env`: `TTS_LOCAL_MODEL=en-US-GuyNeural` (danh sách giọng: `edge-tts --list-voices`). Giữ `EDGE_TTS_ENABLED=true`, `VIENEU_TTS_ENABLED=false`, vì VieNeu chỉ đọc tiếng Việt.
-   - Muốn dịch vụ mạnh hơn (ElevenLabs, OpenAI TTS, Azure, Google...): viết thêm một engine trong `engine/server/` theo mẫu `tts_engine.py` và đăng ký ở `tts_manager.py` (đọc `TTS_ENGINE`). Dịch vụ nên trả âm thanh từng câu để `voice_streamer.py` phát liên tục.
-2. **Nhận dạng giọng nói (STT)**: `engine/server/whisper_server.py` đang cố định `language="vi"`. Đổi mã ngôn ngữ (vd `"en"`) hoặc bỏ tham số để Whisper tự nhận.
-3. **Prompt**: toàn bộ prompt nằm trong `prompt/*.md`. Ưu tiên chỉnh `identity.md`, `soul.md`, `user.md`, `style_lock.md`, `voice_cues.md`, `persona_short.md`. Các prompt này đang yêu cầu trả lời tiếng Việt và xưng hô "tôi - ngài". Thêm chỉ dẫn rõ ràng cho model ở đầu `identity.md`, ví dụ:
+Quy mô nội dung tiếng Việt (số dòng chứa chữ Việt): `engine/` khoảng 3.450 dòng trong 128 file, `frontend/src/` khoảng 550, `prompt/`, `commands/`, `skills/` khoảng 520. Tác giả không có kế hoạch hỗ trợ ngôn ngữ khác, nên hãy coi đây là việc chuyển đổi toàn bộ. Làm theo thứ tự:
+
+1. **Prompt**: mọi file trong `prompt/*.md`, rồi văn bản trong `skills/router/`, `skills/agents/*/skill.md` (`description` và `label` của tool được dán vào prompt) và `skills/general_offer/`. Thêm chỉ dẫn rõ ràng ở đầu `identity.md`, ví dụ:
    ```
-   Ngôn ngữ của người dùng là English. Luôn trả lời bằng English, kể cả khi dữ liệu công cụ trả về tiếng Việt.
-   Xưng hô: gọi người dùng là "sir", tự xưng "I". Câu ngắn, tự nhiên, phù hợp để đọc thành tiếng.
+   The user's language is English. Always reply in English, even when tool results come back in Vietnamese.
+   Address the user as "sir" and refer to yourself as "I". Keep sentences short and natural for speech.
    ```
-   Sau khi sửa, chạy lại test: nhiều test so prompt với bản mẫu trong `tests/golden/`, cần cập nhật các file này theo prompt mới.
-4. **Dữ liệu và từ khoá tiếng Việt**: tin tức, thời tiết, giá vàng/xăng, lịch vạn niên, từ khoá chọn agent (`engine/agents/`) và tên lệnh trong `commands/` đều theo tiếng Việt/Việt Nam. Đổi ngôn ngữ thì các phần này cần xem lại, hoặc tắt các lệnh không dùng.
+2. **Từ khoá khớp chuỗi trong code** (phần dễ hỏng âm thầm nhất): regex điều khiển bằng giọng, phàn nàn định tuyến và câu trả lời có/không ở `engine/router/fast_paths.py`, `engine/router/ask_user.py`; các danh sách `_*_KW` trong `engine/agents/` (ví dụ `agent_desktop.py`); từ đệm trong `engine/tools/media_search.py`; chữ tiếng Việt và tên file wiki (như `Học hỏi.md`) trong `engine/core/learning.py`; chữ tiếng Việt trong các module `engine/tools/`. `PROMPT_INJECTION_PATTERNS` ở `engine/core/guardrails.py` đã có tiếng Anh.
+3. **Giọng nói**:
+   - Đọc: đặt `TTS_LOCAL_MODEL=en-US-GuyNeural` trong `.env` (`edge-tts --list-voices` liệt kê giọng). Giữ `EDGE_TTS_ENABLED=true`, `VIENEU_TTS_ENABLED=false`, vì VieNeu chỉ đọc tiếng Việt. Muốn ElevenLabs, OpenAI TTS, Azure, Google: viết thêm engine trong `engine/server/` theo mẫu `tts_engine.py`, đăng ký ở `tts_manager.py` (đọc `TTS_ENGINE`); dịch vụ nên trả âm thanh từng câu để `voice_streamer.py` phát liên tục.
+   - Nghe: phía trình duyệt dùng `vi-VN` trong `frontend/src/voice.ts`, còn `engine/server/whisper_server.py` cố định `language="vi"`. Đổi cả hai.
+4. **Nguồn dữ liệu**: tin tức, thời tiết, giá vàng/xăng, lịch vạn niên, rạp CGV, Epic, trang bán hàng đều của Việt Nam. Thay hoặc tắt các lệnh tương ứng trong `commands/`.
+5. **Chữ trên giao diện** trong `frontend/src/` và các trang Settings.
+6. **Test**: nhiều test và bản chụp `tests/golden/` chứa câu tiếng Việt. Cập nhật theo prompt mới rồi chạy lại `python -m pytest tests -q --ignore=tests/live --ignore-glob="tests/test_live_*"`.
+7. **Đo lại**: prompt được tinh chỉnh cho model local nhỏ bằng tiếng Việt. Dịch xong hãy chạy lại các probe trong `tests/live/` với llama-server của bạn.
+
+Nếu dùng model lớn (Claude, Gemini, ChatGPT), xem ghi chú ở trên về `LOCAL_URL` và `engine/server/llm_server.py`.
 
 ### Các bước
 

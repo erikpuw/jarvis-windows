@@ -28,7 +28,9 @@ You speak or type in Vietnamese, and JARVIS understands and **does real work** o
 
 > **Status:** a personal project under active development. Found a bug or have an idea? Open an [issue](https://github.com/erikpuw/jarvis-windows/issues) (templates included).
 >
-> JARVIS is built for Vietnamese: prompts, voice recognition (`vi-VN`), TTS voices and most command keywords are Vietnamese. Example commands below keep the original Vietnamese with an English gloss.
+> [!IMPORTANT]
+> **This project is built by a Vietnamese developer, for Vietnamese speakers, and it is Vietnamese-only.** It is not bilingual and has no language switch. Prompts, speech recognition (`vi-VN`), TTS voices, command keywords ("mở", "tắt", "ừ", "đồng ý"…), agent-selection rules, tests and the UI text are all Vietnamese, so English input will often fail to match. English is used only in this README and the changelog.
+> **If you want to use it in English, fork it and convert the whole project**, not just `.env`. A checklist is in [Forking for another language](#forking-for-another-language). Example commands below keep the original Vietnamese with an English gloss.
 
 ## 📑 Table of Contents
 
@@ -455,21 +457,27 @@ Data lives in `data/jobs/` (profile, CV, pending list, sent log). It never appli
 - **Using a large model (Claude, Gemini, ChatGPT)**: change `LOCAL_URL`, `LOCAL_API_KEY`, `LOCAL_MODEL` in `.env` to the provider's OpenAI-compatible endpoint. If their API is not OpenAI-shaped, adjust or rewrite [`engine/server/llm_server.py`](engine/server/llm_server.py) (request format, parameters, streaming). The prompts in `prompt/` are tuned for small local models; larger models may need re-tuning.
 - **Tests may fail on your machine**: some depend on external services (llama.cpp, Redis, `bsdtar`, network). After downloading, run `python -m pytest tests -q --ignore=tests/live --ignore-glob="tests/test_live_*"` and check failing tests before changing code.
 
-- **The project is written purely for Vietnamese**: prompts, voice, speech recognition and data sources all assume Vietnamese. For another language see [Changing language and voice](#changing-language-and-voice) right below.
+- **Vietnamese only**: this project has no language switch. To use another language you must fork it and convert it end to end, see the checklist right below.
 
-#### Changing language and voice
+#### Forking for another language
 
-1. **Voice output (TTS)**. Default is Edge TTS (`vi-VN-NamMinhNeural`).
-   - Switch language in `.env`: `TTS_LOCAL_MODEL=en-US-GuyNeural` (voice list: `edge-tts --list-voices`). Keep `EDGE_TTS_ENABLED=true` and `VIENEU_TTS_ENABLED=false`, because VieNeu reads Vietnamese only.
-   - For a stronger service (ElevenLabs, OpenAI TTS, Azure, Google...): add an engine in `engine/server/` modelled on `tts_engine.py` and register it in `tts_manager.py` (reads `TTS_ENGINE`). The service should return audio sentence by sentence so `voice_streamer.py` can play it continuously.
-2. **Speech recognition (STT)**: `engine/server/whisper_server.py` hardcodes `language="vi"`. Change it (e.g. `"en"`) or drop the argument so Whisper auto-detects.
-3. **Prompts**: all prompts live in `prompt/*.md`. Start with `identity.md`, `soul.md`, `user.md`, `style_lock.md`, `voice_cues.md`, `persona_short.md`. They currently require Vietnamese replies and the "tôi - ngài" form of address. Add an explicit instruction for the model at the top of `identity.md`, for example:
+Rough size of the Vietnamese content (lines containing Vietnamese text): `engine/` about 3,450 in 128 files, `frontend/src/` about 550, and about 520 across `prompt/`, `commands/` and `skills/`. The maintainer does not plan to support other languages, so treat this as a full port. Convert, in this order:
+
+1. **Prompts**: everything in `prompt/*.md`, then the route/agent/offer texts in `skills/router/`, `skills/agents/*/skill.md` (their `description` and tool `label` are pasted into prompts) and `skills/general_offer/`. Add an explicit instruction at the top of `identity.md`, for example:
    ```
    The user's language is English. Always reply in English, even when tool results come back in Vietnamese.
    Address the user as "sir" and refer to yourself as "I". Keep sentences short and natural for speech.
    ```
-   After editing, rerun the tests: many compare prompts against the samples in `tests/golden/`, so update those files to match.
-4. **Vietnamese data and keywords**: news, weather, gold/fuel prices, lunar calendar, agent-selection keywords (`engine/agents/`) and command names in `commands/` are Vietnamese/Vietnam-specific. When changing language, review these or disable commands you do not use.
+2. **Keyword matching in code** (the part that silently breaks): voice-control and complaint regexes and yes/no replies in `engine/router/fast_paths.py` and `engine/router/ask_user.py`; the `_*_KW` keyword lists in `engine/agents/` (for example `agent_desktop.py`); the noise words in `engine/tools/media_search.py`; the Vietnamese text and wiki file names (such as `Học hỏi.md`) in `engine/core/learning.py`; and the Vietnamese text in tool modules under `engine/tools/`. `PROMPT_INJECTION_PATTERNS` in `engine/core/guardrails.py` already includes English.
+3. **Voice**:
+   - TTS: set `TTS_LOCAL_MODEL=en-US-GuyNeural` in `.env` (`edge-tts --list-voices` lists voices). Keep `EDGE_TTS_ENABLED=true` and `VIENEU_TTS_ENABLED=false`, because VieNeu reads Vietnamese only. For ElevenLabs, OpenAI TTS, Azure or Google, add an engine in `engine/server/` modelled on `tts_engine.py` and register it in `tts_manager.py` (reads `TTS_ENGINE`); it should return audio sentence by sentence so `voice_streamer.py` can play it continuously.
+   - Speech input: the browser side uses `vi-VN` in `frontend/src/voice.ts`; `engine/server/whisper_server.py` hardcodes `language="vi"`. Change both.
+4. **Data sources**: news, weather, gold/fuel prices, lunar calendar, CGV cinemas, Epic and shop sources are Vietnam-specific. Replace them or disable the matching commands in `commands/`.
+5. **Frontend text** in `frontend/src/` and the Settings pages.
+6. **Tests**: many tests and `tests/golden/` snapshots contain Vietnamese prompts and phrases. Update them with the prompts, then re-run `python -m pytest tests -q --ignore=tests/live --ignore-glob="tests/test_live_*"`.
+7. **Measure again**: the prompts were tuned for small local models in Vietnamese. After translating, re-run the probes in `tests/live/` against your own llama-server.
+
+If you use a large hosted model (Claude, Gemini, ChatGPT), see the note above about `LOCAL_URL` and `engine/server/llm_server.py`.
 
 ### Steps
 
