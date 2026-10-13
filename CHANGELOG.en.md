@@ -10,6 +10,24 @@
   - `MINOR`: new features, or prompt/flow changes that don't break existing data.
   - `MAJOR`: architecture changes, or data/DB changes that require migration.
 
+## v10.0.1 — 2026-10-13
+
+**Rebuilt the turn core and the frontend.** A reply now flows through `engine/turn/` (entry → prompt → loop → say); tools are declared in `engine/tools/catalog/` and described in `prompt/tools/*.md`.
+
+**Removed from the project:**
+- `engine/router`, `engine/orchestrator`, `engine/agents`, `engine/main/flow_agents.py`, `skills/agents`, `skills/router`: replaced by `engine/turn/`.
+- `engine/plans` (`@plans`), `engine/jobs` (`@jobs`), `prompt/plan_planner.md`, `prompt/plan_solve.md` and their tests.
+- `engine/prompts/` (chat, persona, router, catalog, results), `engine/core/actions.py`, `engine/core/command_registry.py`, all of `commands/*.md`: replaced by `prompt/jarvis.md`, `prompt/turn_*.md`, `prompt/tools/`.
+- Tools: `history_engine`, `mail_access`, `map_engine`, `note_engine`, `research_engine`, `config/epic.json`.
+- `.agents/skills`, `.claude/skills` (gitnexus), `assets/screenshots`, golden tests.
+- `.env` out of git; replaced by `.env.example`.
+
+**Added:** `engine/tools/desktop_control/`, `gym_engine.py`, `engine/core/output_delivery.py`, `engine/core/db_ids.py`, model docs in `docs/`.
+
+**Fixed:** `NameError` in `learning.py` and `gym_engine.py`; `archive_tool` prefers `bsdtar`; tests no longer need a live `:8082` server. Restored CI, `ruff.toml`, `requirements-ci.txt`, `README.en.md`. Kept `legal_lookup` and `vn_admin_lookup`; delete them if unused. Cleaned leftover `plans`/`jobs` references in `graphfy.py`.
+
+---
+
 ## v9.9.6 — 2026-09-27
 
 **Settings becomes a full-screen dashboard.** Spec and plan written by Claude, implemented by another model (plus 9 extra pages beyond the plan, on request), then reviewed and fixed by Claude.
