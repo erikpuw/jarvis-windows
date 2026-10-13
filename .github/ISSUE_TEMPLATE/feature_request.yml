@@ -1,0 +1,22 @@
+name: ✨ Đề xuất tính năng
+description: Ý tưởng tính năng mới hoặc cải tiến
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Bạn đang gặp vấn đề gì?
+      description: Tình huống thực tế khiến bạn cần tính năng này.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Giải pháp mong muốn
+      description: JARVIS nên làm gì? Ví dụ câu lệnh bạn sẽ nói.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Cách khác bạn đã thử

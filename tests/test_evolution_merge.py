@@ -17,14 +17,17 @@ def test_partial_block_merges_instead_of_clobbering():
     assert out is not None and "- new" in out and "- a" in out and "- d" in out
 
 
-def test_full_rewrite_replaces():
-    new = HEAD + "- x\n- y\n- z\n"
-    assert _merge_rules(new, OLD) == new
+def test_new_rules_come_first_and_old_rules_are_kept():
+    """Thiết kế hiện tại: luôn gộp (không còn "viết lại toàn bộ"), luật mới đứng trước, luật cũ giữ lại,
+    kết quả không còn front matter version."""
+    out = _merge_rules(HEAD + "- x\n- y\n- z\n", OLD)
+    assert out == "# Self Evolution Style Rules\n- x\n- y\n- z\n- a\n- b\n- c\n- d\n"
 
 
-def test_reworded_rule_is_not_new():
+def test_reworded_rule_replaces_the_old_wording_instead_of_duplicating():
     old = HEAD + "- Chỉ dùng xưng hô thưa ngài ở cuối đoạn hội thoại.\n"
-    assert _merge_rules(HEAD + "- Chỉ sử dụng xưng hô thưa ngài ở cuối đoạn hội thoại.\n", old) is None
+    out = _merge_rules(HEAD + "- Chỉ sử dụng xưng hô thưa ngài ở cuối đoạn hội thoại.\n", old)
+    assert out == "# Self Evolution Style Rules\n- Chỉ sử dụng xưng hô thưa ngài ở cuối đoạn hội thoại.\n"
 
 
 def test_evolution_log_has_no_dates_and_only_new_rules():

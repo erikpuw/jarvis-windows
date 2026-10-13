@@ -1,0 +1,77 @@
+name: 🐞 Báo lỗi
+description: JARVIS chạy sai, crash, không phản hồi hoặc báo lỗi
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Cảm ơn bạn đã báo lỗi! Điền càng đủ thì càng sửa nhanh.
+        ⚠️ **Không dán API key, token, mật khẩu hay nội dung file `.env`** vào đây — issue là công khai.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Chuyện gì đã xảy ra?
+      description: Mô tả lỗi, và bạn mong đợi điều gì thay vào đó.
+      placeholder: "Tôi nói 'mở notepad' thì JARVIS trả lời nhưng không mở gì cả..."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Các bước tái hiện
+      placeholder: |
+        1. Chạy `python server.py`
+        2. Mở https://localhost:8340
+        3. Nói "..."
+        4. Thấy lỗi
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Phần bị lỗi
+      multiple: true
+      options:
+        - Giọng nói (STT / TTS)
+        - Chat / LLM
+        - Công cụ & agent (mở app, tìm kiếm, ghi chú...)
+        - RAG / tài liệu
+        - Bộ nhớ / Dream / tự học
+        - Giao diện (frontend)
+        - Telegram
+        - Cài đặt / khởi động
+        - Khác
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Phiên bản JARVIS
+      description: Nội dung file `VERSION`, hoặc kết quả `git rev-parse --short HEAD`
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Môi trường
+      description: Windows / Python / Node / model LLM đang dùng
+      placeholder: "Windows 11 24H2, Python 3.11.9, Node 22, Qwen3-8B Q4_K_M qua llama.cpp"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log liên quan
+      description: |
+        Trích đoạn quanh lỗi từ `logs/jarvis.log` (và `logs/stream_tts.log` nếu lỗi giọng nói).
+        Kiểm tra và xoá thông tin cá nhân trước khi dán.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Xác nhận
+      options:
+        - label: Tôi đã tìm trong các issue cũ và chưa thấy lỗi này.
+          required: true
+        - label: Tôi đã xoá API key / token / thông tin cá nhân khỏi nội dung trên.
+          required: true

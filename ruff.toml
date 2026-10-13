@@ -1,0 +1,15 @@
+# Cấu hình lint cho CI (.github/workflows/ci.yml) — chạy local: ruff check .
+target-version = "py311"
+extend-exclude = [".agents", ".claude", "examples", "frontend"]
+
+[lint]
+# Chỉ các rule bắt lỗi thật: tên chưa định nghĩa, import/biến thừa, lỗi cú pháp,
+# closure bắt biến vòng lặp, except trần nuốt KeyboardInterrupt... Không ép style.
+select = ["F", "E9", "B006", "B023", "PLE"]
+
+[lint.per-file-ignores]
+"__init__.py" = ["F401"]
+# Test hay import module chỉ để monkeypatch / kiểm tra thứ tự import; probe live là script đo tay.
+"tests/**" = ["F401", "F541", "F841", "B023"]
+# windows_control.py re-export các hàm từ gói desktop_control để test monkeypatch và code cũ vẫn import được.
+"engine/tools/windows_control.py" = ["F401"]

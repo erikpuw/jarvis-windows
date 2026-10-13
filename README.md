@@ -1,20 +1,26 @@
 # JARVIS
 
+**Tiếng Việt** | [English](README.en.md)
+
 **Just A Rather Very Intelligent System** — trợ lý AI giọng nói tiếng Việt, chạy local trên Windows.
 
-**Phiên bản:** [v9.9.8](VERSION) · **Dự án gốc:** [Ethan](https://ethanplus.ai)
+**Phiên bản:** xem file [`VERSION`](VERSION) (nguồn duy nhất) · [Nhật ký phiên bản](CHANGELOG.md) · **Dự án gốc:** [Ethan](https://ethanplus.ai)
+
+> [!IMPORTANT]
+> **Dự án do người Việt xây dựng cho người dùng tiếng Việt và chỉ hỗ trợ tiếng Việt.** Không có công tắc đổi ngôn ngữ. Prompt, nhận dạng giọng nói (`vi-VN`), giọng đọc, từ khoá khớp chuỗi trong code, test và chữ trên giao diện đều bằng tiếng Việt, nên nhập tiếng Anh thường không khớp. **Muốn dùng bằng tiếng Anh thì phải fork và chuyển đổi toàn bộ dự án**, không chỉ sửa `.env`: xem [Fork sang ngôn ngữ khác](#fork-sang-ngôn-ngữ-khác).
 
 JARVIS dùng mô hình ngôn ngữ local để trò chuyện, xử lý yêu cầu và gọi công cụ trên máy. Hệ thống có WebUI, giọng nói tiếng Việt, bộ nhớ hội thoại và hệ thống công cụ phẳng đa năng. Dữ liệu bộ nhớ chính được lưu local.
 
 ## Mục lục
 
 - [Tính năng](#tính-năng)
-- [Định tuyến tool phẳng](#định-tuyến-tool-phẳng-2026-10-12)
+- [Vòng lặp sinh có ràng buộc](#vòng-lặp-sinh-có-ràng-buộc-2026-10-12)
 - [Lối tắt và công cụ chuyên biệt](#lối-tắt-và-công-cụ-chuyên-biệt)
 - [Bộ nhớ và tự học](#bộ-nhớ-và-tự-học)
 - [Giao diện và tích hợp](#giao-diện-và-tích-hợp)
 - [Kiến trúc](#kiến-trúc)
 - [Cài đặt và cấu hình](#cài-đặt-và-cấu-hình)
+- [Fork sang ngôn ngữ khác](#fork-sang-ngôn-ngữ-khác)
 - [API, kiểm thử và bảo mật](#api-kiểm-thử-và-bảo-mật)
 - [Phiên bản và giấy phép](#phiên-bản-và-giấy-phép)
 
@@ -107,7 +113,7 @@ Danh sách tool tệp được cấu hình trực tiếp qua thuộc tính `@too
 
 ## Giao diện và tích hợp
 
-Frontend dùng Vite, TypeScript và Three.js trong `frontend/`. WebUI gồm giao diện chat/HUD, Command Bar, trình phát media và Settings dashboard. Tính năng bản đồ (panel MapLibre, ghim vị trí, ranh giới hành chính) đã gỡ hẳn ngày 2026-10-13 (test `tests/test_map_removed.py`); tra đơn vị hành chính chỉ trả lời bằng chữ. Webcam chỉ còn khung nhỏ, không phóng toàn màn hình.
+Frontend dùng Vite, TypeScript và Three.js trong `frontend/`. WebUI gồm giao diện chat/HUD, Command Bar, trình phát media và Settings dashboard. Tính năng bản đồ (panel MapLibre, ghim vị trí, ranh giới hành chính) đã gỡ hẳn ngày 2026-10-13 (test `tests/test_map_removed.py`). Webcam chỉ còn khung nhỏ, không phóng toàn màn hình.
 
 - Gõ `/` hoặc `@` trên Command Bar để gợi ý công cụ, lối tắt.
 - Nút Cài đặt (Settings) trực tiếp trên thanh điều khiển (thay thế menu sổ dropdown); nút Khởi động lại hệ thống được đưa vào tab "Kết nối & API".
@@ -241,6 +247,28 @@ Giá trị mặc định và các biến bổ sung nằm trong `.env.example`; k
 
 Truy cập từ xa qua Tailscale: cài Tailscale trên máy chạy JARVIS và thiết bị truy cập, mở frontend cho mạng bằng `npm run dev -- --host`, sau đó thêm origin Tailscale của máy chủ vào `JARVIS_CORS_ORIGINS`. Không cần mở cổng router.
 
+## Fork sang ngôn ngữ khác
+
+Quy mô nội dung tiếng Việt (số dòng chứa chữ Việt): `engine/` hơn 3.000 dòng, `frontend/src/` hơn 500, `prompt/`, `prompt/tools/` và `tests/` hàng trăm dòng. Tác giả không có kế hoạch hỗ trợ ngôn ngữ khác, nên hãy coi đây là việc chuyển đổi toàn bộ. Làm theo thứ tự:
+
+1. **Prompt**: `prompt/jarvis.md`, `prompt/turn_tool.md`, `prompt/turn_answer.md`, `prompt/voice_cues.md`, mọi mô tả tool trong `prompt/tools/*.md` và các prompt nền (`learning_*`, `evolution`, `dream_*`, `self_healing`). Thêm chỉ dẫn rõ ràng ở đầu `prompt/jarvis.md`, ví dụ:
+   ```
+   The user's language is English. Always reply in English, even when tool results come back in Vietnamese.
+   Address the user as "sir" and refer to yourself as "I". Keep sentences short and natural for speech.
+   ```
+2. **Từ khoá khớp chuỗi trong code** (phần dễ hỏng âm thầm nhất): `_NEEDS_WORD`, `_FUTURE`, `_ACT` và câu thay thế `_NO_PROMISE` trong `engine/turn/loop.py`; `_PREF_STYLE` và tên thứ trong tuần ở `engine/turn/prompt.py`; chữ tiếng Việt trong các tool ở `engine/tools/catalog/` và `engine/tools/*.py`; tên file wiki như `Học hỏi.md` ở `engine/core/learning.py`. Mẫu chặn `PROMPT_INJECTION_PATTERNS` ở `engine/core/guardrails.py` đã có tiếng Anh.
+3. **Giọng nói**:
+   - Đọc: đặt `TTS_LOCAL_MODEL=en-US-GuyNeural` trong `.env` (`edge-tts --list-voices` liệt kê giọng). Giữ `EDGE_TTS_ENABLED=true`, `VIENEU_TTS_ENABLED=false`, vì VieNeu chỉ đọc tiếng Việt. Muốn ElevenLabs, OpenAI TTS, Azure, Google: viết thêm engine trong `engine/server/` theo mẫu `tts_engine.py`, đăng ký ở `tts_manager.py` (đọc `TTS_ENGINE`); dịch vụ nên trả âm thanh từng câu để phát liên tục.
+   - Nghe: phía trình duyệt dùng `vi-VN` trong `frontend/src/voice.ts`, còn `engine/server/whisper_server.py` cố định `language="vi"`. Đổi cả hai.
+4. **Nguồn dữ liệu**: tin tức, thời tiết, giá vàng/xăng, lịch vạn niên, rạp CGV, Epic, trang bán hàng đều của Việt Nam. Thay hoặc bỏ tool tương ứng (`engine/tools/catalog/` + `prompt/tools/<tên>.md`).
+5. **Chữ trên giao diện** trong `frontend/src/` và các trang Settings.
+6. **Test**: nhiều test và bản chụp `tests/golden/` chứa câu tiếng Việt; cập nhật theo prompt mới rồi chạy lại toàn bộ test.
+7. **Đo lại**: prompt được tinh chỉnh cho model local nhỏ bằng tiếng Việt. Dịch xong hãy chạy lại các probe trong `tests/live/` với llama-server của bạn.
+
+**Dùng model lớn (Claude, Gemini, ChatGPT)**: đổi `LOCAL_URL`, `LOCAL_API_KEY`, `LOCAL_MODEL` trong `.env` sang endpoint tương thích OpenAI của nhà cung cấp. Nếu API khác định dạng OpenAI, cần chỉnh hoặc viết lại [`engine/server/llm_server.py`](engine/server/llm_server.py) (cách gọi, tham số, stream); prompt có thể cần chỉnh lại vì được tinh chỉnh cho model local nhỏ.
+
+**Khi tải về**: skill `skills/officecli` chỉ chứa hướng dẫn dùng, hãy cài officecli từ mã nguồn gốc và lấy thư mục `examples/` từ đó. Hai tool `legal_lookup` (tra cứu pháp luật Việt Nam) và `vn_admin_lookup` (tỉnh/thành, phường/xã) là dữ liệu riêng của Việt Nam; cứ giữ nguyên nếu cần, không dùng thì xoá tool (`engine/tools/catalog/lookup.py`, `prompt/tools/<tên>.md`) và `engine/tools/legal_engine.py`.
+
 ## API, kiểm thử và bảo mật
 
 ### API
@@ -256,13 +284,13 @@ Các API nhạy cảm yêu cầu quyền/trạng thái phù hợp; xem router tr
 ### Kiểm thử
 
 ```powershell
-python -m pytest tests -q --ignore=tests/live
+python -m pytest tests -q --ignore=tests/live --ignore-glob="tests/test_live_*"
 # Chẩn đoán RAM và kiểm tra cache mô hình HuggingFace VieNeu-TTS:
 python scripts/check_vieneu_memory.py
 python -m pytest tests/test_vieneu_health_and_memory.py -v
 ```
 
-Frontend dùng các script kiểm tra trong `frontend/e2e/`; xem `frontend/package.json` để biết lệnh hiện hành. Test dữ liệu learning/wiki chạy trên thư mục tạm để tránh thay đổi dữ liệu người dùng.
+Frontend dùng các kịch bản Playwright trong `frontend/e2e/*.cjs` (chạy `npm run dev` ở `:5173`, rồi `PW=<đường dẫn module playwright> node frontend/e2e/<tên>.cjs`; Playwright không nằm trong `package.json`, cần tự cài). CI (`.github/workflows/ci.yml`, chạy mỗi lần push `main` và mỗi PR) gồm: `ruff check .`, compile Python, `python .github/scripts/check_imports.py` (mọi `from engine... import X` phải trỏ tới tên có thật), `pytest` (cài `requirements-ci.txt` và `bsdtar`) và `npm run build` cho frontend; chạy lại các lệnh này trước khi push. Một số test cần máy thật (VieNeu, llama-server) nên tự bỏ qua trên CI; nếu test lỗi trên máy bạn, hãy kiểm tra lại trước khi sửa code. Test dữ liệu learning/wiki chạy trên thư mục tạm để tránh thay đổi dữ liệu người dùng.
 
 ### Bảo mật
 
@@ -273,7 +301,7 @@ Frontend dùng các script kiểm tra trong `frontend/e2e/`; xem `frontend/packa
 
 ## Phiên bản và giấy phép
 
-Phiên bản được quản lý tại [`VERSION`](VERSION). Hiện tại là **v9.9.8**, gồm `@rag`, giao diện Settings/HUD và các cải tiến bảo vệ prompt injection. Khi phát hành bản mới, cập nhật `VERSION` và ghi tóm tắt thay đổi chính tại đây.
+Phiên bản được quản lý tại [`VERSION`](VERSION) (nguồn duy nhất); lịch sử cũ ở [CHANGELOG.md](CHANGELOG.md). Khi phát hành bản mới, cập nhật `VERSION` và ghi tóm tắt thay đổi chính tại đây.
 
 ### Chưa phát hành
 

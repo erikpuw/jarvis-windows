@@ -3,9 +3,10 @@
 import json
 import logging
 import re
+import shutil
 import sqlite3
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 GYM_DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "gym"
@@ -686,9 +687,9 @@ def delete_gym_memory_item(full_id: str) -> bool:
     if full_id.startswith("profile_"):
         pid = full_id[len("profile_"):]
         try:
-            profile_dir = _safe_profile_path(pid)
+            profile_dir = _profile_dir(pid)
             if profile_dir.is_dir():
-                profile_meta = _profile_metadata_file(pid)
+                profile_meta = profile_dir / "profile.json"
                 pname = ""
                 if profile_meta.is_file():
                     try:
