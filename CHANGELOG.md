@@ -10,6 +10,24 @@
   - `MINOR`: thêm tính năng, hoặc đổi prompt/luồng mà không làm vỡ dữ liệu cũ.
   - `MAJOR`: đổi kiến trúc, hoặc đổi dữ liệu/DB theo cách cần chuyển đổi.
 
+## v10.0.1 — 2026-10-13
+
+**Dựng lại lõi xử lý lượt và frontend.** Một lượt trả lời giờ đi qua `engine/turn/` (entry → prompt → loop → say), tool khai báo trong `engine/tools/catalog/` với mô tả ở `prompt/tools/*.md`.
+
+**Đã gỡ khỏi dự án:**
+- `engine/router`, `engine/orchestrator`, `engine/agents`, `engine/main/flow_agents.py`, `skills/agents`, `skills/router`: thay bằng `engine/turn/`.
+- `engine/plans` (`@plans`), `engine/jobs` (`@jobs`), `prompt/plan_planner.md`, `prompt/plan_solve.md` cùng test liên quan.
+- `engine/prompts/` (chat, persona, router, catalog, results), `engine/core/actions.py`, `engine/core/command_registry.py`, toàn bộ `commands/*.md`: thay bằng `prompt/jarvis.md`, `prompt/turn_*.md`, `prompt/tools/`.
+- Tool: `history_engine`, `mail_access`, `map_engine`, `note_engine`, `research_engine`, `config/epic.json`.
+- `.agents/skills`, `.claude/skills` (gitnexus), `assets/screenshots`, test golden.
+- `.env` khỏi git; thay bằng `.env.example`.
+
+**Thêm:** `engine/tools/desktop_control/`, `gym_engine.py`, `engine/core/output_delivery.py`, `engine/core/db_ids.py`, tài liệu model trong `docs/`.
+
+**Sửa:** `NameError` ở `learning.py` và `gym_engine.py`; `archive_tool` ưu tiên `bsdtar`; test không còn phụ thuộc server `:8082`. Khôi phục CI, `ruff.toml`, `requirements-ci.txt`, `README.en.md`. Giữ `legal_lookup` và `vn_admin_lookup`; không dùng thì tự xoá. Dọn tham chiếu `plans`/`jobs` còn sót trong `graphfy.py`.
+
+---
+
 ## v9.9.6 — 2026-09-27
 
 **Settings thành dashboard toàn màn hình.** Spec và plan do Claude viết, một model khác triển khai (kèm 9 trang ngoài plan theo yêu cầu), rồi Claude review và sửa.

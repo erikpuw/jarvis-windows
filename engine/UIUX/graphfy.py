@@ -19,7 +19,7 @@ LANES = {
     "server": "input", "server/telegram_bot": "input", "server/slash_commands": "input",
     "server/whisper_server": "input", "security": "input", "UIUX": "input",
     "router": "turn", "tools": "turn",
-    "plans": "turn", "jobs": "turn", "prompts": "turn", "main": "turn",
+    "prompts": "turn", "main": "turn",
     "server/mcp_server": "turn", "core/guardrails": "input",
     LLM_NODE: "llm",
     "server/voice_streamer": "output", "server/tts_manager": "output",
