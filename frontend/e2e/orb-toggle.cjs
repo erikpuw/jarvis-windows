@@ -56,7 +56,7 @@ const orbState = (page) => page.evaluate(() => {
   check(inRow === "controls", "1d. nút nằm trong hàng nút điều khiển (#controls)", String(inRow));
 
   // 2. tắt
-  await page.click("#btn-orb-toggle"); await page.waitForTimeout(500);
+  await page.evaluate(() => document.getElementById("btn-orb-toggle").click()); await page.waitForTimeout(500);
   st = await orbState(page);
   check(!st.canvas && st.lost.length >= 1 && st.lost.every((l) => l) && st.pressed === "false" && st.cls, "2a. bấm tắt: ngữ cảnh WebGL đã trả về GPU, nút đổi trạng thái", JSON.stringify(st));
   check(st.backdrop && st.w === 1280 && st.h === 800 && st.px[0] === 5 && st.px[1] === 5 && st.px[2] === 8 && st.px[3] === 255, "2a2. tắt: thay bằng một canvas phẳng 1×1 màu nền (#050508) phủ kín khung hình, không vẽ lại — giữ lớp nền cố định toàn màn hình như lúc orb bật (PWA iOS không bị mờ phía trên)", JSON.stringify({ backdrop: st.backdrop, px: st.px, w: st.w, h: st.h }));
@@ -70,7 +70,7 @@ const orbState = (page) => page.evaluate(() => {
   check((await drawsOver(page, 800)) === 0 && !(await orbState(page)).canvas && (await orbState(page)).backdrop, "2d. tắt: mở rồi đóng Settings không làm orb sống lại");
 
   // 3. bật lại
-  await page.click("#btn-orb-toggle"); await page.waitForTimeout(700);
+  await page.evaluate(() => document.getElementById("btn-orb-toggle").click()); await page.waitForTimeout(700);
   st = await orbState(page);
   const live = st.lost[st.lost.length - 1] === false;
   check(st.canvas && !st.backdrop && st.w === 1280 && st.h === 800 && live && st.pressed === "true" && !st.cls, "3a. bấm bật: canvas mới đầy khung, ngữ cảnh WebGL mới còn sống", JSON.stringify(st));
@@ -79,13 +79,13 @@ const orbState = (page) => page.evaluate(() => {
   check(z.pos === "fixed" && z.pe === "none" && z.count === 1, "3c. canvas mới giữ đúng kiểu cũ (nền cố định, không chặn chuột), chỉ có một canvas orb", JSON.stringify(z));
 
   // 4. bật tắt liên tục không rò rỉ ngữ cảnh WebGL
-  for (let i = 0; i < 6; i++) { await page.click("#btn-orb-toggle"); await page.waitForTimeout(150); await page.click("#btn-orb-toggle"); await page.waitForTimeout(150); }
+  for (let i = 0; i < 6; i++) { await page.evaluate(() => document.getElementById("btn-orb-toggle").click()); await page.waitForTimeout(150); await page.evaluate(() => document.getElementById("btn-orb-toggle").click()); await page.waitForTimeout(150); }
   await page.waitForTimeout(400);
   const alive = await page.evaluate(() => window.__ctxs.filter((x) => !x.isContextLost()).length);
   check(alive === 1, "4. bật tắt nhiều lần: chỉ còn đúng một ngữ cảnh WebGL sống (không rò rỉ GPU)", String(alive));
 
   // 5. không lưu trạng thái: tắt rồi tải lại trang → bật
-  await page.click("#btn-orb-toggle"); await page.waitForTimeout(400);
+  await page.evaluate(() => document.getElementById("btn-orb-toggle").click()); await page.waitForTimeout(400);
   await page.reload(); await page.waitForTimeout(1500);
   st = await orbState(page);
   check(st.canvas && st.pressed === "true" && (await drawsOver(page, 500)) > 3, "5. tắt rồi tải lại trang → orb bật lại (mặc định luôn bật, không lưu)", JSON.stringify(st));

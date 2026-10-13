@@ -10,7 +10,6 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DEFAULT_RAG_ROOT = PROJECT_ROOT / "data" / "rag_index"
-DEFAULT_WIKI_RAG_ROOT = PROJECT_ROOT / "data" / "wiki" / "RAG"
 
 # write_page()/mark_page_failed() do an unlocked read-modify-write of
 # manifest.json; concurrent ingestion of the same document (RAGDocumentStore
@@ -50,21 +49,13 @@ class PreparedDocument:
 
 
 class RAGDocumentStore:
-    def __init__(
-        self,
-        rag_root: Path = DEFAULT_RAG_ROOT,
-        wiki_root: Path = DEFAULT_WIKI_RAG_ROOT,
-    ):
+    """Chỗ làm việc tạm cho một lần đọc tệp đính kèm (từng trang). Không giữ gì lâu dài:
+    lưu lâu dài là copy tệp vào thư mục watcher (xem engine/rag/runner.py)."""
+
+    def __init__(self, rag_root: Path = DEFAULT_RAG_ROOT):
         self.rag_root = Path(rag_root).resolve()
-        self.wiki_root = Path(wiki_root).resolve()
         self.staging_root = self.rag_root / "staging"
-        self.documents_root = self.rag_root / "documents"
-        for root in (
-            self.staging_root,
-            self.documents_root,
-            self.wiki_root,
-        ):
-            root.mkdir(parents=True, exist_ok=True)
+        self.staging_root.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
     def document_id(path: Path) -> str:
@@ -82,15 +73,8 @@ class RAGDocumentStore:
             raise ValueError("path is outside configured RAG roots")
         return resolved
 
-    def _writable_root(self, path: Path) -> Path:
-        resolved = path.resolve()
-        for root in (self.rag_root, self.wiki_root):
-            if resolved == root or root in resolved.parents:
-                return root
-        raise ValueError("path is outside configured RAG roots")
-
     def atomic_write(self, path: Path, text: str) -> None:
-        target = self._inside(path, self._writable_root(path))
+        target = self._inside(path, self.rag_root)
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.with_suffix(target.suffix + ".tmp")
         temporary.write_text(text, encoding="utf-8")
@@ -109,43 +93,6 @@ class RAGDocumentStore:
             document_id=document_id,
             source_path=source,
             source_filename=Path(source_filename).name,
-            root=root,
-        )
-
-    def find_persistent(
-        self,
-        source_path: Path,
-    ) -> PreparedDocument | None:
-        document_id = self.document_id(Path(source_path))
-        root = self._inside(
-            self.documents_root / document_id,
-            self.rag_root,
-        )
-        manifest_path = root / "manifest.json"
-        if not manifest_path.exists():
-            return None
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if manifest.get("status") != "persistent":
-            return None
-        originals = sorted(root.glob("original.*"))
-        completed = [
-            item
-            for item in manifest.get("pages", [])
-            if item.get("status") == "done"
-        ]
-        if len(originals) != 1 or not completed:
-            return None
-        if any(
-            not (root / "pages" / f"page-{int(item['page']):04d}.md").exists()
-            for item in completed
-        ):
-            return None
-        return PreparedDocument(
-            document_id=document_id,
-            source_path=originals[0],
-            source_filename=str(
-                manifest.get("source_filename", originals[0].name)
-            ),
             root=root,
         )
 
@@ -232,33 +179,6 @@ class RAGDocumentStore:
             manifest["status"] = "processing"
             self._write_manifest(prepared.manifest_path, manifest)
 
-    def promote(self, prepared: PreparedDocument) -> PreparedDocument:
-        destination = self._inside(
-            self.documents_root / prepared.document_id,
-            self.rag_root,
-        )
-        if not destination.exists():
-            shutil.copytree(prepared.root, destination)
-
-        suffix = prepared.source_path.suffix.lower()
-        original_path = destination / f"original{suffix}"
-        if not original_path.exists():
-            shutil.copy2(prepared.source_path, original_path)
-
-        persistent = PreparedDocument(
-            document_id=prepared.document_id,
-            source_path=original_path,
-            source_filename=prepared.source_filename,
-            root=destination,
-        )
-        manifest = json.loads(
-            persistent.manifest_path.read_text(encoding="utf-8")
-        )
-        manifest["status"] = "persistent"
-        self._write_manifest(persistent.manifest_path, manifest)
-        self._project_to_wiki(persistent)
-        return persistent
-
     def discard_staging(self, prepared: PreparedDocument) -> None:
         candidate = self._inside(prepared.root, self.staging_root)
         staging_root = self.staging_root.resolve()
@@ -271,26 +191,3 @@ class RAGDocumentStore:
             )
         if candidate.exists():
             shutil.rmtree(candidate)
-
-    def _project_to_wiki(self, prepared: PreparedDocument) -> None:
-        wiki_document = self._inside(
-            self.wiki_root / prepared.document_id,
-            self.wiki_root,
-        )
-        wiki_pages = wiki_document / "pages"
-        wiki_pages.mkdir(parents=True, exist_ok=True)
-        page_paths = sorted((prepared.root / "pages").glob("page-*.md"))
-        for page_path in page_paths:
-            shutil.copy2(page_path, wiki_pages / page_path.name)
-        links = "\n".join(
-            f"- [[pages/{page_path.stem}|{page_path.stem}]]"
-            for page_path in page_paths
-        )
-        self.atomic_write(
-            wiki_document / "index.md",
-            (
-                f"# {prepared.source_filename}\n\n"
-                f"- Document ID: `{prepared.document_id}`\n\n"
-                f"## Trang\n\n{links}\n"
-            ),
-        )

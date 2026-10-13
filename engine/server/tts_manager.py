@@ -74,6 +74,11 @@ async def synthesize_speech(text: str, ws=None) -> Optional[bytes]:
         log.debug(f"TTS skipped — nothing speakable after cleanup: {text!r}")
         return None
 
+    from engine.server.llm_server import check_stream_tts_server
+    tts_online, tts_msg, _ = check_stream_tts_server()
+    if engine == "vieneu" and not tts_online:
+        return None
+
     for attempt in (1, 2):
         try:
             if engine == "vieneu":
@@ -90,7 +95,9 @@ async def synthesize_speech(text: str, ws=None) -> Optional[bytes]:
                         raise RuntimeError(f"VieNeu TTS port 8082 returned status {r.status_code}")
             else:
                 edge_mode = os.getenv("TTS_ENGINE", "stream").lower()
-                if attempt == 2 and edge_mode == "stream":
+                if not tts_online and edge_mode == "stream":
+                    edge_mode = "edge"
+                elif attempt == 2 and edge_mode == "stream":
                     # Same fallback stream_synthesize_speech already has. The
                     # second try used to hit port 8082 again, so a greeting that
                     # failed there once went out with no audio at all.
@@ -150,6 +157,11 @@ async def stream_synthesize_pcm(text: str, ws=None):
     if len(text) < 2:
         return
 
+    from engine.server.llm_server import check_stream_tts_server
+    tts_online, _, _ = check_stream_tts_server()
+    if not tts_online:
+        return
+
     for attempt in (1, 2):
         sent = 0
         try:
@@ -205,6 +217,11 @@ async def stream_synthesize_speech(text: str, ws=None):
     if len(text) < 2:
         return
 
+    from engine.server.llm_server import check_stream_tts_server
+    tts_online, _, _ = check_stream_tts_server()
+    if engine == "vieneu" and not tts_online:
+        return
+
     for attempt in (1, 2):
         try:
             chunk_count = 0
@@ -223,7 +240,9 @@ async def stream_synthesize_speech(text: str, ws=None):
                             chunk_count += 1
             else:
                 edge_mode = os.getenv("TTS_ENGINE", "stream").lower()
-                if attempt == 2 and edge_mode == "stream":
+                if not tts_online and edge_mode == "stream":
+                    edge_mode = "edge"
+                elif attempt == 2 and edge_mode == "stream":
                     edge_mode = "edge"
                     if _TTS_RETRY_BACKOFF_SECONDS:
                         await asyncio.sleep(_TTS_RETRY_BACKOFF_SECONDS)

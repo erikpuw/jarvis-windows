@@ -33,7 +33,7 @@ def daily_note_path(date_str: str) -> Path:
 
 
 def save_daily_digest(
-    user_query: str, response_text: str, outcome_id: int | None = None
+    user_query: str, response_text: str
 ):
     """
     Ghi nhận hoạt động hội thoại vào file nhật ký ngày tương ứng.

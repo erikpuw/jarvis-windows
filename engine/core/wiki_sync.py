@@ -77,6 +77,11 @@ def sync_wiki_to_semantic_memory(force: bool = False):
                 continue
                 
             relative_path = file_path.relative_to(WIKI_DIR).as_posix()
+            
+            # Loại trừ thư mục Gym/ và các tài liệu người dùng chỉ định không nạp vào AI
+            if relative_path.lower().startswith("gym/"):
+                continue
+
             current_hash = get_file_hash(file_path)
             new_state[relative_path] = current_hash
             
@@ -84,6 +89,8 @@ def sync_wiki_to_semantic_memory(force: bool = False):
             if force or relative_path not in state or state[relative_path] != current_hash:
                 try:
                     content = file_path.read_text(encoding="utf-8")
+                    if "no_index: true" in content or 'no_index: "true"' in content:
+                        continue
                     # Tách nội dung thành các khối
                     chunks = content.split("### ")
                     for i, chunk in enumerate(chunks):

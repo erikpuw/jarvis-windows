@@ -4,6 +4,7 @@
 // button (icon + morphicons) inside stays untouched. No WebGL2 → data-metal="off",
 // the button simply has no ring.
 import { onAnimGate } from "./anim-gate";
+import { mountMetalHalo } from "./metal-halo";
 import {
   ShaderMount, liquidMetalFragmentShader, LiquidMetalShapes, ShaderFitOptions,
   getShaderColorFromString,
@@ -43,8 +44,9 @@ export function mountMetalRing(wrap: HTMLElement): void {
       u_distortion: 0.08,
       u_angle: 70,
       u_shape: LiquidMetalShapes.circle,
-    }, undefined, still ? 0 : 0.5);
+    }, { preserveDrawingBuffer: true }, still ? 0 : 0.5); // kept so the halo can sample the ring's colour at any time
     wrap.dataset.metal = "on";
+    mountMetalHalo(wrap, face); // metal-fx's halo round the ring, coloured from the ring (metal-halo.ts)
     if (!still) onAnimGate((p) => mount.setSpeed(p ? 0 : 0.5)); // speed 0 stops the shader's own rAF loop
   } catch {
     face.remove();

@@ -2,7 +2,7 @@
 export const REQUEST_TIMEOUT_MS = 20000;
 
 // Memory Control, chat history and the system log are locked on the backend (engine/UIUX/memory_lock.py): its data endpoints need the token the lock screen got.
-const MEMORY_API = /^\/api\/(learnings|memories|workflows|outcomes|conversations|notes|evolution|memory-control|history|logs)(\/|\?|$)/;
+const MEMORY_API = /^\/api\/(learnings|memories|workflows|outcomes|conversations|evolution|memory-control|history|logs)(\/|\?|$)/;
 export const MEMORY_LOCKED_EVENT = "jarvis:memory-locked";
 let memoryToken = "";
 export function setMemoryToken(token: string): void { memoryToken = token; }

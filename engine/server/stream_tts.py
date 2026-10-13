@@ -5,8 +5,12 @@ Cổng phụ cung cấp true streaming TTS dùng edge-tts backend hoặc vieneu 
 """
 
 import os
+import sys
+import time
 import logging
+import logging.handlers
 import asyncio
+from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
 
@@ -15,8 +19,84 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 
+LOG_DIR = Path(__file__).resolve().parents[2] / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+STREAM_TTS_LOG_PATH = LOG_DIR / "stream_tts.log"
+
+
+class _HealthFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "/tts/health" not in record.getMessage()
+
+
+def configure_stream_tts_logging():
+    formatter = logging.Formatter("%(asctime)s [%(name)s] %(message)s")
+
+    file_handler = logging.handlers.RotatingFileHandler(
+        str(STREAM_TTS_LOG_PATH),
+        encoding="utf-8",
+        maxBytes=20 * 1024 * 1024,
+        backupCount=3,
+    )
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.INFO)
+    file_handler.addFilter(_HealthFilter())
+
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
+    stream_handler.setLevel(logging.INFO)
+
+    target_loggers = [
+        logging.getLogger("jarvis.stream_tts"),
+        logging.getLogger("jarvis.vieneu_tts"),
+        logging.getLogger("jarvis.tts_server"),
+    ]
+    for l in target_loggers:
+        l.setLevel(logging.INFO)
+        l.propagate = False
+        if not any(
+            isinstance(h, logging.handlers.RotatingFileHandler)
+            and getattr(h, "baseFilename", None) == str(STREAM_TTS_LOG_PATH.resolve())
+            for h in l.handlers
+        ):
+            l.addHandler(file_handler)
+        if not any(
+            isinstance(h, logging.StreamHandler)
+            and not isinstance(h, logging.handlers.RotatingFileHandler)
+            for h in l.handlers
+        ):
+            l.addHandler(stream_handler)
+
+    access_logger = logging.getLogger("uvicorn.access")
+    access_logger.disabled = False
+    access_logger.setLevel(logging.INFO)
+    if not any(
+        isinstance(h, logging.handlers.RotatingFileHandler)
+        and getattr(h, "baseFilename", None) == str(STREAM_TTS_LOG_PATH.resolve())
+        for h in access_logger.handlers
+    ):
+        access_logger.addHandler(file_handler)
+
+
+_log_cleared = False
+
+
+def clear_stream_tts_log():
+    """Xóa trắng stream_tts.log khi khởi động server, ghi lại tiêu đề phiên mới giống jarvis.log."""
+    global _log_cleared
+    if not _log_cleared:
+        try:
+            STREAM_TTS_LOG_PATH.write_text("", encoding="utf-8")
+            _log_cleared = True
+            l = logging.getLogger("jarvis.stream_tts")
+            l.info("===== JARVIS Stream TTS Server Started =====")
+        except Exception as e:
+            logging.getLogger("jarvis.stream_tts").warning("Failed to clear stream_tts.log: %s", e)
+
+
+configure_stream_tts_logging()
 log = logging.getLogger("jarvis.stream_tts")
-logging.getLogger("uvicorn.access").disabled = True
+logging.getLogger("transformers.configuration_utils").setLevel(logging.ERROR)
 
 from engine.server.tts_server import generate_voice_bytes, generate_voice_bytes_stream
 from engine.server.tts_manager import _resolve_tts_engine
@@ -68,6 +148,11 @@ def _warm_up_safely():
 
 @app.on_event("startup")
 async def _warm_up_vieneu():
+    configure_stream_tts_logging()
+    clear_stream_tts_log()
+    if os.getenv("VIENEU_WARMUP", "1").strip().lower() in {"0", "false", "no", "off"}:
+        log.info("[vieneu] Auto warm-up disabled via VIENEU_WARMUP=0 (lazy loading)")
+        return
     # Không chặn khởi động: /tts/health vẫn trả lời ngay, request tới sớm sẽ chờ khóa nạp model.
     if _resolve_tts_engine() == "vieneu":
         app.state.warm_up_task = asyncio.create_task(asyncio.to_thread(_warm_up_safely))
@@ -145,8 +230,21 @@ async def _stream_vieneu(req: TTSRequest) -> StreamingResponse:
 async def _stream_edge(req: TTSRequest) -> StreamingResponse:
     """edge-tts: MP3 stream."""
     async def _gen():
-        async for chunk in generate_voice_bytes_stream(req.text, voice=req.voice):
-            yield chunk
+        chunks = 0
+        started = time.monotonic()
+        first_ms = None
+        log.info("[edge-tts] synth text=%r voice=%s", req.text, req.voice)
+        try:
+            async for chunk in generate_voice_bytes_stream(req.text, voice=req.voice):
+                if first_ms is None:
+                    first_ms = (time.monotonic() - started) * 1000
+                chunks += 1
+                yield chunk
+        finally:
+            log.info(
+                "[edge-tts] done chunks=%d first=%.0fms total=%.0fms",
+                chunks, first_ms or 0, (time.monotonic() - started) * 1000,
+            )
 
     return StreamingResponse(
         _gen(),

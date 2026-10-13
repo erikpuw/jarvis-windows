@@ -1,7 +1,7 @@
 // HTC Sense–style flip clock without the card: one slot per digit (H H  M M),
 // split across the middle.
 // On change the old top half folds down over the split, then the new bottom
-// half falls into place. Sits above the orb only (z-index 1, no pointer events).
+// half falls into place. Sits just above the orb (--z-clock, no pointer events).
 import "@fontsource/oswald/latin-300.css"; // bundled: desktop app works offline
 
 const HALF_MS = 300;

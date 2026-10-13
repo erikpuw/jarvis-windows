@@ -10,6 +10,9 @@ import numpy as np
 from turbovec import IdMapIndex
 from rank_bm25 import BM25Okapi
 
+import re
+import unicodedata
+
 log = logging.getLogger("jarvis.rag_engine")
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -18,6 +21,31 @@ RAG_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 INDEX_FILE_PATH = RAG_DATA_DIR / "rag_vectors.tq"
 METADATA_FILE_PATH = RAG_DATA_DIR / "rag_metadata.json"
+
+
+def clean_document_text(text: str) -> str:
+    """Lọc và chuẩn hóa ký tự lỗi trong tài liệu (null bytes, control chars, broken dashes)."""
+    if not text:
+        return ""
+    # 1. Thay thế null byte \x00 giữa 2 chữ/số thành dấu gạch nối '-'
+    text = re.sub(r'(?<=\w)\x00(?=\w)', '-', text)
+    text = text.replace('\x00', ' ')
+
+    # 2. Xóa các ký tự điều khiển ASCII vô hiệu (giữ lại \t, \n, \r)
+    text = re.sub(r'[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]', ' ', text)
+
+    # 3. Chuẩn hóa khoảng trắng đặc biệt & zero-width
+    text = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', text)
+    text = text.replace('\u00a0', ' ')
+
+    # 4. Loại bỏ lone surrogate code points
+    text = text.encode('utf-8', errors='ignore').decode('utf-8', errors='ignore')
+
+    # 5. Dọn dẹp khoảng trắng thừa nhưng giữ dòng
+    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+
+    return unicodedata.normalize("NFC", text.strip())
 
 class RAGEngine:
     """HyperRAG Engine combining turbovec Dense Search, BM25 Sparse Search and RRF Fusion."""
@@ -76,6 +104,10 @@ class RAGEngine:
                     self.chunks = meta.get("chunks", [])
                     self.dim = meta.get("dim", self.dim)
                     self._next_id = meta.get("next_id")
+                    for c in self.chunks:
+                        content = c.get("content", "")
+                        if "\x00" in content:
+                            c["content"] = clean_document_text(content)
         except Exception as e:
             log.error(f"Failed to load RAG metadata: {e}", exc_info=True)
             self.chunks = []
@@ -269,9 +301,9 @@ class RAGEngine:
                     content = path.read_text(encoding="utf-8", errors="ignore")
                     
             # Dọn dẹp toàn bộ dữ liệu ảnh Base64 nhúng để tránh tràn token embedding
-            import re
             content = re.sub(r'!\[.*?\]\(data:image\/.*?;base64,[\s\S]*?\)', '', content)
             content = re.sub(r'data:image\/[a-zA-Z]*;base64,[a-zA-Z0-9+/=\s\n\r]*', '', content)
+            content = clean_document_text(content)
             
             if not content or not content.strip():
                 return {"success": False, "error": "Document content is empty."}
@@ -368,7 +400,7 @@ class RAGEngine:
             await self._ensure_vector_index_ready()
             for page_path in sorted(Path(path) for path in page_paths):
                 page_number = int(page_path.stem.rsplit("-", 1)[1])
-                markdown = page_path.read_text(encoding="utf-8")
+                markdown = clean_document_text(page_path.read_text(encoding="utf-8"))
                 for chunk_text in self._chunk_text(markdown):
                     embedding = await self._get_embedding(chunk_text)
                     chunk_id = self._next_id
@@ -678,33 +710,6 @@ class RAGEngine:
         self._rebuild_bm25()
         self.enabled = bool(self.chunks)
         log.info(f"Removed {len(removed_ids)} chunks for: {file_path}")
-        return len(removed_ids)
-
-    async def remove_by_document_id(self, document_id: str) -> int:
-        """Xóa tất cả chunks thuộc một document_id khỏi index.
-
-        Dùng cho tài liệu index qua index_prepared_pages() (luồng đính kèm
-        chat "lưu lại") - các chunk này không có file_path thân thiện với
-        người dùng (file_path trỏ vào các page-XXXX.md nội bộ), nên
-        remove_document() không match được. Không rebuild (và không
-        re-embed) toàn bộ index, giống remove_document()."""
-        if not document_id:
-            return 0
-
-        removed_ids = [
-            c["id"] for c in self.chunks if c.get("document_id") == document_id
-        ]
-        if not removed_ids:
-            return 0
-
-        self.chunks = [c for c in self.chunks if c.get("document_id") != document_id]
-        self._remove_chunk_ids(removed_ids)
-
-        if self.persistent:
-            await asyncio.to_thread(self._save_index)
-        self._rebuild_bm25()
-        self.enabled = bool(self.chunks)
-        log.info(f"Removed {len(removed_ids)} chunks for document_id: {document_id}")
         return len(removed_ids)
 
     async def sync_lifecycle(self, active_file_paths: List[str]) -> int:

@@ -117,11 +117,11 @@ def test_call_llm_wrapper_forwards_every_argument():
 
     async def fake_inner(messages, model=None, thinking=False, stream=False,
                          tools=None, tool_choice=None, temperature=None,
-                         max_tokens=None, response_format=None):
+                         max_tokens=None, response_format=None, thinking_budget=None):
         seen.update(
             messages=messages, model=model, thinking=thinking, stream=stream,
             tools=tools, tool_choice=tool_choice, temperature=temperature,
-            max_tokens=max_tokens, response_format=response_format,
+            max_tokens=max_tokens, response_format=response_format, thinking_budget=thinking_budget,
         )
         return "sentinel-result"
 
@@ -132,7 +132,7 @@ def test_call_llm_wrapper_forwards_every_argument():
             [{"role": "user", "content": "xin chao"}],
             model="m", thinking=True, stream=True, tools=["t"],
             tool_choice="auto", temperature=0.4, max_tokens=128,
-            response_format={"type": "json_object"},
+            response_format={"type": "json_object"}, thinking_budget=64,
         ))
     finally:
         llm_server._call_llm_inner = original
@@ -147,6 +147,7 @@ def test_call_llm_wrapper_forwards_every_argument():
     assert seen["temperature"] == 0.4
     assert seen["max_tokens"] == 128
     assert seen["response_format"] == {"type": "json_object"}
+    assert seen["thinking_budget"] == 64
 
 
 def test_inference_gate_never_blocks_an_interactive_call():

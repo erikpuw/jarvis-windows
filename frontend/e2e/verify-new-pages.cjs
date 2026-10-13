@@ -148,7 +148,7 @@ async function run() {
   await page.goto(BASE);
   await page.waitForSelector("#btn-menu");
   await page.click("#btn-menu");
-  await page.click("#btn-settings");
+  await page.evaluate(() => document.getElementById("btn-settings").click());
   await page.waitForSelector("#settings-container.open");
   await page.waitForTimeout(400);
 

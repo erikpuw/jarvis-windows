@@ -20,7 +20,7 @@ const MARKUP =
   '</div>';
 
 const collapseTimers = new WeakMap<HTMLElement, number>();
-const COLLAPSE_MS = 500; // a little longer than the 460 ms hop-and-gather animation in stream-loader.css (.collapsing)
+const COLLAPSE_MS = 340; // a little longer than the 300 ms shrink animation in stream-loader.css (.collapsing)
 
 export function showStreamLoader(bubble: HTMLElement): void {
   const existingTimer = collapseTimers.get(bubble);

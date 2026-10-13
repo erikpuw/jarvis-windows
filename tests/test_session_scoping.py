@@ -43,14 +43,6 @@ def test_repeat_inside_one_session_is_still_skipped():
     assert len(memory.get_messages(limit=10)) == 1
 
 
-def test_pending_offer_ignores_rows_of_other_sessions():
-    _say("web-a", "assistant", "Mở Notepad nhé?", ask_user="Mở Notepad nhé?", action_run="open_app")
-    _say("web-b", "user", "ừ")  # phiên khác chen vào giữa
-    _say("web-a", "user", "ừ")
-    set_session("web-a")
-    assert memory.get_pending_offer() == ("Mở Notepad nhé?", "open_app")
-    set_session("web-b")
-    assert memory.get_pending_offer() == ("", "")
 
 
 def test_get_messages_filters_by_session_and_unfiltered_returns_all():
@@ -69,11 +61,3 @@ def test_routing_history_only_current_session():
     assert "chuyện của A" not in texts
 
 
-def test_chat_history_only_current_session():
-    from engine.prompts.chat import build_chat_history
-
-    _say("web-a", "user", "chuyện của A")
-    _say("web-b", "user", "chuyện của B")
-    set_session("web-b")
-    texts = [m["content"] for m in build_chat_history(user_text="xin chào")]
-    assert texts == ["chuyện của B"]

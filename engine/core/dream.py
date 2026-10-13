@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 JARVIS Dream Cycle — Tự động dọn dẹp/gộp dữ liệu cũ khi hệ thống idle (giống chu kỳ "ngủ mơ"
-để củng cố trí nhớ): tóm tắt hội thoại thừa thải trong `messages`, gọn bớt `agent_outcomes`,
+để củng cố trí nhớ): tóm tắt hội thoại thừa thải trong `messages`, gọn bớt `outcomes`,
 và tái tổ chức Obsidian Wiki (`data/wiki/`) — Daily digests, Topics, Errors.md, Evolution.md.
 
 Nguyên tắc an toàn: KHÔNG BAO GIỜ xoá vĩnh viễn. Mọi bản ghi/tệp bị gộp đều được sao lưu vào
@@ -258,7 +258,9 @@ def _fetch_old_messages(cutoff: float):
 def _delete_messages_by_id(ids_to_delete: list[int]) -> None:
     conn = _connect()
     try:
-        conn.executemany("DELETE FROM messages WHERE id = ?", [(i,) for i in ids_to_delete])
+        from engine.core.memory import delete_messages_by_id
+
+        delete_messages_by_id(conn, ids_to_delete)
         conn.commit()
     finally:
         conn.close()
@@ -318,16 +320,16 @@ async def _dream_consolidate_messages(run_id: str, retention_days: int) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Section 2 — agent_outcomes (rule-based: validated_workflows already
+# Section 2 — outcomes (rule-based: workflows already
 # captures the distilled essence of successful patterns, so raw outcomes
 # older than retention are safe to prune; failures kept 2x longer for debugging)
 # ---------------------------------------------------------------------------
 
-def _fetch_stale_agent_outcomes(cutoff: float, failure_cutoff: float) -> list[dict]:
+def _fetch_stale_outcomes(cutoff: float, failure_cutoff: float) -> list[dict]:
     conn = _connect()
     try:
         rows = conn.execute(
-            "SELECT id, agent, query, status, result, traces, created_at FROM agent_outcomes "
+            "SELECT id, tools, query, status, result, traces, created_at FROM outcomes "
             "WHERE (status = 'success' AND created_at < ?) OR (status != 'success' AND created_at < ?)",
             (cutoff, failure_cutoff),
         ).fetchall()
@@ -336,24 +338,24 @@ def _fetch_stale_agent_outcomes(cutoff: float, failure_cutoff: float) -> list[di
         conn.close()
 
 
-def _delete_agent_outcomes_by_id(ids: list[int]) -> None:
+def _delete_outcomes_by_id(ids: list[int]) -> None:
     conn = _connect()
     try:
-        conn.executemany("DELETE FROM agent_outcomes WHERE id = ?", [(i,) for i in ids])
+        conn.executemany("DELETE FROM outcomes WHERE id = ?", [(i,) for i in ids])
         conn.commit()
     finally:
         conn.close()
 
 
-async def _dream_prune_agent_outcomes(run_id: str, retention_days: int) -> dict:
+async def _dream_prune_outcomes(run_id: str, retention_days: int) -> dict:
     cutoff = time.time() - retention_days * 86400
     failure_cutoff = time.time() - retention_days * 2 * 86400
-    rows = await asyncio.to_thread(_fetch_stale_agent_outcomes, cutoff, failure_cutoff)
+    rows = await asyncio.to_thread(_fetch_stale_outcomes, cutoff, failure_cutoff)
     if not rows:
         return {"removed": 0}
     ids = [r["id"] for r in rows]
-    _archive_jsonl("agent_outcomes", rows, run_id)
-    await asyncio.to_thread(_delete_agent_outcomes_by_id, ids)
+    _archive_jsonl("outcomes", rows, run_id)
+    await asyncio.to_thread(_delete_outcomes_by_id, ids)
     return {"removed": len(ids)}
 
 
@@ -537,7 +539,7 @@ def _write_dream_log(report: dict) -> None:
             f"## {report['run_id']}",
             f"- Bắt đầu: {report['started_at']} — Kết thúc: {report['finished_at']}",
         ]
-        for key in ("messages", "agent_outcomes", "wiki_daily", "wiki_topics", "errors_log", "evolution_log"):
+        for key in ("messages", "outcomes", "wiki_daily", "wiki_topics", "errors_log", "evolution_log"):
             lines.append(f"- {key}: {report.get(key)}")
         new_entry = "\n".join(lines) + "\n"
 
@@ -575,7 +577,7 @@ async def run_dream_cycle() -> dict:
 
     sections = [
         ("messages", _dream_consolidate_messages(run_id, retention_days)),
-        ("agent_outcomes", _dream_prune_agent_outcomes(run_id, outcome_retention_days)),
+        ("outcomes", _dream_prune_outcomes(run_id, outcome_retention_days)),
         ("learnings", _dream_consolidate_learnings()),
         ("wiki_daily", _dream_consolidate_wiki_daily(run_id, retention_days)),
         ("wiki_topics", _dream_compact_wiki_topics(run_id)),

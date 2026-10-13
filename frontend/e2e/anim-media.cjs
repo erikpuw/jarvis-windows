@@ -78,7 +78,7 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   check(running(r), "5b. đóng Settings: chạy lại tất cả", JSON.stringify(r));
 
   // 6. orb lớn đã tắt bằng nút: mở/đóng video không làm nó sống lại, vòng nhỏ vẫn chạy
-  await page.click("#btn-orb-toggle"); await page.waitForTimeout(500);
+  await page.evaluate(() => document.getElementById("btn-orb-toggle").click()); await page.waitForTimeout(500);
   sock.send(JSON.stringify({ type: "media_open", query: "thử", title: "Video thử", embed_url: "http://localhost:5173/blank-video.html?x=2" })); await page.waitForTimeout(600);
   await page.keyboard.press("Escape"); await page.waitForTimeout(700);
   r = await rate(700);

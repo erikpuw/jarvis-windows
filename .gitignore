@@ -12,12 +12,9 @@ __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
-.claude/
-.vscode/
-.gemini/
-.goose/
 *.task
-
+.goosehints
+.agents/
 
 # Data (user-specific, generated at runtime)
 *.db
@@ -28,16 +25,15 @@ data/.jarvis_output.txt
 
 # Certificates
 *.pem
-*.bak
 #Logs
 logs/
 bin/
 docs/
+tests/
 rules/
 media/
 scratch/
-.gitnexus/
-.opencode/
+graphify-out/
 
 # Build
 dist/
@@ -50,6 +46,13 @@ frontend/.vite/
 .idea/
 .claude/
 .arch/
+.vscode/
+.gemini/
+.goose/
+.gitnexus/
+.opencode/
+.kiro/
+.superpowers/
 
 # Desktop overlay
 *.db-shm

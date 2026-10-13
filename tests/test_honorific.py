@@ -38,8 +38,10 @@ def test_ban_drops_the_clause_that_forbids_ban(monkeypatch):
 
 def test_load_applies_to_real_prompt(monkeypatch):
     _env(monkeypatch, "Anh", "Hòa")
-    text = load("identity")
-    assert "anh Hòa" in text and "“anh”" in text
+    from pathlib import Path
+    from engine.prompts.honorific import personalize
+    text = personalize((Path(__file__).resolve().parents[1] / "prompt" / "jarvis.md").read_text(encoding="utf-8"))
+    assert "anh Hòa" in text and '"anh"' in text
     assert "ngài" not in text.lower() and "erikpuw" not in text
 
 

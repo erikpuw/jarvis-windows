@@ -381,6 +381,18 @@ async def handle_office_command(prompt: str, filepath: str = "", conversation_hi
         if rc != 0:
             return f"officecli báo lỗi (code {rc}):\nStderr:\n{err}\nStdout:\n{out}"
 
+        # Đưa tài liệu về frontend để tải về (gửi trước preview để ws gửi cuối
+        # cùng vẫn là text_chunk xem trước).
+        from engine.core.output_delivery import deliver_output_file, file_label
+
+        doc_label = file_label(output_path) or ext.upper()
+        await deliver_output_file(
+            ws,
+            output_path,
+            kind="document",
+            caption=f"Tài liệu {doc_label}",
+        )
+
         try:
             port = await _start_preview(output_path)
             if ws:
@@ -391,7 +403,7 @@ async def handle_office_command(prompt: str, filepath: str = "", conversation_hi
         except Exception as preview_err:
             log.warning(f"Could not start officecli preview: {preview_err}")
 
-        return f"Đã tạo/chỉnh sửa file Office thành công:\n{output_path}"
+        return f"Đã xử lý xong tài liệu {doc_label} {os.path.basename(output_path)} — đã gửi về giao diện kèm nút tải về."
 
     except Exception as e:
         log.error(f"Lỗi khi thực thi office_tools: {e}", exc_info=True)

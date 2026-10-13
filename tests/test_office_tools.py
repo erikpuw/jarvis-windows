@@ -71,7 +71,7 @@ def test_create_failure_is_retried_once_then_succeeds(monkeypatch, tmp_path):
     out = h.run(tmp_path / "a.docx")
     assert h.verbs().count("create") == 2
     assert "batch" in h.verbs()
-    assert "thành công" in out
+    assert "Đã xử lý xong tài liệu" in out and "a.docx" in out
 
 
 def test_create_failure_twice_reports_error_without_batch(monkeypatch, tmp_path):
@@ -93,7 +93,9 @@ def test_success_closes_file_and_starts_watch_on_explicit_port(monkeypatch, tmp_
     assert cmd[:2] == ["officecli", "watch"] and "--port" in cmd
     port = cmd[cmd.index("--port") + 1]
     assert f"localhost:{port}" in ws.sent[-1]["text"]
-    assert str(target) in out
+    # Câu trả lời chỉ nêu tên tệp, không lộ đường dẫn máy chủ.
+    assert target.name in out
+    assert str(tmp_path) not in out
 
 
 def test_batch_failure_still_closes_and_skips_preview(monkeypatch, tmp_path):
@@ -126,3 +128,33 @@ def test_preview_falls_back_to_free_port_when_default_is_busy(monkeypatch, tmp_p
         assert cmd[cmd.index("--port") + 1] != str(busy.getsockname()[1])
     finally:
         busy.close()
+
+
+def test_success_delivers_the_document_to_the_frontend(monkeypatch, tmp_path):
+    """Tài liệu officecli tạo ra phải về frontend dạng document để tải về."""
+    h = Harness(monkeypatch)
+    ws = FakeWs()
+    target = tmp_path / "bao_cao.docx"
+    h.run(target, ws=ws)
+
+    files = [m for m in ws.sent if m.get("type") == "output_file"]
+    assert files, ws.sent
+    assert files[0]["kind"] == "document"
+    assert files[0]["path"] == str(target)
+    assert files[0]["name"] == "bao_cao.docx"
+
+
+def test_preview_text_still_comes_after_the_file_event(monkeypatch, tmp_path):
+    """Giữ contract cũ: ws.sent[-1] vẫn là text_chunk preview (test cũ dựa vào đây)."""
+    h = Harness(monkeypatch)
+    ws = FakeWs()
+    h.run(tmp_path / "a.docx", ws=ws)
+    assert ws.sent[-1]["type"] == "text_chunk"
+    assert "localhost:" in ws.sent[-1]["text"]
+
+
+def test_failed_batch_does_not_deliver_any_file(monkeypatch, tmp_path):
+    h = Harness(monkeypatch, rc_by_verb={"batch": 1})
+    ws = FakeWs()
+    h.run(tmp_path / "a.docx", ws=ws)
+    assert [m for m in ws.sent if m.get("type") == "output_file"] == []

@@ -3,7 +3,9 @@
  * engine/UIUX/graphfy.py scans imports). Nothing here is hand-drawn: a new module
  * shows up by itself. Layout is lanes: top band follows a turn left → right with the
  * LLM as the central column; bottom band holds memory, ingestion, background jobs.
- * Pulses simulate flow along every real edge. Hover a node to isolate its edges;
+ * Import edges are faint and only LLM calls carry a pulse; edges to the shared hubs
+ * (server, tools, UIUX: nearly everything imports them) are hidden until "Hiện tất cả"
+ * or until one of their nodes is hovered. Hover a node to isolate its edges;
  * drag to rearrange (positions in localStorage only).
  */
 import { apiGet, escapeHtml } from "./api";
@@ -41,6 +43,8 @@ const LANES: { id: Lane; title: string; color: string }[] = [
 ];
 const TOP: Lane[] = ["input", "turn", "llm", "output"];
 const BOTTOM: Lane[] = ["memory", "ingestion", "background", "support", "other"];
+// imported by nearly every module: their edges only show on hover or with "Hiện tất cả"
+const HUBS = new Set(["server", "tools", "UIUX"]);
 const COLOR = Object.fromEntries(LANES.map((l) => [l.id, l.color])) as Record<Lane, string>;
 
 const fileOf = (id: string) =>
@@ -143,11 +147,11 @@ function edgeSvg(e: ApiEdge, byId: Map<string, GNode>, i: number): string {
   const d = edgePath(a, b);
   const support = a.lane === "support" || b.lane === "support";
   const color = e.kind === "llm" ? COLOR.llm : COLOR[a.lane];
+  const hub = e.kind === "import" && (HUBS.has(e.from) || HUBS.has(e.to));
   const dur = 2.8 + (i % 7) * 0.4;
-  // simulated flow: every real edge carries a pulse (support edges stay quiet); negative
-  // begin puts each pulse mid-flight on first paint
-  const pulse = support ? "" : `<circle class="gf-pulse" r="2.4"><animateMotion dur="${dur}s" begin="-${((i * 0.37) % dur).toFixed(2)}s" repeatCount="indefinite" path="${d}"></animateMotion></circle>`;
-  return `<g class="gf-link${support ? " gf-support" : ""}" data-from="${escapeHtml(e.from)}" data-to="${escapeHtml(e.to)}" data-kind="${e.kind}" style="--gf-e:${color}">
+  // simulated flow on the LLM calls only; negative begin puts each pulse mid-flight on first paint
+  const pulse = e.kind !== "llm" ? "" : `<circle class="gf-pulse" r="2.4"><animateMotion dur="${dur}s" begin="-${((i * 0.37) % dur).toFixed(2)}s" repeatCount="indefinite" path="${d}"></animateMotion></circle>`;
+  return `<g class="gf-link${support ? " gf-support" : ""}${hub ? " gf-hub" : ""}" data-from="${escapeHtml(e.from)}" data-to="${escapeHtml(e.to)}" data-kind="${e.kind}" style="--gf-e:${color}">
     <path class="gf-edge gf-edge-${e.kind}" d="${d}"></path>${pulse}
   </g>`;
 }
@@ -247,6 +251,13 @@ export async function renderGraphfy(_loadCatalog?: unknown): Promise<void> {
     <g class="gf-nodes">${nodes.map(nodeSvg).join("")}</g>
   </svg>`;
   enableInteraction(host.querySelector<SVGSVGElement>("svg")!, byId, height);
+}
+
+/** Shows or hides the edges to the shared hubs; the choice survives a re-render (it sits on #graphfy-map). */
+export function toggleGraphfyAll(btn: HTMLButtonElement): void {
+  const all = document.getElementById("graphfy-map")?.classList.toggle("gf-all") ?? false;
+  btn.textContent = all ? "Ẩn bớt" : "Hiện tất cả";
+  btn.setAttribute("aria-pressed", String(all));
 }
 
 /** Restores the default layout. */

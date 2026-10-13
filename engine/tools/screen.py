@@ -177,6 +177,10 @@ $image.Dispose()
     return False
 
 
+# Mô tả vision hiện nguyên văn cho ngài (display, 2026-10-13): không chào, không xưng "bạn" (e2e: xưng sai: bạn).
+NO_ADDRESS = "Viết mô tả khách quan, không chào hỏi, không xưng hô với người đọc."
+
+
 async def analyze_screenshot(
     screenshot_b64: str,
     prompt: str = "Hãy mô tả chi tiết những gì bạn thấy trên màn hình này bằng tiếng Việt.",
@@ -194,26 +198,22 @@ async def analyze_screenshot(
         StreamThinkStripper, strip_think, vision_model_name, vision_request_kwargs,
     )
 
-    async def empty_gen():
-        if False:
-            yield
-
     if not screenshot_b64:
-        return "" if not stream else empty_gen()
+        return "" if not stream else None
     client = llm_client or _get_vision_client()
     if not client:
-        return "" if not stream else empty_gen()
+        return "" if not stream else None
         
     model = vision_model or vision_model_name()
 
     if not model:
         log.warning("No vision model configured (VISION_MODEL và model chat đều chưa đặt)")
-        return "" if not stream else empty_gen()
+        return "" if not stream else None
     try:
         # Tham số instruct + tắt thinking theo model đang chạy (gemma/qwen/bonsai), không gán cứng.
         content_list = [
             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"}},
-            {"type": "text", "text": prompt},
+            {"type": "text", "text": f"{prompt}\n{NO_ADDRESS}"},
         ]
 
         response = await client.chat.completions.create(
@@ -241,23 +241,56 @@ async def analyze_screenshot(
             return strip_think(response.choices[0].message.content or "")
     except Exception as e:
         log.warning("Vision analysis failed (model=%s): %s", model, e)
-        return "" if not stream else empty_gen()
+        return "" if not stream else None
 
 
-async def describe_screen(llm_client=None) -> str:
+_IMAGE_MAX_SIDE = 2048
+
+
+def _image_b64(path) -> str | None:
+    """PNG base64 của tệp ảnh, thu nhỏ cạnh dài còn <= 2048px (vision server không nhận ảnh quá lớn)."""
+    import io
+    from PIL import Image, ImageOps
+    try:
+        with Image.open(path) as img:
+            img = ImageOps.exif_transpose(img)
+            img = img.convert("RGB") if img.mode not in ("RGB", "RGBA", "L") else img
+            img.thumbnail((_IMAGE_MAX_SIDE, _IMAGE_MAX_SIDE))
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+    except Exception as e:
+        log.warning("Cannot read image %s: %s", path, e)
+        return None
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+async def describe_image(path, prompt: str | None = None, llm_client=None, stream: bool = True) -> str | AsyncGenerator[str, None]:
+    """Phân tích một tệp ảnh bằng vision model (cùng đường với describe_screen)."""
+    b64 = await asyncio.to_thread(_image_b64, path)
+    if not b64:
+        return "Không đọc được tệp ảnh này."
+    ask = "Hãy phân tích bức ảnh này và trả lời bằng tiếng Việt."
+    if prompt and prompt.strip():
+        ask += f" Yêu cầu của người dùng: {prompt.strip()}"
+    desc = await analyze_screenshot(b64, prompt=ask, llm_client=None, stream=stream)
+    if (desc is None or desc == "") and llm_client:
+        desc = await analyze_screenshot(b64, prompt=ask, llm_client=llm_client, stream=stream)
+    return desc if desc else "Không phân tích được ảnh: model vision chưa sẵn sàng."
+
+
+async def describe_screen(llm_client=None, stream: bool = True) -> str | AsyncGenerator[str, None]:
     """Describe what's on the user's screen.
 
     Tries screenshot + vision (model đang chạy) first. Falls back to window list.
     """
     screenshot_b64 = await take_screenshot()
     if screenshot_b64:
-        # Ưu tiên dùng client Vision (VISION_URL) và tắt stream để tránh lỗi lặp từ
-        desc = await analyze_screenshot(screenshot_b64, llm_client=None, stream=False)
-        if not desc and llm_client:
-            desc = await analyze_screenshot(screenshot_b64, llm_client=llm_client, stream=False)
-        if desc:
+        # Ưu tiên dùng client Vision (VISION_URL), fallback sang llm_client
+        desc = await analyze_screenshot(screenshot_b64, llm_client=None, stream=stream)
+        if (desc is None or desc == "") and llm_client:
+            desc = await analyze_screenshot(screenshot_b64, llm_client=llm_client, stream=stream)
+        if desc is not None and desc != "":
             return desc
-        return "I can see your screen, sir."
 
     # Fallback: get window list
     windows = await get_active_windows()

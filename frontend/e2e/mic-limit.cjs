@@ -34,7 +34,7 @@ async function open(browser, { dead = false } = {}) {
   await page.goto(BASE);
   await page.waitForTimeout(1200);
   await page.clock.fastForward(1500); // bộ hẹn giờ khởi động 1s của app
-  await page.click("#btn-mute"); await page.waitForTimeout(300); // bật mic: start()
+  await page.click("#btn-controls"); await page.waitForTimeout(400); await page.click("#btn-mute"); await page.waitForTimeout(300); // mở menu nút rồi bấm nút mic: bật mic, start()
   const starts = () => page.evaluate(() => window.__starts);
   const muted = () => page.$eval("#btn-mute", (b) => b.classList.contains("muted"));
   // nhận dạng giọng nói tự kết thúc khi im lặng: no-speech rồi onend

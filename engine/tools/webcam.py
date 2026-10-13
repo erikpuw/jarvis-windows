@@ -181,6 +181,7 @@ async def webcam_analyze(client, prompt: str = "What do you see through the webc
     try:
         # Qua client chung (có API key); model + tham số theo model đang chạy, tắt thinking
         from engine.server.llm_server import strip_think, vision_model_name, vision_request_kwargs
+        from engine.tools.screen import NO_ADDRESS
 
         response = await client.chat.completions.create(
             model=vision_model_name(),
@@ -189,7 +190,7 @@ async def webcam_analyze(client, prompt: str = "What do you see through the webc
                 "role": "user",
                 "content": [
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
-                    {"type": "text", "text": f"{prompt}{lang_instruction}"},
+                    {"type": "text", "text": f"{prompt}{lang_instruction}\n{NO_ADDRESS}"},
                 ],
             }],
             **vision_request_kwargs(),

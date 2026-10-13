@@ -66,7 +66,7 @@ const tone = (sec) => { const n = 24000 * sec, a = new Int16Array(n); for (let i
   check(resumedLogs(u) === 1, "4e. chat lần sau: đã chạy rồi thì bỏ qua", `${resumedLogs(u)} lần`);
   await u.page.context().close();
   const m = await open(browser, BASE);
-  await m.page.click("#btn-mute"); await m.page.waitForTimeout(500);
+  await m.page.evaluate(() => document.getElementById("btn-mute").click()); await m.page.waitForTimeout(500);
   check((await state(m.page)) === "running" && resumedLogs(m) === 1, "4f. bấm nút mic → mở khoá âm thanh đúng 1 lần (người chỉ nói không cần gõ chat)", `${await state(m.page)} ${resumedLogs(m)} lần`);
   await m.page.context().close();
 

@@ -29,6 +29,8 @@ if os.getenv("VIENEU_HF_OFFLINE", "1").strip().lower() in {"1", "true", "yes", "
 
 os.environ["VIENEU_TTS_ENABLED"] = "true"
 os.environ["EDGE_TTS_ENABLED"] = "false"
+import logging
+logging.getLogger("transformers.configuration_utils").setLevel(logging.ERROR)
 
 from engine.core.process_tree import free_port
 
@@ -52,6 +54,9 @@ def main():
     print("=" * 64)
 
     import uvicorn
+    from engine.server.stream_tts import configure_stream_tts_logging, clear_stream_tts_log
+    configure_stream_tts_logging()
+    clear_stream_tts_log()
     uvicorn.run(
         "engine.server.stream_tts:app",
         host=host,

@@ -63,5 +63,6 @@ if __name__ == "__main__":
     test_memory_ts_has_embedding_in_editable_fields()
     test_memory_ts_has_embedding_labels()
     test_api_learnings_reembed_route_exists()
+    test_preview_json_compact_for_384_vector()
     test_memory_reembed_button_in_detail_actions()
     print("All tests passed!")

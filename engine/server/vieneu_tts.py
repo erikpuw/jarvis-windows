@@ -153,16 +153,22 @@ def _synthesize_sync(text: str, voice_id: Optional[str]) -> bytes:
     text = (text or "").strip()  # đã được tts_manager chuẩn bị
     if not text:
         raise RuntimeError("VieNeu got empty text after cleanup")
+    voice = voice_id or DEFAULT_VOICE
+    log.info("[vieneu] batch synth text=%r voice=%s", text, voice)
+    started = time.monotonic()
     engine = _get_engine()
     acquired = _inference_lock.acquire(timeout=45)
     if not acquired:
         raise RuntimeError("VieNeu inference lock timed out; engine busy")
     try:
-        audio = engine.infer(text=text, voice=voice_id or DEFAULT_VOICE)
+        audio = engine.infer(text=text, voice=voice)
     finally:
         _inference_lock.release()
     if audio is None or len(audio) == 0:
         raise RuntimeError("VieNeu generated empty audio")
+    dur = len(audio) / engine.sample_rate
+    elapsed = (time.monotonic() - started) * 1000
+    log.info("[vieneu] batch done audio=%.2fs total=%.0fms", dur, elapsed)
     return float_audio_to_wav_bytes(audio, sample_rate=engine.sample_rate)
 
 

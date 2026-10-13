@@ -41,11 +41,14 @@ export function createSocket(url: string): JarvisSocket {
   const STALE_AFTER_MS = 60000;
 
   const deviceType = getDeviceType();
+  // One chat session per page load, sent on every (re)connect: iOS drops the socket when the app goes to the
+  // background but keeps the page and its bubbles, so a reconnect must stay in the same session on the server.
+  const sessionId = "web-" + Array.from(crypto.getRandomValues(new Uint8Array(4)), (b) => b.toString(16).padStart(2, "0")).join("");
 
   function buildUrl(baseUrl: string): string {
-    if (baseUrl.includes('device=')) return baseUrl;
     const sep = baseUrl.includes('?') ? '&' : '?';
-    return `${baseUrl}${sep}device=${deviceType}`;
+    const device = baseUrl.includes('device=') ? '' : `device=${deviceType}&`;
+    return `${baseUrl}${sep}${device}session=${sessionId}`;
   }
 
   const finalUrl = buildUrl(url);

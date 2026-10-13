@@ -73,7 +73,7 @@ def test_unknown_agent_is_rejected():
 
 
 def test_rule_without_supporting_lesson_is_rejected():
-    line = "- Gửi email, gọi điện, nhắn tin → `agent_email`."
+    line = "- Gửi email, gọi điện, nhắn tin → `agent_weather`."
     assert ev._bad_rule(line, [LESSON], True) == "không có bài học nào làm căn cứ"
 
 

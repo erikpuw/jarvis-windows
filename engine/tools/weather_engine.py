@@ -14,16 +14,6 @@ from engine.tools.browser import browser
 log = logging.getLogger("jarvis.weather")
 
 # Quy tắc định dạng cho LLM vòng 2 — bàn giao từ actions.py cho tool sở hữu
-SUMMARY_RULES: dict[str, str] = {
-    "weather_search": (
-        "QUY TẮC ĐỊNH DẠNG THỜI TIẾT BẮT BUỘC:\n"
-        "- Tóm tắt nhiệt độ, độ ẩm, sức gió và trạng thái thời tiết ngắn gọn.\n"
-        "- Đưa ra lời khuyên thiết thực (mang ô, mặc ấm, hoạt động ngoài trời...) phù hợp với ngài erikpuw.\n"
-        "- Với lịch mưa theo giờ: nêu rõ các khung giờ có khả năng mưa từ 50% trở lên và giờ cao nhất, "
-        "giữ nguyên số phần trăm trong dữ liệu, không bịa thêm giờ."
-    ),
-}
-
 # Weather State (for greeting background thread)
 _cached_weather: Optional[str] = None
 _last_weather_fetch_time: float = 0.0

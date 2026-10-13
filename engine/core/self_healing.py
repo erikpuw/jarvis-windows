@@ -21,14 +21,19 @@ _last_log_position: int = 0
 
 
 def is_known_transient_log_error(entry: str) -> bool:
-    """Skip known Telegram long-poll transport timeouts before any LLM assessment."""
+    """Skip known Telegram long-poll transport timeouts and server waiting connection errors before any LLM assessment."""
     normalized = entry.lower()
-    if "telegram polling request failed; retrying" not in normalized:
-        return False
-    return any(
-        marker in normalized
-        for marker in ("timeouterror", "timed out", "urlerror", "temporary failure")
-    )
+    if "telegram polling request failed; retrying" in normalized:
+        return any(
+            marker in normalized
+            for marker in ("timeouterror", "timed out", "urlerror", "temporary failure")
+        )
+    if any(marker in normalized for marker in (
+        "chưa hoạt động", "chờ kết nối", "all connection attempts failed",
+        "apiconnectionerror", "connecterror", "stream_tts", "port 8082"
+    )):
+        return True
+    return False
 
 
 def _find_project_file_in_error(error_message: str) -> Optional[str]:
@@ -192,6 +197,11 @@ async def trigger_self_healing_from_logs():
 
         # Chỉ kiểm tra sửa lỗi mới nhất
         if (now - _last_fix_self_time) > _FIX_SELF_COOLDOWN:
+            from engine.server.llm_server import check_llm_server
+            llm_online, _, _ = check_llm_server()
+            if not llm_online:
+                return  # Máy chủ LLM chưa hoạt động, bỏ qua tự sửa để tránh spam kết nối
+
             for err_line in reversed(error_blocks):
                 project_file = _find_project_file_in_error(err_line)
                 if project_file:

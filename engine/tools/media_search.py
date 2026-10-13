@@ -9,24 +9,6 @@ from pathlib import Path
 log = logging.getLogger("jarvis.media_search")
 
 
-def summary_rules(content: str) -> str:
-    """Quy tắc định dạng cho LLM vòng 2 — quyết định theo nội dung kết quả (bảng phim/video hay bài báo tin tức)."""
-    if "baomoi.com" not in content:
-        # Kết quả tool đã có sẵn bảng đúng (format_media_table); tự dựng bảng khác từng đổi tên cột
-        # thành "Tên sản phẩm | Giá" và giữ nhầm dòng, lệch với video thật đang phát.
-        return (
-            "QUY TẮC ĐỊNH DẠNG KẾT QUẢ PHIM / VIDEO BẮT BUỘC:\n"
-            "1. Chép NGUYÊN VĂN bảng Markdown trong kết quả công cụ: đủ mọi dòng, giữ nguyên tiêu đề cột, không tự dựng bảng khác, không dùng gạch đầu dòng.\n"
-            "2. Nếu kết quả có dòng 'ĐANG PHÁT: ...' thì nói đúng tên đó là nội dung đang phát.\n"
-            "3. Tuyệt đối không chèn thêm dòng trống xen kẽ trong bảng."
-        )
-    return (
-        "QUY TẮC ĐỊNH DẠNG BÀI BÁO TIN TỨC BẮT BUỘC:\n"
-        "- Dựng bảng Markdown riêng từng loại (vàng, xăng dầu, đô la, gas) có header rõ ràng.\n"
-        "- Tuyệt đối không để dòng trống xen kẽ trong bảng."
-    )
-
-
 async def search_media(query: str, source: str = "auto") -> list[dict]:
     if source == "local":
         results = search_local(query)

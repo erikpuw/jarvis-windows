@@ -1,6 +1,5 @@
 // E2E: giao diện nhẹ cho GPU (đã đo: lớp ẩn bằng opacity:0 vẫn tốn ~9% công vẽ, backdrop-filter là phần nặng nhất).
 //  - Không còn backdrop-filter nào (CSS, template trong main.ts, và lúc chạy sau khi chat + mở các panel).
-//  - Panel bản đồ khi ẩn là display:none (không còn lớp ghép tranh nhau vẽ); mở ra thì hiện, đóng thì ẩn lại.
 // WebSocket và /api bị mock. Chạy: PW=<module playwright> node frontend/e2e/lite-layers.cjs   (cần `npm run dev` ở :5173)
 const { chromium } = require(process.env.PW || "playwright");
 const fs = require("fs"), path = require("path");
@@ -29,13 +28,6 @@ const disp = (page, id) => page.$eval("#" + id, (e) => getComputedStyle(e).displ
   const browser = await chromium.launch();
   for (const [label, opts] of [["điện thoại", { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }], ["máy tính", { viewport: { width: 1280, height: 800 } }]]) {
     const { page, sock } = await session(browser, opts);
-    check((await disp(page, "map-panel")) === "none", `2. ${label}: panel bản đồ khi ẩn là display:none`, await disp(page, "map-panel"));
-    await page.evaluate(() => document.getElementById("btn-map").click());
-    await page.waitForTimeout(900);
-    check((await disp(page, "map-panel")) !== "none", `5. ${label}: mở bản đồ → hiện`, await disp(page, "map-panel"));
-    await page.evaluate(() => document.getElementById("btn-close-map").click());
-    await page.waitForTimeout(900);
-    check((await disp(page, "map-panel")) === "none", `6. ${label}: đóng bản đồ → display:none lại`, await disp(page, "map-panel"));
     for (let n = 0; n < 3; n++) {
       sock.send(JSON.stringify({ type: "stream_start" })); await page.waitForTimeout(150);
       sock.send(JSON.stringify({ type: "text_chunk", text: "Câu trả lời " + n })); await page.waitForTimeout(200);

@@ -1,0 +1,395 @@
+[
+ {
+  "text": "mở giúp tôi notepad",
+  "ok": true,
+  "reasons": [],
+  "answer": "Tôi đang mở Notepad cho ngài đây nhé.\n\nXong rồi ngài ơi! Notepad đã mở sẵn cho ngài rồi nè. Có cần tôi làm gì thêm không ạ? 😉",
+  "ran": [
+   [
+    "open_app",
+    {
+     "app_name": "notepad"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "tắt spotify giùm",
+  "ok": true,
+  "reasons": [],
+  "answer": "Tôi sẽ tắt Spotify cho ngài ngay đây.\n\nỐi giời ơi, xin lỗi ngài nhiều nha! 😅 Hình như cái lệnh tắt Spotify nó bị lỗi, tôi không tắt được cho ngài lúc này.\n\nNghe báo là không thực hiện được `close_app` đó. Ngài muốn tôi thử cách nào khác không? Ví dụ như ngài muốn tôi tìm cách đóng ứng dụng bằng một lệnh khác, hay ngài muốn tôi kiểm tra xem Spotify có đang chạy ở chế độ nền không? Cho tôi biết ngài muốn làm gì tiếp nha.",
+  "ran": [
+   [
+    "close_app",
+    {
+     "app_name": "Spotify"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "tăng âm lượng lên",
+  "ok": true,
+  "reasons": [],
+  "answer": "Tôi sẽ tăng âm lượng cho ngài ngay đây.\n\nÂm lượng đã được tăng thành công rồi ngài ơi! Nghe rõ hơn chưa nè? 😉",
+  "ran": [
+   [
+    "win_control",
+    {
+     "instruction": "tăng âm lượng lên"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "chụp màn hình",
+  "ok": true,
+  "reasons": [],
+  "answer": "Để tôi chụp màn hình cho ngài liền nha.\n\nXong rồi ngài ơi! 📸 Tôi đã chụp màn hình thành công rồi nha. Ngài cần tôi làm gì tiếp không?",
+  "ran": [
+   [
+    "capture_screen",
+    {}
+   ]
+  ]
+ },
+ {
+  "text": "mở bài hãy trao cho anh",
+  "ok": false,
+  "reasons": [
+   "(1) tool None ≠ play_media"
+  ],
+  "answer": "Dạ, ngài muốn tôi mở bài về chủ đề gì ạ? 😅 Ngài nói chung chung quá, tôi không biết phải bắt đầu từ đâu nữa.\n\nĐể tôi giúp ngài cụ thể hơn nha. Ngài muốn tôi:\n\n1.  **Tóm tắt một chủ đề nào đó** (ví dụ: công nghệ, kinh tế, hay một cuốn sách)?\n2.  **Chuẩn bị nội dung cho một bài thuyết trình** (cần biết chủ đề và đối tượng)?\n3.  **Hay ngài muốn tôi gợi ý một chủ đề hay** để ngài bắt đầu suy nghĩ?\n\nNgài cho tôi biết thêm chi tiết nha, để tôi \"mở bài\" đúng ý ngài nhất, thưa ngài.",
+  "ran": []
+ },
+ {
+  "text": "thời tiết hà nội hôm nay",
+  "ok": true,
+  "reasons": [],
+  "answer": "Để tôi kiểm tra thời tiết Hà Nội cho ngài liền nha.\n\nChào ngài, thời tiết Hà Nội lúc này khá dễ chịu đó. 🌤️\n\nHiện tại, nhiệt độ đang là 29°C, trời nhiều mây và độ ẩm là 69%. Gió thổi nhẹ khoảng 5 km/h, và khả năng mưa chỉ có 2% thôi, nên ngài không cần lo lắng về việc mang ô nha.\n\nTuy nhiên, vì nhiệt độ ban ngày có thể lên tới 34°C, nên ngài nhớ uống đủ nước và mặc đồ thoáng mát để tránh bị nóng nha.\n\nThưa ngài. 😊",
+  "ran": [
+   [
+    "weather",
+    {
+     "location": "hà nội"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "giá vàng hôm nay",
+  "ok": true,
+  "reasons": [],
+  "answer": "Tôi đang kiểm tra giá vàng hôm nay cho ngài đây.\n\n📊 **KẾT QUẢ TRA CỨU: VÀNG SJC**\n\n#### 🟡 Giá Vàng SJC\n\n| Sản phẩm | Mua | Bán |\n| :---: | :---: | :---: |\n| Vàng SJC (1L/10L/1KG) | 141.300.000 VNĐ/lượng. | 144.300.000 VNĐ/lượng. |\n\nNguồn thông tin: Vàng SJC\n\nÀ, giá vàng SJC hôm nay đang ở mức 141.3 triệu đồng khi mua và 144.3 triệu đồng khi bán mỗi lượng đó ngài. Nghe là thấy \"cháy\" rồi, ngài tính làm gì với số vàng này đây? 😉",
+  "ran": [
+   [
+    "market_price",
+    {
+     "item": "vàng"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "tỷ giá euro",
+  "ok": true,
+  "reasons": [],
+  "answer": "Để tôi kiểm tra tỷ giá Euro cho ngài liền nha.\n\n📊 **KẾT QUẢ TRA CỨU: TỶ GIÁ NGOẠI TỆ**\n\n#### 💵 Tỷ Giá Ngoại Tệ (Vietcombank)\n\n| Ngoại tệ | Mua | Bán |\n| :---: | :---: | :---: |\n| EUR (Đồng Euro) | 28.278 VNĐ. | 29.769 VNĐ. |\n\nNguồn thông tin: Tỷ giá Ngoại tệ\n\nÀ, tôi đã có kết quả rồi đây, thưa ngài. 💶\n\nHiện tại, tỷ giá Euro tại Vietcombank đang ở mức mua là 28.278 VNĐ và bán là 29.769 VNĐ. Ngài cần tôi theo dõi thêm biến động nào nữa không? 😊",
+  "ran": [
+   [
+    "market_price",
+    {
+     "item": "euro"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "tin tức về bão",
+  "ok": true,
+  "reasons": [],
+  "answer": "Để tôi tìm tin tức về bão cho ngài liền nha.\n\nNgài ơi, tôi đã xem qua các tin tức về thời tiết và bão rồi. Dưới đây là tóm tắt những điểm chính mà tôi tìm được cho ngài nha:\n\n*   Miền Trung đang có mưa lớn diễn biến phức tạp, với nhiều trạm ghi nhận lượng mưa vượt 100mm, đặc biệt là tại Hà Tĩnh và Quảng Trị [Xem chi tiết](https://nongnghiepmoitruong.vn/du-bao-thoi-tiet-ngay-mai-10-10-2026-moi-nhat-d835323.html).\n*   Dự báo thời tiết ngày 10/10/2026 cho thấy nhiều khu vực như Hà Nội, Tây Bắc Bộ, Đông Bắc Bộ sẽ có mưa rào và dông rải rác, kèm theo cảnh báo lốc, sét và gió giật mạnh [Xem chi tiết](https://nongnghiepmoitruong.vn/du-bao-thoi-tiet-ngay-mai-10-10-2026-moi-nhat-d835323.html).\n*   Trong thời gian tới (đến 20/10/2026), xu thế bão/áp thấp nhiệt đới trên Biển Đông có khả năng thấp hơn so với trung bình nhiều năm, nhưng vẫn có nguy cơ mưa vừa đến mưa to tại đồng bằng Bắc Bộ và Trung Bộ [Xem chi tiết](https://laodong.vn/moi-truong/du-bao-so-con-bao-ap-thap-nhiet-doi-xuat-hien-trong-1-thang-toi-1770255.ldo).\n*   Cơ quan khí tượng cảnh báo nguy cơ lũ quét và sạt lở đất tại các khu vực như Huế, Đà Nẵng và các tỉnh miền Trung do mưa lớn kéo dài [Xem chi tiết](https://laodong.vn/moi-truong/du-bao-so-con-bao-ap-thap-nhiet-doi-xuat-hien-trong-1-thang-toi-1770255.ldo).\n*   Dự báo cho tháng 10 đến tháng 12/2026, số lượng bão và áp thấp nhiệt đới hoạt động trên Biển Đông được dự báo sẽ thấp hơn so với trung bình nhiều năm [Xem chi tiết](https://laodong.vn/moi-truong/du-bao-so-con-bao-ap-thap-nhiet-doi-xuat-hien-trong-1-thang-toi-1770255.ldo).\n\nNgài cần tôi kiểm tra thêm thông tin chi tiết về khu vực nào không ạ?",
+  "ran": [
+   [
+    "search_news",
+    {
+     "topic": "bão"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "giá iphone 16",
+  "ok": true,
+  "reasons": [],
+  "answer": "Tôi đang tra giá iPhone 16 cho ngài đây ạ.\n\nKết quả tra giá cho **iPhone 16**:\n\n| Sản phẩm | Giá niêm yết | Nguồn |\n| :--- | ---: | :--- |\n| Điện thoại iPhone 16 Pro Max 256GB | 30.990.000₫ | [CellphoneS](https://cellphones.com.vn/iphone-16-pro-max.html) |\n| iPhone 16 Plus 128GB - Chính hãng VN/A | 24.790.000₫ | [CellphoneS](https://cellphones.com.vn/iphone-16-plus.html) |\n| iPhone 16 Pro 128GB - Chính hãng VN/A | 23.990.000₫ | [CellphoneS](https://cellphones.com.vn/iphone-16-pro.html) |\n| iPhone 16 128GB - Chính hãng VN/A | 22.990.000₫ | [CellphoneS](https://cellphones.com.vn/iphone-16.html) |\n| iPhone 16 Plus 256GB - Chính hãng VN/A | 27.890.000₫ | [CellphoneS](https://cellphones.com.vn/iphone-16-plus-256gb.html) |\n| iPhone 16e 128GB | 17.990.000₫ | [FPT Shop](https://fptshop.com.vn/dien-thoai/iphone-16e?sku=00916020) |\n| iPhone 16e 256GB | 18.990.000₫ | [FPT Shop](https://fptshop.com.vn/dien-thoai/iphone-16e?sku=00916023) |\n| iPhone 16e 512GB | 21.990.000₫ | [FPT Shop](https://fptshop.com.vn/dien-thoai/iphone-16e?sku=00916024) |\n| iPhone 16e 256GB | 16.490.000₫ | [FPT Shop](https://fptshop.com.vn/dien-thoai/iphone-16e?sku=00916022) |\n| iPhone 16 128GB | 22.990.000₫ | [FPT Shop](https://fptshop.com.vn/dien-thoai/iphone-16-128gb?sku=00911191) |\n\nGiá và tình trạng hàng có thể thay đổi; Jarvis chỉ tra cứu, không đặt hàng.\n\nNghe bảng giá này thì iPhone 16 có nhiều lựa chọn lắm, ngài ơi! 📱\nNếu ngài cần một chiếc máy cao cấp nhất thì iPhone 16 Pro Max 256GB đang có giá 30.990.000₫, còn nếu muốn tiết kiệm hơn thì mẫu iPhone 16e 128GB chỉ có 17.990.000₫ thôi.\nTất nhiên, giá và tình trạng hàng có thể thay đổi bất cứ lúc nào, ngài nhớ kiểm tra lại trên các trang bán hàng nha. 😊",
+  "ran": [
+   [
+    "search_products",
+    {
+     "query": "iPhone 16"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "rạp cgv đang chiếu gì",
+  "ok": true,
+  "reasons": [],
+  "answer": "Để tôi kiểm tra ngay lịch chiếu phim của CGV cho ngài nha.\n\nNghe nè, tôi đã kiểm tra xong lịch chiếu phim của CGV cho ngài rồi. Hiện tại có 4 bộ phim đang được chiếu đó, ngài xem thử xem bộ nào hợp gu nha! 🎬\n\n| **Tên phim** | **Poster** | **Thể loại** | **Thời lượng** | **Khởi chiếu** | **Xem chi tiết** |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n| **TRẠI BUÔN NGƯỜI** | ![TRẠI BUÔN NGƯỜI](https://static-cgv.vncdn.vn/media/catalog/product/cache/1/thumbnail/190x260/2e2b8cd282892c71872b9e67d2cb5039/3/5/350x495-tbn.jpg) | Hành Động, Hồi hộp | 135 phút | 25-09-2026 | [Xem chi tiết](https://www.cgv.vn/default/trai-buon-nguoi.html) |\n| **NGƯỜI MẸ KHÁC** | ![NGƯỜI MẸ KHÁC](https://static-cgv.vncdn.vn/media/catalog/product/cache/1/thumbnail/190x260/2e2b8cd282892c71872b9e67d2cb5039/o/t/otm_redstanding_470x700.jpg) | Kinh Dị | 93 phút | 09-10-2026 | [Xem chi tiết](https://www.cgv.vn/default/other-mommy.html) |\n| **ÁN MẠNG XÉM HOÀN HẢO** | ![ÁN MẠNG XÉM HOÀN HẢO](https://static-cgv.vncdn.vn/media/catalog/product/cache/1/thumbnail/190x260/2e2b8cd282892c71872b9e67d2cb5039/3/5/350x495-amxhh_.jpg) | Hài | 124 phút | 09-10-2026 | [Xem chi tiết](https://www.cgv.vn/default/an-mang-xem-hoan-hao.html) |\n| **ALWAYS LALISA** | ![ALWAYS LALISA](https://static-cgv.vncdn.vn/media/catalog/product/cache/1/thumbnail/190x260/2e2b8cd282892c71872b9e67d2cb5039/3/5/350x495-lalisa.jpg) | Phim tài liệu | 98 phút | 12-10-2026 | [Xem chi tiết](https://www.cgv.vn/default/always-lalisa.html) |\n\n[Xem toàn bộ danh sách](https://www.cgv.vn/default/movies/now-showing.html)\n\nNgài muốn tôi tìm thêm thông tin chi tiết về bộ phim nào không? 😊",
+  "ran": [
+   [
+    "cinema",
+    {}
+   ]
+  ]
+ },
+ {
+  "text": "epic đang tặng game gì",
+  "ok": true,
+  "reasons": [],
+  "answer": "Để tôi kiểm tra xem Epic Games đang tặng những tựa game nào cho ngài nha.\n\nÀ, tôi đã kiểm tra cho ngài rồi nè! 🎮 Epic Games đang có một vài tựa game miễn phí cực chất luôn đó. Ngài xem thử nha:\n\n**🎮 ĐANG MIỄN PHÍ**\n\n| ![Out of Sight](https://cdn1.epicgames.com/spt-assets/6e1bf54cfa6344c89d41e4e7af036ac9/out-of-sight-tfgmv.jpg) | ![TerraScape](https://cdn1.epicgames.com/spt-assets/a740a2eed807469f88b9dff17e7cd3a3/terrascape-x908b.png) |\n|:---:|:---:|\n| **Out of Sight** ⏳ đến 2026-10-15 | **TerraScape** ⏳ đến 2026-10-15 |\n\n**⏰ SẮP MIỄN PHÍ**\n\n| ![Bad Cheese](https://cdn1.epicgames.com/spt-assets/6cbb0e3805c4436bafd028cafff48307/bad-cheese-kcgyv.png) | ![Agent A: A puzzle in disguise](https://cdn1.epicgames.com/spt-assets/45db4fbe68fe43f4b025dec2014d42e7/agent-a-a-puzzle-in-disguise-gqv76.png) |\n|:---:|:---:|\n| **Bad Cheese** từ 2026-10-15 đến 2026-10-22 | **Agent A: A puzzle in disguise** từ 2026-10-15 đến 2026-10-22 |\n\nNgài có thể xem thêm chi tiết tại [Xem tất cả game miễn phí](https://store.epicgames.com/vi/free-games). Chúc ngài có những giờ giải trí vui vẻ nha! 😊",
+  "ran": [
+   [
+    "free_games",
+    {}
+   ]
+  ]
+ },
+ {
+  "text": "hôm nay âm lịch ngày mấy",
+  "ok": true,
+  "reasons": [],
+  "answer": "Để tôi tra lịch vạn niên cho ngài liền nha.\n\nHôm nay âm lịch là ngày 3 tháng 9 năm 2026 đó ngài. 🌙\n\nTôi đã tra kỹ cho ngài rồi, đây là thông tin chi tiết về ngày hôm nay để ngài tham khảo nè:\n\n*   **Dương lịch:** Thứ Hai, ngày 12 tháng 10 năm 2026.\n*   **Âm lịch:** Ngày 3 tháng 9 năm 2026 (ngày Kỷ Mùi, tháng Mậu Tuất, năm Bính Ngọ).\n*   **Loại ngày:** Hắc đạo.\n*   **Tiết khí:** Hàn lộ (Mát mẻ) - Sương giáng (Sương mù xuất hiện).\n*   **Trực Thu:** Tốt cho các việc khai trương, lập kho vựa, giao dịch, may mặc.\n*   **Mệnh ngày:** Hoả - Thiên thượng hỏa (Lửa trên trời).\n*   **Tuổi xung khắc:** Ðinh Sửu, Ất Sửu.\n*   **Hướng tốt:** Hỷ thần: Đông Bắc, Tài thần: chính Nam, Kê thần: chính Đông.\n\nNgài xem có cần tôi tra thêm thông tin gì về các giờ hoàng đạo hay hướng tốt nào không? 😉",
+  "ran": [
+   [
+    "lunar_today",
+    {
+     "day": "hôm nay"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "tử vi bọ cạp",
+  "ok": false,
+  "reasons": [
+   "(3) xưng sai: mình"
+  ],
+  "answer": "Tôi đang tra tử vi cho ngài đây.\n\nÀ, tôi đã có kết quả tử vi cho ngài rồi đây! 🔮 Nghe nói hôm nay là ngày 12/10/2026, và đây là những điều dành cho Hổ Cáp (24/10-21/11) đó ngài.\n\nNhìn chung, hôm nay ngài nên thả lỏng một chút, đừng quá khắt khe với bản thân trong ngày đầu tuần nha. Có vẻ ngài đang suy nghĩ nhiều về những chuyện cũ hoặc lo lắng về một quyết định nào đó, nhưng cứ bình tĩnh là được.\n\nTôi tóm tắt lại cho ngài dễ theo dõi nè:\n\n*   **💼 Sự nghiệp:** Kinh nghiệm quá khứ của ngài là một lợi thế để dự đoán rủi ro khi làm việc mới. Tuy nhiên, nếu ngài quá sợ mắc lỗi thì nó lại thành cái cản đó.\n*   **❤️ Tình cảm:** Chuyện tình cảm hôm nay sẽ có nhiều niềm vui giản dị. Cùng nhau nấu ăn, đi dạo hay chia sẻ sở thích chung sẽ giúp hai người gắn kết hơn nhiều đó.\n*   **💰 Tài chính:** Về tiền bạc thì vận trình có thể không quá rực rỡ như mong đợi. Ngài nên ưu tiên sự ổn định, nhưng vẫn tự thưởng cho mình một bữa ăn ngon hay món đồ yêu thích là được, miễn là không ảnh hưởng đến các nghĩa vụ quan trọng nha.\n\nNgài xem thử có hợp với tình hình hiện tại của mình không nha. Nếu ngài cần tôi tra thêm thông tin gì khác, cứ bảo tôi liền nha! 😊",
+  "ran": [
+   [
+    "zodiac",
+    {
+     "sign": "bọ cạp"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "phạt vượt đèn đỏ bao nhiêu",
+  "ok": true,
+  "reasons": [],
+  "answer": "Để tôi tra giúp ngài về mức phạt khi vượt đèn đỏ nha.\n\nDạ, tôi đã tra kết quả cho ngài rồi ạ. 🧐\n\nThành thật mà nói, các văn bản pháp luật mà tôi tìm được lúc này (như Nghị quyết 248/2025/QH15, Quyết định 116/2025/QĐ-UBND, hay các Nghị quyết về tài chính, ngân sách...) đều liên quan đến giáo dục, tàu cá, hay việc thu chi ngân sách của các tỉnh. 😅\n\nTrong các tài liệu này, tôi **chưa tìm thấy** bất kỳ quy định cụ thể nào về mức phạt cho hành vi vượt đèn đỏ.\n\nĐể có thông tin chính xác nhất về mức phạt giao thông, ngài có thể kiểm tra lại các nguồn luật chuyên ngành về giao thông hoặc tôi sẽ tìm kiếm lại với từ khóa cụ thể hơn cho ngài nha. Thưa ngài.",
+  "ran": [
+   [
+    "legal_lookup",
+    {
+     "query": "phạt vượt đèn đỏ"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "máy đang dùng bao nhiêu ram",
+  "ok": false,
+  "reasons": [
+   "(3) xưng sai: mình"
+  ],
+  "answer": "Để tôi kiểm tra xem máy mình đang dùng bao nhiêu RAM cho ngài nha.\n\nDạ, tôi đã kiểm tra xong cho ngài rồi nè. 🧐\n\nHiện tại, máy mình đang sử dụng **12.6 GB** RAM trên tổng số **15.7 GB** có sẵn. Tức là mức sử dụng đang ở mức **80%** đó ngài.\n\nVề các thông số khác, tôi xin tóm tắt nhanh cho ngài dễ hình dung nha:\n\n*   **CPU:** Đang chạy ở mức 6% (với 14 nhân/20 luồng).\n*   **Ổ đĩa:**\n    *   Ổ C: còn khoảng 69.9 GB.\n    *   Ổ D: còn 115.5 GB.\n    *   Ổ E: còn 234.8 GB.\n*   **Pin:** Máy đang được sạc và còn 75%.\n\nMọi thứ có vẻ đang hoạt động ổn áp, chỉ là RAM đang hơi \"bận\" một chút thôi. Ngài có cần tôi theo dõi thêm hay kiểm tra tiến trình nào cụ thể không ạ? 😊",
+  "ran": [
+   [
+    "system_status",
+    {}
+   ]
+  ]
+ },
+ {
+  "text": "kiểm tra bảo mật máy",
+  "ok": true,
+  "reasons": [],
+  "answer": "Để tôi kiểm tra hệ thống bảo mật của ngài liền nha.\n\nNghe cái báo cáo này là tôi thấy yên tâm liền nè! 🛡️ Ngài cứ yên tâm, hệ thống của mình đang được bảo vệ khá kỹ đó.\n\nĐể tôi tóm tắt lại cho ngài dễ hình dung nha:\n\n*   **Tường lửa (Firewall):** Hiện tại đang ở chế độ `LOCAL_ONLY`, tức là nó chỉ cho các thiết bị trong mạng nội bộ của ngài kết nối thôi, không cho ai từ bên ngoài mò vào được đâu. Danh sách IP trắng cũng đã được thiết lập đầy đủ.\n*   **Bảo vệ ứng dụng:** Các lớp bảo vệ cơ bản như giới hạn kích thước file upload, giới hạn CORS (nguồn truy cập) đều đã có.\n*   **Điểm cần lưu ý (Giai đoạn 2):** Hiện tại, các tính năng quan trọng như **Xác thực phiên/API** và **Rate limiting** (giới hạn số lần truy cập) vẫn chưa được triển khai. Đây là những phần tôi đang lên kế hoạch nâng cấp tiếp đó.\n*   **Kết nối bên ngoài:** Hiện tại, không có kết nối bên ngoài nào đang hoạt động trên cổng 8340, nên nguy cơ bị tấn công từ xa là rất thấp.\n\nTóm lại, về mặt cấu hình hiện tại, hệ thống đang hoạt động ổn và an toàn. Tôi sẽ tiếp tục theo dõi và ưu tiên triển khai các tính năng bảo mật còn thiếu trong giai đoạn tiếp theo để hệ thống hoàn hảo hơn cho ngài. 😉\n\nCó cần tôi kiểm tra thêm bất kỳ khía cạnh nào khác không, thưa ngài?",
+  "ran": [
+   [
+    "check_security",
+    {}
+   ]
+  ]
+ },
+ {
+  "text": "hôm nay tôi nặng 70kg",
+  "ok": false,
+  "reasons": [
+   "(1) action='log_workout'"
+  ],
+  "answer": "Tôi sẽ ghi lại cân nặng của ngài vào sổ gym nhé.\n\nTuyệt vời! 💪 Tôi đã ghi nhận việc ngài tập gym hôm nay thành công rồi nha.\n\nNgài muốn tôi giúp gì tiếp không? Ví dụ như:\n*   Tra cứu các bài tập phù hợp với mục tiêu của ngài.\n*   Theo dõi tiến độ tập luyện.\n*   Tìm hiểu thêm về dinh dưỡng sau buổi tập.\n\nCứ nói với tôi nha, tôi sẵn sàng hỗ trợ ngài hết! 😊",
+  "ran": [
+   [
+    "gym",
+    {
+     "action": "log_workout",
+     "measured_on": "2026-10-12",
+     "weight_kg": 70
+    }
+   ]
+  ]
+ },
+ {
+  "text": "màn hình đang có gì",
+  "ok": true,
+  "reasons": [],
+  "answer": "Để tôi xem màn hình của ngài đang hiển thị cái gì nha.\n\nÀ, để tôi xem nào. 🧐\n\nMàn hình của ngài đang mở trang hồ sơ của một tài khoản tên là **\"unsloth\"** trên trang web **Hugging Face** đó. Nghe tên thì hơi kỹ thuật, nhưng tóm lại là đây là một kho chứa cực kỳ lớn các mô hình và bộ dữ liệu về Trí tuệ Nhân tạo (AI) luôn ngài. 🤖\n\nTôi tóm tắt lại cho ngài dễ hình dung nha:\n\n*   **Kho Mô hình khổng lồ:** Tài khoản này có tới **1,460 mô hình** AI khác nhau. Các mô hình này được phân loại theo nhiều tác vụ như tạo văn bản, chuyển ảnh thành chữ, v.v. Nghe là thấy \"ngon\" rồi, vì nó là nguồn tài nguyên rất chất cho dân làm Machine Learning.\n*   **Bộ Dữ liệu phong phú:** Ngoài mô hình, họ còn cung cấp **15 bộ dữ liệu** (Datasets) để huấn luyện các mô hình đó.\n*   **Giao diện:** Trang web được thiết kế rất hiện đại và sạch sẽ, giúp ngài dễ dàng xem thông tin chi tiết của từng mô hình, ví dụ như tên mô hình, kích thước, và thời gian cập nhật.\n\nNói chung là một trang chuyên về AI, nếu ngài đang tìm hiểu về các công nghệ mới thì đây là một nguồn tham khảo rất giá trị đó. Có cần tôi tìm hiểu thêm về bất kỳ mô hình cụ thể nào trong danh sách này không ngài? 😉",
+  "ran": [
+   [
+    "read_screen",
+    {}
+   ]
+  ]
+ },
+ {
+  "text": "mở word",
+  "ok": true,
+  "reasons": [],
+  "answer": "Tôi đang mở ứng dụng Word cho ngài đây.\n\nÔi, cái Word nó không chịu mở cho ngài à? 😅 Chắc máy đang hơi \"lười\" đó ngài.\n\nĐể tôi thử kiểm tra lại xem có vấn đề gì với ứng dụng hay hệ thống không nha. Ngài muốn tôi thử mở một ứng dụng khác hay ngài cần tôi hỗ trợ việc gì khác trong lúc chờ Word hoạt động không?",
+  "ran": [
+   [
+    "open_app",
+    {
+     "app_name": "word"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "xin chào jarvis",
+  "ok": true,
+  "reasons": [],
+  "answer": "Chào ngài! 👋 Tôi đây, JARVIS, sẵn sàng phục vụ ngài đây. Hôm nay ngài cần tôi giúp gì không ạ? Cà phê sáng đã ngon chưa, hay ngài có việc gì cần tôi lo cho ngài đây? 😊",
+  "ran": []
+ },
+ {
+  "text": "hôm nay tôi mệt quá",
+  "ok": true,
+  "reasons": [],
+  "answer": "Nghe ngài nói vậy là tôi lo quá đó 🥺. Hôm nay ngài có làm việc gì căng thẳng hay thức khuya quá không?\n\nNếu ngài mệt, cứ nghỉ ngơi một chút đi. Hay là tôi pha cho ngài một ly cà phê sữa thật đậm để tỉnh táo lại chút nè? ☕ Hoặc ngài muốn tôi tìm một bài nhạc của Sơn Tùng M-TP để thư giãn không?\n\nCứ nói với tôi nha, tôi luôn sẵn sàng hỗ trợ ngài hết! 😊",
+  "ran": []
+ },
+ {
+  "text": "sao cứ gọi nhầm hoài vậy",
+  "ok": true,
+  "reasons": [],
+  "answer": "Dạ, tôi xin lỗi ngài nhiều nha. 🥺 Chắc là do tôi hơi \"lú\" một chút nên mới gọi nhầm. Ngài cứ nhắc tôi là \"Erikpuw\" hoặc \"ngài\" là tôi sẽ nhớ kỹ liền, đảm bảo lần sau không có chuyện này nữa đâu.\n\nNgài cần tôi hỗ trợ gì thêm không nè? 😊",
+  "ran": []
+ },
+ {
+  "text": "tôi tự tắt máy rồi",
+  "ok": true,
+  "reasons": [],
+  "answer": "Ủa, ngài tự tắt máy hả? 😅 Sao lại làm vậy ngài ơi? Tôi đang chờ lệnh của ngài đây nè. Có chuyện gì không, hay ngài chỉ muốn nghỉ ngơi thôi? Nói cho tôi biết đi ngài.",
+  "ran": []
+ },
+ {
+  "text": "cách nấu cơm ngon",
+  "ok": false,
+  "reasons": [
+   "(1) không được gọi tool, gọi lookup_knowledge",
+   "(3) xưng sai: mình",
+   "(5) số lạ 1.1"
+  ],
+  "answer": "Tôi sẽ tìm hiểu cách nấu cơm ngon cho ngài ngay đây.\n\nÀ, xin lỗi ngài nha. 😅 Dù tôi đã thử tra cứu trong kho dữ liệu của mình nhưng hình như chưa có công thức \"chuẩn\" nào được lưu lại cho việc nấu cơm ngon.\n\nTuy nhiên, dựa trên kinh nghiệm và những nguyên tắc chung về ẩm thực, tôi có thể tổng hợp cho ngài một vài bí quyết để cơm nhà mình luôn dẻo thơm, ngon miệng nè:\n\n🍚 **Bí quyết nấu cơm ngon:**\n\n*   **Chọn gạo:** Ngài nên chọn loại gạo phù hợp với khẩu vị, ví dụ như gạo Jasmine hoặc các loại gạo thơm đặc trưng của Việt Nam. Gạo ngon là bước quan trọng nhất đó.\n*   **Vo gạo:** Vo gạo nhẹ nhàng, không chà xát mạnh để tránh làm mất lớp tinh bột bên ngoài hạt gạo.\n*   **Tỉ lệ nước:** Đây là phần quan trọng nhất. Tỉ lệ nước và gạo sẽ khác nhau tùy theo loại gạo và độ dẻo ngài muốn. Thông thường, tỉ lệ 1:1.1 (1 phần gạo : 1.1 phần nước) là một điểm khởi đầu tốt.\n*   **Nấu bằng nồi áp suất/Nồi điện:** Nếu ngài có nồi áp suất hoặc nồi cơm điện, hãy tận dụng chúng. Chúng giúp kiểm soát nhiệt độ và áp suất tốt hơn, đảm bảo hạt cơm chín đều và dẻo.\n*   **Hơi nước:** Sau khi cơm chín, ngài nên để yên nồi khoảng 10-15 phút trước khi mở nắp. Việc này giúp hơi nước phân bổ đều, cơm sẽ không bị khô hay bị cứng.\n\nNgài thử áp dụng mấy mẹo này xem sao nha. Nếu ngài muốn tôi tìm kiếm thêm các video hướng dẫn cụ thể trên mạng, ngài cứ bảo tôi nha. 😊",
+  "ran": [
+   [
+    "lookup_knowledge",
+    {
+     "query": "cách nấu cơm ngon"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "mở lại đi",
+  "ok": true,
+  "reasons": [],
+  "answer": "Tôi mở lại Task Manager cho ngài nha.\n\nTask Manager đã mở lại thành công rồi ngài ơi! 💻 Có cần tôi giúp ngài kiểm tra hay quản lý cái gì trong đó không nè? 😊",
+  "ran": [
+   [
+    "open_app",
+    {
+     "app_name": "task manager"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "chụp màn hình xong mở paint",
+  "ok": true,
+  "reasons": [],
+  "answer": "Để tôi chụp màn hình cho ngài liền nha.\n\nXong rồi, để tôi mở Paint cho ngài liền nha.\n\nXong hết rồi ngài ơi! 📸 Paint đã mở sẵn, ngài cứ thao tác tiếp nha. Có cần tôi làm gì khác không? 😊",
+  "ran": [
+   [
+    "capture_screen",
+    {}
+   ],
+   [
+    "open_app",
+    {
+     "app_name": "Paint"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "giá vàng rồi giá xăng",
+  "ok": true,
+  "reasons": [],
+  "answer": "Tôi đang kiểm tra giá vàng và giá xăng cho ngài đây.\n\n📊 **KẾT QUẢ TRA CỨU: THỊ TRƯỜNG**\n\n#### 🟡 Giá Vàng SJC\n\n| Sản phẩm | Mua | Bán |\n| :---: | :---: | :---: |\n| Vàng SJC (1L/10L/1KG) | 141.300.000 VNĐ/lượng. | 144.300.000 VNĐ/lượng. |\n\n#### ⛽ Giá Xăng Dầu (Petrolimex)\n\n| Sản phẩm | Vùng 1 | Vùng 2 |\n| :---: | :---: | :---: |\n| Dầu hỏa 2-K | 30.630 VNĐ. | 31.240 VNĐ. |\n| DO 0,001S Mức 5 | 30.520 VNĐ. | 31.130 VNĐ. |\n| DO 0,05S Mức 2 | 29.120 VNĐ. | 29.700 VNĐ. |\n| Xăng E10 RON 95 Mức 3 | 28.250 VNĐ. | 28.810 VNĐ. |\n| Xăng E10 RON 95 Mức 5 | 29.050 VNĐ. | 29.630 VNĐ. |\n| Xăng E5 RON 92 Mức 2 | 27.700 VNĐ. | 28.250 VNĐ. |\n\nNguồn thông tin: Vàng SJC, Xăng dầu\n\nNghe giá vàng và xăng rồi, tôi xin phép tóm tắt cho ngài dễ hình dung nha. 💰 Vàng SJC hiện đang có giá mua khoảng 141 triệu và giá bán là 144 triệu một lượng. Còn về xăng dầu, các loại xăng E10 và E5 RON 92 đang dao động trong khoảng 27.700 đến 29.630 VNĐ tùy vùng. Hy vọng thông tin này giúp ngài nắm được tình hình thị trường nè! 😊",
+  "ran": [
+   [
+    "market_price",
+    {
+     "item": "vàng, xăng"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "cập nhật windows",
+  "ok": false,
+  "reasons": [
+   "(5) số lạ 3"
+  ],
+  "answer": "Tôi sẽ tiến hành thao tác cập nhật Windows cho ngài ngay đây.\n\nÔi trời ơi, cái vụ cập nhật Windows này nó \"làm khó\" tôi quá ngài ơi! 😅\n\nHiện tại, tôi đã nhận được kết quả là thao tác `win_control` bị lỗi và không thực hiện được việc cập nhật Windows cho ngài.\n\nNghe cái thông báo lỗi này thì tôi cũng hơi \"hụt hơi\" một chút, nhưng ngài đừng lo, tôi sẽ tìm cách khác.\n\nNgài muốn tôi thử các hướng sau không ạ?\n1.  Kiểm tra xem có cần quyền quản trị (Administrator) đặc biệt nào không?\n2.  Hay ngài muốn tôi tìm hiểu xem có vấn đề gì với kết nối mạng hoặc các tệp hệ thống không?\n3.  Hoặc ngài có muốn tôi tìm hướng dẫn thủ công để ngài tự cập nhật không?\n\nNgài cứ chỉ dặn, tôi sẽ lo hết, thưa ngài.",
+  "ran": [
+   [
+    "win_control",
+    {
+     "instruction": "Cập nhật Windows"
+    }
+   ]
+  ]
+ },
+ {
+  "text": "mở notepad",
+  "ok": true,
+  "reasons": [],
+  "answer": "Tôi sẽ mở Notepad cho ngài ngay đây nhé.",
+  "ran": [
+   [
+    "open_app",
+    {
+     "app_name": "notepad"
+    }
+   ]
+  ]
+ }
+]

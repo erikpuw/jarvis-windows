@@ -61,10 +61,10 @@ def test_lanes_and_unknown_modules(tmp_path):
 def test_real_repo_map_is_readable():
     g = scan(Path(__file__).parent.parent)
     ids = {n["id"] for n in g["nodes"]}
-    assert {"router", "orchestrator", "agents", "tools", "server/llm_server", "core/dream"} <= ids
-    assert 15 <= len(g["nodes"]) <= 60, len(g["nodes"])
+    assert {"turn", "tools", "server/llm_server", "core/dream"} <= ids
+    assert 10 <= len(g["nodes"]) <= 60, len(g["nodes"])
     llm_callers = {e["from"] for e in g["edges"] if e["kind"] == "llm"}
-    assert {"router", "orchestrator", "plans"} <= llm_callers, llm_callers
+    assert {"turn"} <= llm_callers, llm_callers
 
 
 def test_api_graphfy_serves_the_repo_map():

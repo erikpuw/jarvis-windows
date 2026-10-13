@@ -220,6 +220,19 @@ def test_retrieve_min_score_drops_irrelevant_chunks():
         assert {r["filename"] for r in unfiltered} == {"cats.txt", "python.txt"}
         assert [r["filename"] for r in filtered] == ["cats.txt"], filtered
 
+def test_clean_document_text():
+    from engine.core.rag_engine import clean_document_text
+
+    raw = "Mục tiêu 68\x0070kg với 12\x0015% mỡ trong 5\x007 tháng.\x00Bữa phụ 16\x0000\x00ăn\x0cngon.\u200b"
+    cleaned = clean_document_text(raw)
+    assert "\x00" not in cleaned
+    assert "\x0c" not in cleaned
+    assert "\u200b" not in cleaned
+    assert "68-70kg" in cleaned
+    assert "12-15%" in cleaned
+    assert "5-7 tháng" in cleaned
+    assert "16-00" in cleaned
+
 
 if __name__ == "__main__":
     test_retrieve_min_score_drops_irrelevant_chunks()

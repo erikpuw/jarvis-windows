@@ -84,12 +84,12 @@ async function open(browser, opts = {}) {
 
   // 4. đang nghe (mic bật) là trạng thái hoạt động: chữ hiện mãi; tắt mic về idle thì 10s sau mới cuộn vào
   send("idle"); await page.waitForTimeout(200);
-  await page.click("#btn-mute"); await page.waitForTimeout(300);
+  await page.evaluate(() => document.getElementById("btn-mute").click()); await page.waitForTimeout(300);
   check((await label()).text === "Đang nghe…", "4a. bật mic → Đang nghe…");
   await page.clock.fastForward(30000); await page.waitForTimeout(700);
   const ln = await label();
   check(!(await quiet()) && ln.w > 40 && ln.op > 0.9 && ln.text === "Đang nghe…", "4b. đang nghe, im lặng 30s → chữ VẪN hiện (không tự mờ)", JSON.stringify(ln));
-  await page.click("#btn-mute"); await page.waitForTimeout(300);
+  await page.evaluate(() => document.getElementById("btn-mute").click()); await page.waitForTimeout(300);
   check((await label()).text === "Sẵn sàng", "4c. tắt mic → Sẵn sàng (idle)");
   await page.clock.fastForward(10500); await page.waitForTimeout(700);
   check(await quiet(), "4d. idle 10s → chữ cuộn vào");

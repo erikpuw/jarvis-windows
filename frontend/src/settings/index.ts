@@ -7,14 +7,16 @@ import { buildSettingsHTML, SETTINGS_PAGES, APP_VERSION, type SettingsPageId } f
 import { initMemoryCenter } from "./memory";
 import { initLogsPage } from "./logs";
 import { enterLockable, lockAll } from "./lock";
-import { renderGraphfy, resetGraphfyLayout } from "./graphfy";
+import { renderGraphfy, resetGraphfyLayout, toggleGraphfyAll } from "./graphfy";
 import type {
-  AgentItem, HookItem, SkillItem, PromptItem, CommandItem,
+  MentionItem, HookItem, SkillItem, PromptItem, CommandItem,
   PluginItem, McpServerItem, StatusResponse, PreferencesResponse
 } from "./types";
 import { makeIcon, decorateActionButton, runAction } from "../icons";
 import type { MorphIconElement } from "morphicons/element";
-import { Menu, X, ArrowLeft, ArrowRight, PanelLeftClose, PanelLeft } from "lucide";
+import { Menu, X, PanelLeftClose, PanelLeft } from "lucide";
+import { formatMarkdown } from "../markdown";
+import { getAvailableBotShapes, getBotShape, setBotShape, drawStaticBotPreview } from "../bot";
 import "./styles.css";
 
 export type { SettingsPageId };
@@ -33,7 +35,7 @@ let sidebarToggleIcon: MorphIconElement | null = null;
 let isSidebarCollapsed = false;
 
 // Cached data collections
-let cachedAgents: AgentItem[] = [];
+let cachedMentions: MentionItem[] = [];
 let cachedHooks: HookItem[] = [];
 let cachedSkills: SkillItem[] = [];
 let cachedPrompts: PromptItem[] = [];
@@ -74,11 +76,11 @@ function setMeter(prefix: string, pct: number, text: string): void {
   if (bar) bar.style.width = `${Math.min(100, Math.max(0, pct))}%`;
 }
 
-function setFeedback(buttonId: string, msg: string, kind: "ok" | "err" = "ok"): void {
+function setFeedback(buttonId: string, msg: string, kind: "ok" | "err" | "pending" = "ok"): void {
   const el = document.querySelector<HTMLElement>(`[data-feedback-for="${buttonId}"]`);
   if (!el) return;
   el.textContent = msg;
-  el.className = `settings-feedback ${kind === "err" ? "feedback-error" : "feedback-ok"}`;
+  el.className = `settings-feedback ${kind === "err" ? "feedback-error" : kind === "pending" ? "feedback-pending" : "feedback-ok"}`;
   el.hidden = false;
 }
 
@@ -105,85 +107,7 @@ function setSidebarCollapsed(collapsed: boolean, save = true): void {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Markdown formatter for README.md
-// ---------------------------------------------------------------------------
-function formatMarkdown(md: string): string {
-  if (!md) return "";
-  let html = md.replace(/\r\n/g, "\n");
 
-  // Fenced code blocks
-  html = html.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (_m, lang, code) =>
-    `<div class="sd-code-block"><div class="sd-code-head"><span>${escapeHtml(lang || "text")}</span></div><pre><code>${escapeHtml(code.trim())}</code></pre></div>`
-  );
-
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, (_m, c) => `<code class="sd-inline-code">${escapeHtml(c)}</code>`);
-
-  // Headings
-  html = html.replace(/^###### (.*$)/gim, "<h6>$1</h6>");
-  html = html.replace(/^##### (.*$)/gim, "<h5>$1</h5>");
-  html = html.replace(/^#### (.*$)/gim, "<h4>$1</h4>");
-  html = html.replace(/^### (.*$)/gim, "<h3>$1</h3>");
-  html = html.replace(/^## (.*$)/gim, "<h2>$1</h2>");
-  html = html.replace(/^# (.*$)/gim, "<h1>$1</h1>");
-
-  // Blockquote
-  html = html.replace(/^> (.*$)/gim, "<blockquote>$1</blockquote>");
-
-  // Bold & italic
-  html = html.replace(/\*\*\*([^*]+)\*\*\*/g, "<strong><em>$1</em></strong>");
-  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  html = html.replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
-
-  // Links — support anchor (#heading) and external
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text, href) => {
-    const isAnchor = href.startsWith("#");
-    return `<a href="${escapeHtml(href)}"${isAnchor ? "" : ' target="_blank" rel="noopener noreferrer"'}>${text}</a>`;
-  });
-
-  // Markdown tables
-  html = html.replace(/((?:^\|.+\|\s*\n)+)/gim, (tableBlock) => {
-    const rows = tableBlock.trim().split("\n");
-    if (rows.length < 2) return tableBlock;
-    const isSeperator = (r: string) => /^\|[\s\-:|]+\|/.test(r);
-    let thead = "", tbody = "";
-    let pastSep = false;
-    for (const row of rows) {
-      if (isSeperator(row)) { pastSep = true; continue; }
-      const cells = row.replace(/^\||\|$/g, "").split("|").map(c => c.trim());
-      const tag = !pastSep ? "th" : "td";
-      const tr = "<tr>" + cells.map(c => `<${tag}>${c}</${tag}>`).join("") + "</tr>";
-      if (!pastSep) thead += tr; else tbody += tr;
-    }
-    // the wrapper lets a wide table scroll inside itself instead of widening the whole page (phones)
-    return `<div class="sd-table-wrap"><table class="sd-table"><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`;
-  });
-
-  // Horizontal rule
-  html = html.replace(/^\s*---\s*$/gim, "<hr class='sd-hr'>");
-
-  // Ordered list
-  html = html.replace(/^(\s*)\d+\.\s+(.*)$/gim, (_m, indent, item) =>
-    `<li class="sd-ol-item" style="margin-left:${indent.length * 8}px">${item}</li>`
-  );
-  html = html.replace(/((?:<li class="sd-ol-item"[^>]*>.*<\/li>\s*)+)/g, "<ol>$1</ol>");
-
-  // Unordered list
-  html = html.replace(/^(\s*)[-*+]\s+(.*)$/gim, (_m, indent, item) =>
-    `<li style="margin-left:${indent.length * 8}px">${item}</li>`
-  );
-  html = html.replace(/((?:<li(?! class="sd-ol-item")[^>]*>.*<\/li>\s*)+)/g, "<ul>$1</ul>");
-
-  // Paragraphs
-  const paragraphs = html.split(/\n{2,}/).map(block => {
-    block = block.trim();
-    if (!block) return "";
-    if (/^<(h[1-6]|div|pre|blockquote|ul|ol|hr|table)/i.test(block)) return block;
-    return `<p>${block.replace(/\n/g, "<br>")}</p>`;
-  });
-  return `<div class="sd-prose">${paragraphs.filter(Boolean).join("\n")}</div>`;
-}
 
 // ---------------------------------------------------------------------------
 // Health and System status
@@ -285,12 +209,6 @@ async function loadStatus(): Promise<void> {
       setText("ov-token-out", formatNumber(status.session_tokens.output));
     }
 
-    if (status.agents) {
-      cachedAgents = Array.isArray(status.agents) ? status.agents : [];
-      setText("agents-count-val", String(cachedAgents.length));
-      renderAgentsList(cachedAgents);
-    }
-
     // Hooks/skills/prompts/commands/plugins/README come from /api/settings/catalog and
     // /api/system/readme when their page opens; the MCP list from /api/mcp/servers.
   } catch (e) {
@@ -349,7 +267,7 @@ function fillRuntime(status: any): void {
   setText("ov-embed-model", rt.embed_model || "—");
   setText("ov-tts-engine", voice ? `${engineName} · ${voice}` : engineName);
   setText("ov-mcp", `${status.mcp_connected ?? 0} / ${status.mcp_total ?? 0}`);
-  setText("ov-agents", formatNumber(status.agents_count ?? (status.agents || []).length));
+  setText("ov-agents", formatNumber(status.mentions_count));
   setText("ov-skills-cmds", `${formatNumber(status.skill_count)} · ${formatNumber(status.command_count)}`);
   for (const [key, current] of [["vieneu", rt.vieneu_voice], ["edge", rt.edge_voice]] as const) {
     const running = rt.tts_engine === key;
@@ -370,6 +288,63 @@ async function loadPreferences(): Promise<void> {
   }
 }
 
+function initBotSelector(): void {
+  const grid = byId("bot-selector-grid");
+  if (!grid) return;
+  if (grid.dataset.ready !== "1") {
+    grid.dataset.ready = "1";
+    const shapes = getAvailableBotShapes();
+    const current = getBotShape();
+
+    grid.innerHTML = "";
+    shapes.forEach(({ key, label }) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "bot-choice-item" + (key === current ? " active" : "");
+      item.dataset.shape = key;
+      item.title = `Chọn bot ${label}`;
+
+      const canvas = document.createElement("canvas");
+      canvas.className = "bot-choice-canvas";
+      item.appendChild(canvas);
+
+      const name = document.createElement("span");
+      name.className = "bot-choice-label";
+      name.textContent = label;
+      item.appendChild(name);
+
+      item.addEventListener("click", () => {
+        setBotShape(key);
+        grid.querySelectorAll(".bot-choice-item").forEach(el => el.classList.remove("active"));
+        item.classList.add("active");
+        setText("bot-active-status", `Đang hiển thị: ${label}`);
+      });
+
+      grid.appendChild(item);
+      drawStaticBotPreview(canvas, key);
+    });
+
+    const btnReset = byId("btn-reset-bot-square");
+    if (btnReset) {
+      btnReset.addEventListener("click", () => {
+        setBotShape("square");
+        grid.querySelectorAll(".bot-choice-item").forEach(el => {
+          el.classList.toggle("active", (el as HTMLElement).dataset.shape === "square");
+        });
+        setText("bot-active-status", "Đang hiển thị: Square");
+      });
+    }
+  }
+
+  const cur = getBotShape();
+  const shapes = getAvailableBotShapes();
+  const curDef = shapes.find(s => s.key === cur);
+  setText("bot-active-status", `Đang hiển thị: ${curDef?.label || "Square"}`);
+  grid.querySelectorAll(".bot-choice-item").forEach(el => {
+    el.classList.toggle("active", (el as HTMLElement).dataset.shape === cur);
+  });
+}
+
 /** Heavy lists live in /api/settings/catalog (not in the 5s status poll); fetched once per open. */
 let catalogPromise: Promise<any> | null = null;
 function loadCatalog(): Promise<any> {
@@ -378,92 +353,61 @@ function loadCatalog(): Promise<any> {
 }
 
 // ---------------------------------------------------------------------------
-// Agents
+// Mention (@)
 // ---------------------------------------------------------------------------
-async function loadAgents(): Promise<void> {
+async function loadMentions(): Promise<void> {
   const grid = byId("agents-grid");
   const countEl = byId("agents-count-val");
   if (!grid) return;
   try {
     const catalog = await loadCatalog();
-    cachedAgents = catalog.agents || [];
-    if (countEl) countEl.textContent = String(cachedAgents.length);
-    renderAgentsList(cachedAgents);
+    cachedMentions = catalog.mentions || [];
+    if (countEl) countEl.textContent = String(cachedMentions.length);
+    renderMentionsList(cachedMentions);
   } catch (err) {
-    console.error("[settings] failed to load agents:", err);
-    grid.innerHTML = `<div class="sd-empty sd-error-state">Lỗi nạp danh sách Agents: ${escapeHtml(err)}</div>`;
+    console.error("[settings] failed to load mentions:", err);
+    grid.innerHTML = `<div class="sd-empty sd-error-state">Lỗi nạp danh sách Mention: ${escapeHtml(err)}</div>`;
   }
 }
 
-/** `@id câu ví dụ` — what fast_paths.resolve_mention accepts. */
-function agentCall(agent: AgentItem): string {
-  const mention = agent.mention || `@${agent.id}`;
-  return agent.example && !agent.example.startsWith("@") ? `${mention} ${agent.example}` : mention;
-}
-
-/** commands/*.md `usage` is a JSON param spec ({"name": "mô tả"}), not a syntax line. */
-function commandParams(cmd: CommandItem): [string, string][] {
-  try {
-    // frontmatter keeps YAML quotes: usage: '{"max_results": "…"}'
-    const raw = (cmd.usage || "").trim().replace(/^'([\s\S]*)'$/, "$1");
-    const spec = JSON.parse(raw);
-    if (spec && typeof spec === "object" && !Array.isArray(spec)) {
-      return Object.entries(spec).map(([k, v]) => [k, String(v)]);
-    }
-  } catch { /* plain text / empty usage */ }
-  return [];
-}
-
+/** `usage` is "/name <param, …>" from engine/tools/registry.usage. */
 function commandCall(cmd: CommandItem): string {
-  const params = commandParams(cmd);
-  return params.length ? `/${cmd.name} <${params.map(([k]) => k).join(", ")}>` : `/${cmd.name}`;
+  return cmd.usage || `/${cmd.name}`;
 }
 
 function commandParamsHtml(cmd: CommandItem): string {
-  const params = commandParams(cmd);
-  if (!params.length) return `<div class="sd-agent-cmd-note">Không cần tham số.</div>`;
-  return `<ul class="sd-cmd-params">${params.map(([k, v]) =>
-    `<li><code>${escapeHtml(k)}</code> — ${escapeHtml(v)}</li>`).join("")}</ul>
-    <div class="sd-agent-cmd-note">Gõ <code>/${escapeHtml(cmd.name)}</code> không kèm tham số, JARVIS sẽ hỏi lại từng tham số.</div>`;
+  if (!commandCall(cmd).includes("<")) return `<div class="sd-agent-cmd-note">Không cần tham số.</div>`;
+  return `<div class="sd-agent-cmd-note">Thiếu nội dung bắt buộc thì JARVIS sẽ hỏi lại ở lượt sau.</div>`;
 }
 
-function renderAgentsList(agents: AgentItem[]): void {
+function renderMentionsList(mentions: MentionItem[]): void {
   const grid = byId("agents-grid");
   if (!grid) return;
-  if (!agents.length) {
-    grid.innerHTML = `<div class="sd-empty">Không tìm thấy Agent nào phù hợp.</div>`;
+  if (!mentions.length) {
+    grid.innerHTML = `<div class="sd-empty">Không tìm thấy mention nào phù hợp.</div>`;
     return;
   }
-  grid.innerHTML = agents.map(agent => `
+  grid.innerHTML = mentions.map(m => `
     <div class="sd-card sd-agent-card">
       <div class="sd-agent-card-head">
         <div class="sd-agent-icon-box">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
         </div>
         <div class="sd-agent-titles">
-          <h4 class="sd-agent-name">${escapeHtml(agent.name)}</h4>
-          <span class="sd-agent-id">${escapeHtml(agent.file)}</span>
+          <h4 class="sd-agent-name">${escapeHtml(m.mention)}</h4>
+          <span class="sd-agent-id">${escapeHtml(m.file)}</span>
         </div>
         <span class="sd-agent-status-badge"><span class="sd-badge-dot"></span>Sẵn sàng</span>
       </div>
-      <p class="sd-agent-desc">${escapeHtml(agent.description)}</p>
+      <p class="sd-agent-desc">${escapeHtml(m.description)}</p>
       <div class="sd-agent-cmd-box">
-        <div class="sd-agent-cmd-lbl">Gọi thẳng agent trong command-bar:</div>
+        <div class="sd-agent-cmd-lbl">Gõ trong command-bar:</div>
         <div class="sd-agent-cmd-val">
-          <code>${escapeHtml(agentCall(agent))}</code>
-          <button type="button" class="sd-copy-cmd-btn" data-copy="${escapeHtml(agentCall(agent))}" title="Sao chép câu lệnh">Sao chép</button>
+          <code>${escapeHtml(m.example)}</code>
+          <button type="button" class="sd-copy-cmd-btn" data-copy="${escapeHtml(m.example)}" title="Sao chép câu lệnh">Sao chép</button>
         </div>
-        <div class="sd-agent-cmd-note">Hoặc nói/gõ tự nhiên, bộ định tuyến sẽ tự chọn agent.</div>
+        <div class="sd-agent-cmd-note">Hoặc nói/gõ tự nhiên, JARVIS tự chọn công cụ.</div>
       </div>
-      ${agent.tools && agent.tools.length ? (() => {
-        const shown = agent.tools.slice(0, 5);
-        const more = agent.tools.length - 5;
-        return `<div class="sd-agent-tools-row">
-          <span class="sd-agent-tools-lbl">Tools:</span>
-          ${shown.map(t => `<span class="sd-tool-tag">${escapeHtml(t)}</span>`).join('<span class="sd-tool-sep">,</span>')}
-          ${more > 0 ? `<span class="sd-tool-more">+${more}</span>` : ""}
-        </div>`;
-      })() : ""}
     </div>
   `).join("");
 }
@@ -628,7 +572,7 @@ function renderCommandsList(commands: CommandItem[]): void {
   const grid = byId("commands-grid");
   if (!grid) return;
   if (!commands.length) {
-    grid.innerHTML = `<div class="sd-empty">Không tìm thấy Lệnh nào trong thư mục <code>commands/</code>.</div>`;
+    grid.innerHTML = `<div class="sd-empty">Không tìm thấy lệnh nào phù hợp.</div>`;
     return;
   }
   grid.innerHTML = commands.map(cmd => `
@@ -639,7 +583,7 @@ function renderCommandsList(commands: CommandItem[]): void {
         </div>
         <div class="sd-agent-titles">
           <h4 class="sd-agent-name">${escapeHtml(cmd.name)}</h4>
-          <span class="sd-agent-id">${escapeHtml(cmd.file_path || cmd.file || "commands/")}</span>
+          <span class="sd-agent-id">${escapeHtml(cmd.file_path || cmd.file || "")}</span>
         </div>
         <span class="sd-agent-status-badge"><span class="sd-badge-dot"></span>Sẵn sàng</span>
       </div>
@@ -648,7 +592,7 @@ function renderCommandsList(commands: CommandItem[]): void {
         <div class="sd-agent-cmd-lbl">Cú pháp trong command-bar:</div>
         <div class="sd-agent-cmd-val">
           <code>${escapeHtml(commandCall(cmd))}</code>
-          <button type="button" class="sd-copy-cmd-btn" data-copy="/${escapeHtml(cmd.name)} " title="Sao chép">Sao chép</button>
+          <button type="button" class="sd-copy-cmd-btn" data-copy="${escapeHtml(commandCall(cmd))}" title="Sao chép câu lệnh">Sao chép</button>
         </div>
         ${commandParamsHtml(cmd)}
       </div>
@@ -744,8 +688,8 @@ function renderMcpList(servers: McpServerItem[]): void {
         <div class="sd-mcp-head">
           <span class="status-dot ${isConn ? "status-green" : "status-gray"}"></span>
           <span class="sd-mcp-name">${escapeHtml(s.name)}</span>
-          <span style="font-size:12px;color:var(--sd-muted);margin-left:4px;">${escapeHtml(s.type || "stdio")}</span>
-          <span style="margin-left:auto;font-size:12px;color:${isConn ? "var(--sd-ok)" : "var(--sd-muted)"};">${stateText}</span>
+          <span style="font-size:var(--fs-small);color:var(--sd-muted);margin-left:4px;">${escapeHtml(s.type || "stdio")}</span>
+          <span style="margin-left:auto;font-size:var(--fs-small);color:${isConn ? "var(--sd-ok)" : "var(--sd-muted)"};">${stateText}</span>
           <button type="button" class="settings-btn" data-mcp-toggle="${escapeHtml(s.name)}" data-mcp-enabled="${s.enabled === false ? "0" : "1"}">${s.enabled === false ? "Bật" : "Tắt"}</button>
         </div>
         <div class="sd-mcp-cmd">
@@ -805,7 +749,7 @@ function switchPage(id: SettingsPageId, remember = true): void {
   // Memory Control, chat history and the system log are password-locked: leaving a page locks them again, opening one asks for the password
   if (previous !== id) lockAll();
   if (id === "memory" || id === "logs") void enterLockable(id);
-  if (id === "agents") void loadAgents();
+  if (id === "agents") void loadMentions();
   if (id === "hooks") void loadHooks();
   if (id === "skills") void loadSkills();
   if (id === "prompts") void loadPrompts();
@@ -814,6 +758,7 @@ function switchPage(id: SettingsPageId, remember = true): void {
   if (id === "mcp") void loadMcpServers();
   if (id === "info") void loadReadme();
   if (id === "graphfy") void renderGraphfy(loadCatalog);
+  if (id === "user") initBotSelector();
 
   if (remember) {
     try { localStorage.setItem(PAGE_STORAGE_KEY, id); } catch {}
@@ -981,6 +926,14 @@ function bindActions(): void {
     });
   }
 
+  // Restart backend server
+  const btnRestart = byId<HTMLButtonElement>("btn-restart");
+  if (btnRestart) {
+    btnRestart.addEventListener("click", () => {
+      window.dispatchEvent(new CustomEvent("jarvis:restart"));
+    });
+  }
+
   // Save Voice ID
   const btnSaveVoice = byId<HTMLButtonElement>("btn-save-voice-id");
   if (btnSaveVoice) {
@@ -1054,6 +1007,7 @@ function bindActions(): void {
   }
 
   byId("btn-graphfy-reset")?.addEventListener("click", () => resetGraphfyLayout(loadCatalog));
+  byId<HTMLButtonElement>("btn-graphfy-all")?.addEventListener("click", (e) => toggleGraphfyAll(e.currentTarget as HTMLButtonElement));
 
   // Refresh Readme
   byId("btn-refresh-readme")?.addEventListener("click", () => {
@@ -1080,8 +1034,8 @@ function bindActions(): void {
   // Search filters
   byId<HTMLInputElement>("agents-search-input")?.addEventListener("input", (e) => {
     const q = (e.target as HTMLInputElement).value.toLowerCase().trim();
-    const filtered = cachedAgents.filter(a => a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q) || a.example.toLowerCase().includes(q));
-    renderAgentsList(filtered);
+    const filtered = cachedMentions.filter(a => a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q) || a.example.toLowerCase().includes(q));
+    renderMentionsList(filtered);
   });
 
   byId<HTMLInputElement>("hooks-search-input")?.addEventListener("input", (e) => {
@@ -1244,8 +1198,10 @@ export function openSettings(pageId?: SettingsPageId): void {
   ensureMounted();
   if (!container) return;
   isOpen = true;
+  container.removeAttribute("inert");
   container.classList.add("open");
   container.removeAttribute("aria-hidden");
+  document.getElementById("controls")?.classList.add("hidden");
   // main.ts pauses the orb on this event and resumes it on close unless map/media is full screen.
   window.dispatchEvent(new CustomEvent("jarvis:overlay", { detail: { open: true } }));
   catalogPromise = null;
@@ -1262,8 +1218,13 @@ export function openSettings(pageId?: SettingsPageId): void {
 export function closeSettings(): void {
   if (!container || !isOpen) return;
   isOpen = false;
+  if (document.activeElement instanceof HTMLElement && container.contains(document.activeElement)) {
+    document.activeElement.blur();
+  }
   container.classList.remove("open");
   container.setAttribute("aria-hidden", "true");
+  container.setAttribute("inert", "");
+  document.getElementById("controls")?.classList.remove("hidden");
   exitSetupMode();
   stopHealthPolling();
   setDrawer(false);
@@ -1271,11 +1232,12 @@ export function closeSettings(): void {
   window.dispatchEvent(new CustomEvent("jarvis:overlay", { detail: { open: false } }));
 }
 
-function ensureMounted(): void {
+export function ensureMounted(): void {
   if (container) return;
   container = document.createElement("div");
   container.id = "settings-container";
   container.setAttribute("aria-hidden", "true");
+  container.setAttribute("inert", "");
   container.innerHTML = buildSettingsHTML();
   document.body.appendChild(container);
 
@@ -1296,7 +1258,10 @@ function ensureMounted(): void {
   });
 
   // Topbar and Nav events
-  byId("settings-close")?.addEventListener("click", closeSettings);
+  byId("settings-close")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    closeSettings();
+  });
   byId("settings-menu-toggle")?.addEventListener("click", () => {
     setDrawer(!byId("settings-panel-inner")?.classList.contains("nav-open"));
   });

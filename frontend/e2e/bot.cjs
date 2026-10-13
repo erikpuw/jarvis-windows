@@ -96,7 +96,7 @@ async function open(browser, opts = {}) {
   check(["left", "right", "up", "down"].every((d) => seen.has(d)), "5b. idle: nhìn đủ trái, phải, lên, xuống", [...seen].join(","));
   await ff(18000); // ~26.4s
   s = await st();
-  check(s.state === "default" && s.hops === 0, "5c. gần 30s vẫn tỉnh và không nhảy nhót", JSON.stringify(s));
+  check(s.state === "default" && s.jumps === "off", "5c. gần 30s vẫn tỉnh, không nhảy lật ngẫu nhiên của thư viện (các trò khi chờ: xem bot-tricks.cjs)", JSON.stringify(s));
   await ff(4500);
   s = await st();
   check(s.state === "sleeping" && s.look === "" && s.jumps === "on", "5d. đủ 30s → ngủ, thôi nhìn quanh, bật lại nhảy lật", JSON.stringify(s));

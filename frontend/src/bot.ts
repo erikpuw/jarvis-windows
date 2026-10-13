@@ -12,35 +12,104 @@
 // since the last activity (pointer near the bot, a tap/click or a key anywhere): activity wakes a sleeping
 // bot back to idle (looks around) and restarts the 30 s, so it does not stay asleep for good.
 // The pointer only steers the head; hopping is for a click on the bot (and a nod), never for a pointer nearby.
+// While idle and waiting (not while the user types, not while JARVIS thinks or talks) it plays every few seconds so it does
+// not look stiff: a light hop or a squash-and-stretch bounce, and once it has waited SULK_AFTER_MS a sulk (turns away, mouth
+// in a "^", the 💢 emoji on the top corner of its head). Tricks are not activity: the DOZE_MS clock keeps running and it still sleeps at 30 s.
 import { gatedLoop } from "./anim-gate";
-import { createTalk, drawMouth, drawThinkDots } from "./bot-mouth";
+import { createTalk, drawMouth, drawSulkFace, drawThinkDots } from "./bot-mouth";
 import {
   BotAvatarSim, drawBotAvatarFrame, botAvatarShapes, botAvatarPresets, autoInk,
-  BOT_AVATAR_OVERSCAN, botAvatarJumpDefaults, type BotAvatarState, type BotAvatarFace,
+  BOT_AVATAR_OVERSCAN, botAvatarJumpDefaults, restPose, botAvatarTypes,
+  type BotAvatarState, type BotAvatarFace, type BotAvatarType,
 } from "bot-avatars";
 
-const TYPE = "square" as const; // any key of botAvatarShapes: clover flower triangle square blob ghost circle drop star droid mech alien hexagon cat cloud pill pebble puddle
+let currentShape: BotAvatarType = "square"; // any key of botAvatarShapes: clover flower triangle square blob ghost circle drop star droid mech alien hexagon cat cloud pill pebble puddle
 const BOX = 32; // css px of the bot's square
-const dpr = Math.min(window.devicePixelRatio || 1, 3); // up to 3 (iPhone): at 2 the edges of a 32px sprite look jagged
+const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 2), 3); // supersample on low-DPI desktop displays
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const SHADING = "plastic" as const; // "smooth" is the library's other option
 
-const preset = botAvatarPresets[TYPE];
-const cfg = {
-  path: new Path2D(botAvatarShapes[TYPE]),
+const preset = botAvatarPresets[currentShape];
+const cfg: any = {
+  path: new Path2D(botAvatarShapes[currentShape]),
   ...preset,
   ink: autoInk(preset.color),
   shading: SHADING,
-  typeKey: TYPE,
+  typeKey: currentShape,
   theme: "dark" as const,
   dpr,
+  sides: "sprite" as const, // pre-baked side slices blitted with smoothing: "vector" stacks anti-aliased fills and its edge goes jagged on 1x screens
 };
+
+let currentHost: HTMLElement | null = null;
+let currentPaint: (() => void) | null = null;
+
+export function getBotShape(): string {
+  return currentShape;
+}
+
+export function setBotShape(shapeKey: string): void {
+  if (!(shapeKey in botAvatarShapes)) return;
+  const key = shapeKey as BotAvatarType;
+  currentShape = key;
+  const p = botAvatarPresets[key] || botAvatarPresets.square;
+  cfg.path = new Path2D(botAvatarShapes[key]);
+  cfg.color = p.color;
+  cfg.face = p.face;
+  cfg.faceX = p.faceX;
+  cfg.faceY = p.faceY;
+  cfg.faceScale = p.faceScale;
+  cfg.ink = autoInk(p.color);
+  cfg.typeKey = key;
+  if (currentHost) {
+    currentHost.dataset.shape = key;
+  }
+  if (currentPaint) {
+    currentPaint();
+  }
+  window.dispatchEvent(new CustomEvent("jarvis:bot-changed", { detail: key }));
+}
+
+export function getAvailableBotShapes(): Array<{ key: string; label: string; color: string }> {
+  const sorted: BotAvatarType[] = ["square", ...botAvatarTypes.filter((k) => k !== "square")];
+  return sorted.map((k) => {
+    const p = botAvatarPresets[k] || botAvatarPresets.square;
+    return { key: k, label: p.label || k, color: p.color };
+  });
+}
+
+export function drawStaticBotPreview(canvas: HTMLCanvasElement, shapeKey: string): void {
+  const key = (shapeKey in botAvatarShapes ? shapeKey : "square") as BotAvatarType;
+  const p = botAvatarPresets[key] || botAvatarPresets.square;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const size = 26;
+  const previewDpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = canvas.height = Math.round(size * BOT_AVATAR_OVERSCAN * previewDpr);
+  canvas.style.width = canvas.style.height = `${size * BOT_AVATAR_OVERSCAN}px`;
+  ctx.setTransform(previewDpr, 0, 0, previewDpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const config = {
+    path: new Path2D(botAvatarShapes[key]),
+    ...p,
+    ink: autoInk(p.color),
+    shading: SHADING,
+    typeKey: key,
+    theme: "dark" as const,
+    dpr: previewDpr,
+    still: true,
+  };
+  drawBotAvatarFrame(ctx, size, restPose("default"), config);
+}
 
 // Pointer play: the head follows a pointer within a few head widths; a click on the bot hops twice.
 const FOLLOW_PX = BOX * 5;
 const NOD_EVERY_MS = 1500; // at most one nod per this while speech keeps coming in
 const DOZE_MS = 30_000; // awake this long after going idle / listening, then it sleeps
+const TRICK_MIN_MS = 4000, TRICK_MAX_MS = 6500; // a trick every this long while it waits idle
+const SULK_AFTER_MS = 15_000; // waited this long without any activity: it starts sulking now and then
+const SULK_MS = 2500;
 
 // gaze targets in head-widths from the head's centre (-1..1); x right, y down
 interface Look { name: string; x: number; y: number }
@@ -73,8 +142,9 @@ export function mountBot(parent: HTMLElement): void {
   const host = document.createElement("div");
   host.id = "jarvis-bot";
   host.setAttribute("aria-hidden", "true");
-  host.dataset.shape = TYPE;
+  host.dataset.shape = currentShape;
   host.dataset.shading = SHADING;
+  currentHost = host;
   const canvas = document.createElement("canvas");
   // the canvas draws bigger than its box so a hop is never clipped (bot-avatars convention)
   canvas.width = canvas.height = Math.round(BOX * BOT_AVATAR_OVERSCAN * dpr);
@@ -104,6 +174,11 @@ export function mountBot(parent: HTMLElement): void {
   let look = 0; // the look script's interval
   let lookIdx = 0;
   let looks: Look[] = [];
+  let trickTimer = 0; // the next trick while it waits idle
+  let tricks = 0;
+  let sulking = false;
+  let sulkTimer = 0;
+  let sulkedSinceActive = false; // the first trick after SULK_AFTER_MS is always a sulk
 
   function paint(): void {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -111,7 +186,9 @@ export function mountBot(parent: HTMLElement): void {
     drawBotAvatarFrame(ctx, BOX, sim.pose, { ...cfg, still: reduced });
     if (talking) drawMouth(ctx, sim.pose, BOX, dpr, cfg, open);
     if (dots) drawThinkDots(ctx, BOX, dpr, lastNow);
+    if (sulking) drawSulkFace(ctx, sim.pose, BOX, dpr, cfg, lastNow);
   }
+  currentPaint = paint;
 
   function hop(): void {
     sim.poke(); // a hop (no turn, see spin above)
@@ -145,6 +222,60 @@ export function mountBot(parent: HTMLElement): void {
   }
   /** Click: two happy hops. */
   const excite = () => jump(1.2, 2);
+
+  /** Two quick low hops that squash flat and stretch tall: a springy bounce. */
+  function bounce(): void {
+    const d = botAvatarJumpDefaults;
+    sim.setJump({ height: d.height * 0.3, squash: 2, stretch: 1.8 });
+    hop();
+    setTimeout(hop, 380);
+    setTimeout(() => sim.setJump({ height: d.height, squash: d.squash, stretch: d.stretch }), 1400);
+  }
+
+  function endSulk(): void {
+    clearTimeout(sulkTimer);
+    if (!sulking) return;
+    sulking = false;
+    delete host.dataset.sulk;
+    delete host.dataset.sulkFace;
+  }
+
+  /** Waited too long: turns its head away and down, a "^" mouth and the 💢 emoji on the top corner of its head; then back to looking around. */
+  function sulk(): void {
+    sulking = true;
+    sulkedSinceActive = true;
+    host.dataset.sulk = "1";
+    host.dataset.sulkFace = "frown+emoji"; // "^" mouth, the 💢 emoji on the top right corner of the head (drawSulkFace)
+    clearInterval(look);
+    const side = Math.random() < 0.5 ? -1 : 1;
+    gaze = { name: side < 0 ? "sulk-left" : "sulk-right", x: side * 0.9, y: 0.35 };
+    host.dataset.look = gaze.name;
+    sulkTimer = window.setTimeout(() => {
+      endSulk();
+      const p = PROFILE[sys];
+      if (cur === "default" && p?.doze && doze) restLooks(p);
+    }, SULK_MS);
+  }
+
+  /** While it waits idle, a trick every few seconds; it keeps checking (and skips) while the user types or JARVIS is busy. */
+  function scheduleTrick(): void {
+    clearTimeout(trickTimer);
+    if (reduced) return;
+    trickTimer = window.setTimeout(playTrick, TRICK_MIN_MS + Math.random() * (TRICK_MAX_MS - TRICK_MIN_MS));
+  }
+
+  function playTrick(): void {
+    trickTimer = 0;
+    if (cur === "sleeping") return; // waking up starts them again
+    if (sys === "idle" && cur === "default" && doze && !typing && !sulking) {
+      const waited = performance.now() - lastActive;
+      const name = waited >= SULK_AFTER_MS && (!sulkedSinceActive || Math.random() < 0.5) ? "sulk" : Math.random() < 0.5 ? "hop" : "bounce";
+      if (name === "sulk") sulk(); else if (name === "hop") jump(0.6, 1); else bounce();
+      host.dataset.trick = name;
+      host.dataset.tricks = String(++tricks);
+    }
+    scheduleTrick();
+  }
 
   function apply(state: BotAvatarState, f: BotAvatarFace = preset.face, thinking = false): void {
     cur = state;
@@ -213,6 +344,9 @@ export function mountBot(parent: HTMLElement): void {
 
   function stopBehavior(): void {
     clearTimeout(doze);
+    clearTimeout(trickTimer);
+    trickTimer = 0;
+    endSulk();
     clearInterval(look);
     doze = look = 0;
     gaze = null;
@@ -235,11 +369,19 @@ export function mountBot(parent: HTMLElement): void {
     };
     arm(DOZE_MS);
     host.dataset.grace = "1";
+    sulkedSinceActive = false;
+    if (!trickTimer) scheduleTrick();
   }
 
   /** Something happened near the bot: a sleeping one wakes to idle (or listening), an awake one stays up another DOZE_MS. */
   function activity(): void {
     lastActive = performance.now();
+    sulkedSinceActive = false;
+    if (sulking) { // someone is back: no more sulking
+      endSulk();
+      const p = PROFILE[sys];
+      if (p?.doze && doze && cur === "default") restLooks(p);
+    }
     if (cur !== "sleeping") return;
     const p = PROFILE[sys];
     if (!p?.doze) return;
@@ -306,4 +448,5 @@ export function mountBot(parent: HTMLElement): void {
   if (!reduced) { startDoze(); setLooks(LOOK_AROUND, PROFILE.idle.everyMs!); }
   paint();
   if (!reduced) gatedLoop((now, dt) => { lastNow = now; pointerPlay(); sim.update(Math.min(dt / 1000, 0.05)); if (talking) { open = talk(now, dt); const m = open.toFixed(1); if (host.dataset.mouth !== m) host.dataset.mouth = m; } paint(); }, 1000 / 60); // 60 fps on phones too: a 32px sprite is cheap, and 30 fps looked choppy
+  window.addEventListener("jarvis:bot-shape", (e) => setBotShape(String((e as CustomEvent).detail)));
 }

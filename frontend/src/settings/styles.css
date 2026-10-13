@@ -1,7 +1,7 @@
 /* Settings dashboard — full-screen overlay (spec 2026-09-27). */
 
 #settings-container {
-  --sd-bg: #07090d;
+  --sd-bg: #050508;
   --sd-surface: #0d1117;
   --sd-surface-2: #0a0e14;
   --sd-border: rgba(148, 163, 184, 0.12);
@@ -11,7 +11,6 @@
   --sd-accent: #0ea5e9;
   --sd-accent-soft: rgba(14, 165, 233, 0.12);
   --sd-ok: #4ade80;
-  --sd-warn: #fbbf24;
   --sd-err: #f87171;
   --sd-nav-w: 232px;
   --sd-topbar-h: 56px;
@@ -20,11 +19,16 @@
   --sd-font-mono: 'SF Mono', 'Cascadia Code', 'Consolas', 'Menlo', monospace;
   display: none;
   position: fixed;
-  inset: 0;
-  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  background: none;
+  z-index: var(--z-settings);
   color: var(--sd-text);
   font-family: var(--sd-font-sans);
-  font-size: 14px;
+  font-size: var(--fs-body);
 }
 
 #settings-container.open {
@@ -53,7 +57,8 @@
   inset: 0;
   display: flex;
   flex-direction: column;
-  background: var(--sd-bg);
+  background: none;
+  overscroll-behavior: none;
   opacity: 0;
   transition: opacity 0.15s ease;
 }
@@ -64,14 +69,14 @@
 
 /* ── Top bar ── */
 .sd-topbar {
-  height: var(--sd-topbar-h);
+  height: calc(var(--sd-topbar-h) + env(safe-area-inset-top, 0px));
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 16px 0 20px;
+  padding: env(safe-area-inset-top, 0px) 16px 0 20px;
   border-bottom: 1px solid var(--sd-border);
-  background: var(--sd-surface);
+  background: none;
 }
 
 .sd-brand-group {
@@ -82,7 +87,7 @@
 
 .sd-title {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--fs-body);
   font-weight: 600;
   letter-spacing: 0.2px;
   color: var(--sd-text);
@@ -116,7 +121,7 @@
 
 .sd-page-title {
   display: none;
-  font-size: 14px;
+  font-size: var(--fs-body);
   font-weight: 600;
   color: var(--sd-text);
 }
@@ -199,7 +204,7 @@
 }
 
 .sd-brand-name {
-  font-size: 12px;
+  font-size: var(--fs-small);
   font-weight: 600;
   letter-spacing: 0.2px;
   color: var(--sd-muted);
@@ -217,7 +222,7 @@
   border-radius: 0;
   background: transparent;
   border: 0;
-  font-size: 12px;
+  font-size: var(--fs-small);
   font-weight: 400;
   color: var(--sd-muted);
   font-variant-numeric: tabular-nums;
@@ -261,7 +266,7 @@
 }
 
 .sd-root.sidebar-collapsed .sd-brand-name {
-  font-size: 12px;
+  font-size: var(--fs-small);
   letter-spacing: 1px;
 }
 
@@ -289,7 +294,7 @@
   background: transparent;
   color: var(--sd-muted);
   font: inherit;
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   font-weight: 500;
   text-align: left;
   white-space: nowrap;
@@ -350,6 +355,8 @@
   flex: 1;
   min-width: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   /* top 0: the page title lines up with the top edge of the sidebar frame */
   padding: 0 0 32px;   /* .sd-body already pads 16px and gaps 16px from the sidebar */
 }
@@ -423,7 +430,7 @@
 
 .sd-lock-msg {
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--fs-small);
   color: var(--sd-muted, rgba(148, 163, 184, 0.95));
 }
 
@@ -437,7 +444,7 @@
   border: 1px solid var(--sd-border);
   background: transparent;
   color: var(--sd-text);
-  font-size: 14px;
+  font-size: var(--fs-body);
   text-align: center;
 }
 
@@ -481,7 +488,7 @@
   background: transparent;
   color: var(--sd-muted);
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--fs-small);
   font-weight: 500;
   cursor: pointer;
 }
@@ -503,7 +510,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12.5px;
+  font-size: var(--fs-small);
   color: var(--sd-muted);
 }
 
@@ -519,7 +526,7 @@
   background: transparent;
   color: var(--sd-text);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--fs-ui);
   text-align: left;
   cursor: pointer;
   flex-shrink: 0;
@@ -537,7 +544,7 @@
 .sd-session-src {
   padding: 2px 8px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--fs-label);
   font-weight: 600;
   background: rgba(148, 163, 184, 0.18);
   color: #cbd5e1;
@@ -548,14 +555,14 @@
 
 .sd-session-id {
   font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
-  font-size: 12px;
+  font-size: var(--fs-small);
   overflow-wrap: anywhere;
   min-width: 0;
 }
 
 .sd-session-meta {
   grid-column: 1 / -1;
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: var(--sd-muted);
 }
 
@@ -637,7 +644,7 @@
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
-  font-size: 11.5px;
+  font-size: var(--fs-label);
   line-height: 1.55;
   color: rgba(255, 255, 255, 0.65);
   white-space: pre-wrap;
@@ -670,7 +677,7 @@
 
 .history-date-sep {
   text-align: center;
-  font-size: 10px;
+  font-size: var(--fs-label);
   letter-spacing: 1.5px;
   text-transform: uppercase;
   color: var(--sd-muted, rgba(148, 163, 184, 0.7));
@@ -680,15 +687,27 @@
 .history-item {
   padding: 7px 11px;
   border-radius: 12px;
-  font-size: 13px;
+  font-size: var(--fs-ui);
   line-height: 1.45;
   max-width: 85%;
   width: fit-content;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.history-content {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.history-content .sd-prose p {
+  margin: 0 0 6px 0;
+}
+
+.history-content .sd-prose p:last-child {
+  margin-bottom: 0;
 }
 
 .history-item.user {
@@ -706,7 +725,7 @@
 }
 
 .history-time {
-  font-size: 10px;
+  font-size: var(--fs-label);
   color: var(--sd-muted, rgba(148, 163, 184, 0.7));
   align-self: flex-end;
 }
@@ -719,7 +738,7 @@
   text-align: center;
   padding: 50px 20px;
   color: var(--sd-muted, rgba(148, 163, 184, 0.7));
-  font-size: 12px;
+  font-size: var(--fs-small);
 }
 
 @keyframes sd-fade {
@@ -727,16 +746,38 @@
   to { opacity: 1; }
 }
 
+.sd-page-head {
+  margin-bottom: 8px;
+}
+
+.sd-page-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.sd-page-head-row h3,
 .sd-page-head h3 {
-  margin: 0 0 4px;
-  font-size: 20px;
+  margin: 0;
+  font-size: var(--fs-heading);
   font-weight: 600;
   color: var(--sd-text);
+  line-height: 1.25;
+}
+
+.sd-page-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .sd-page-head p {
-  margin: 0 0 0px;
-  font-size: 13px;
+  margin: 0;
+  font-size: var(--fs-ui);
   color: var(--sd-muted);
 }
 
@@ -747,19 +788,10 @@
 }
 
 .span-3 { grid-column: span 3; }
-.span-5 { grid-column: span 5; }
 .span-4 { grid-column: span 4; }
 .span-6 { grid-column: span 6; }
-.span-7 { grid-column: span 7; }
-.span-8 { grid-column: span 8; }
-.span-12 { grid-column: span 12; }
 
 /* ── Overview Session & Tokens ── */
-.sd-overview-session {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
 
 .sd-session-tokens {
   display: grid;
@@ -778,14 +810,14 @@
 }
 
 .sd-token-num {
-  font-size: 16px;
+  font-size: var(--fs-input);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--sd-text);
 }
 
 .sd-token-lbl {
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: var(--sd-muted);
 }
 
@@ -799,7 +831,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--fs-small);
   padding: 4px 9px;
   border-radius: 6px;
   background: var(--sd-surface-2);
@@ -826,7 +858,7 @@
 
 .sd-card h4 {
   margin: 0 0 14px;
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   font-weight: 600;
   color: var(--sd-text);
   display: flex;
@@ -843,13 +875,13 @@
 .sd-empty {
   margin: 0;
   padding: 12px 0;
-  font-size: 13px;
+  font-size: var(--fs-ui);
   color: var(--sd-muted);
 }
 
 /* ── Tiles & meters ── */
 .sd-tile-label {
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: var(--sd-muted);
   display: flex;
   align-items: center;
@@ -873,7 +905,7 @@
 
 .sd-tile-value {
   margin: 6px 0 10px;
-  font-size: 22px;
+  font-size: var(--fs-heading);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--sd-text);
@@ -881,7 +913,7 @@
 
 .sd-tile-sub {
   margin-top: 8px;
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: var(--sd-muted);
   font-variant-numeric: tabular-nums;
   overflow: hidden;
@@ -913,7 +945,7 @@
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 6px;
-  font-size: 13px;
+  font-size: var(--fs-ui);
   font-variant-numeric: tabular-nums;
 }
 
@@ -933,7 +965,7 @@
   gap: 10px;
   padding: 10px 0;
   border-bottom: 1px solid var(--sd-border);
-  font-size: 13px;
+  font-size: var(--fs-ui);
 }
 
 #settings-container .status-row:last-child {
@@ -968,7 +1000,7 @@
 #settings-container .status-detail,
 #settings-container .status-text {
   margin-left: auto;
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: var(--sd-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -983,7 +1015,7 @@
   grid-template-columns: 1fr auto;
   gap: 10px 16px;
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-ui);
 }
 
 .sd-kv dt {
@@ -1011,7 +1043,7 @@
   background: var(--sd-surface-2);
   color: var(--sd-text);
   font: inherit;
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -1039,7 +1071,7 @@
 #settings-container input[type="file"] {
   flex: 1;
   min-width: 0;
-  font-size: 12.5px;
+  font-size: var(--fs-small);
   color: var(--sd-muted);
 }
 
@@ -1055,7 +1087,7 @@
 }
 
 .settings-feedback {
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: var(--sd-muted);
 }
 
@@ -1081,7 +1113,7 @@
   background: transparent;
   color: var(--sd-text);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--fs-ui);
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
@@ -1110,6 +1142,25 @@
 
 .settings-btn.danger:hover:not(:disabled) {
   background: rgba(248, 113, 113, 0.1);
+}
+
+.settings-btn.danger-restart {
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.08);
+  font-size: var(--fs-label);
+  padding: 5px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.settings-btn.danger-restart:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
 }
 
 .settings-btn:disabled {
@@ -1151,7 +1202,7 @@
   border: 1px solid rgba(14, 165, 233, 0.3);
   border-radius: 10px;
   background: rgba(14, 165, 233, 0.08);
-  font-size: 13px;
+  font-size: var(--fs-ui);
 }
 
 .setup-nav {
@@ -1200,14 +1251,14 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   font-weight: 600;
   color: var(--sd-text);
   letter-spacing: -0.01em;
 }
 
 .sd-mem-badge-pill {
-  font-size: 12px;
+  font-size: var(--fs-small);
   font-weight: 500;
   color: var(--sd-muted);
   background: rgba(255, 255, 255, 0.05);
@@ -1239,7 +1290,7 @@
   background: transparent;
   color: var(--sd-muted);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--fs-ui);
   font-weight: 500;
   cursor: pointer;
   text-align: left;
@@ -1286,7 +1337,7 @@
 }
 
 .sd-mem-cat-badge {
-  font-size: 12px;
+  font-size: var(--fs-small);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   padding: 2px 7px;
@@ -1314,7 +1365,7 @@
 .sd-mem-search-bar input[type="search"] {
   flex: 1;
   padding: 0 12px !important;
-  font-size: 13px !important;
+  font-size: var(--fs-ui) !important;
   height: 38px !important;
   border-radius: 8px !important;
 }
@@ -1337,7 +1388,7 @@
 }
 
 .sd-btn-bulk-delete {
-  font-size: 12px !important;
+  font-size: var(--fs-small) !important;
   height: 30px !important;
   min-height: 30px !important;
   padding: 0 10px !important;
@@ -1360,7 +1411,7 @@
 .sd-btn-reembed-all {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 12px !important;
+  font-size: var(--fs-small) !important;
   height: 30px !important;
   min-height: 30px !important;
   padding: 0 10px !important;
@@ -1440,7 +1491,7 @@
 }
 
 .sd-mem-card-title {
-  font-size: 13px;
+  font-size: var(--fs-ui);
   font-weight: 600;
   color: #ffffff;
   overflow: hidden;
@@ -1449,7 +1500,7 @@
 }
 
 .sd-mem-card-type-tag {
-  font-size: 12px;
+  font-size: var(--fs-small);
   font-weight: 500;
   color: var(--sd-muted);
   background: rgba(255, 255, 255, 0.05);
@@ -1461,7 +1512,7 @@
 }
 
 .sd-mem-card-preview {
-  font-size: 12px;
+  font-size: var(--fs-small);
   line-height: 1.45;
   color: var(--sd-muted);
   display: -webkit-box;
@@ -1501,14 +1552,14 @@
 }
 
 .sd-mem-empty-title {
-  font-size: 14px;
+  font-size: var(--fs-body);
   font-weight: 600;
   color: var(--sd-text);
   margin-bottom: 4px;
 }
 
 .sd-mem-empty-sub {
-  font-size: 12px;
+  font-size: var(--fs-small);
   max-width: 240px;
   line-height: 1.4;
   color: var(--sd-muted);
@@ -1528,13 +1579,13 @@
 .sd-pager .settings-btn {
   height: 30px;
   min-height: 30px;
-  font-size: 12px;
+  font-size: var(--fs-small);
   padding: 0 10px;
   gap: 4px;
 }
 
 .sd-pager-status {
-  font-size: 12px;
+  font-size: var(--fs-small);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: var(--sd-muted);
@@ -1570,7 +1621,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--fs-small);
   font-weight: 600;
   color: var(--cat-color, var(--sd-accent));
   background: rgba(255, 255, 255, 0.04);
@@ -1586,7 +1637,7 @@
 
 .sd-mem-detail-id {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--fs-title);
   font-weight: 700;
   color: #ffffff;
   letter-spacing: -0.01em;
@@ -1612,14 +1663,14 @@
 }
 
 .sd-mem-field-label {
-  font-size: 12.5px;
+  font-size: var(--fs-small);
   font-weight: 600;
   color: var(--sd-text);
   letter-spacing: 0.01em;
 }
 
 .sd-mem-field-type {
-  font-size: 12px;
+  font-size: var(--fs-small);
   font-weight: 500;
   color: var(--sd-muted);
   background: rgba(255, 255, 255, 0.04);
@@ -1636,7 +1687,7 @@
   border-radius: 8px !important;
   color: #ffffff !important;
   font-family: inherit !important;
-  font-size: 13px !important;
+  font-size: var(--fs-ui) !important;
   padding: 9px 12px !important;
   outline: none;
   transition: border-color 0.16s, box-shadow 0.16s;
@@ -1652,7 +1703,7 @@
   line-height: 1.6;
   resize: vertical;
   font-family: inherit !important;
-  font-size: 13px !important;
+  font-size: var(--fs-ui) !important;
 }
 
 /* Metadata box */
@@ -1664,7 +1715,7 @@
 }
 
 .sd-mem-meta-title {
-  font-size: 12px;
+  font-size: var(--fs-small);
   font-weight: 600;
   letter-spacing: 0.05em;
   color: var(--sd-muted);
@@ -1681,7 +1732,7 @@
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--fs-small);
 }
 
 .sd-mem-meta-key {
@@ -1708,7 +1759,7 @@
 .sd-mem-detail-actions .settings-btn.primary {
   min-width: 130px;
   height: 38px;
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
 }
 
 .memory-back-btn {
@@ -1719,10 +1770,7 @@
 @media (max-width: 1100px) {
   .span-3 { grid-column: span 6; }
   .span-4,
-  .span-5,
-  .span-6,
-  .span-7,
-  .span-8 { grid-column: span 12; }
+  .span-6 { grid-column: span 12; }
   .sd-memory { grid-template-columns: 200px minmax(0, 1fr); }
   #memory-detail-container { grid-column: 1 / -1; }
 }
@@ -1744,7 +1792,7 @@
     bottom: 0;
     left: 0;
     z-index: 2;
-    width: min(280px, 85vw);
+    width: min(200px, 85vw);
     border-radius: 0;
     border-top: 0;
     border-bottom: 0;
@@ -1869,11 +1917,12 @@
 
 .sd-agents-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); /* min(…,100%): on a phone the column is the screen, never wider */
   gap: 8px;
 }
 
 .sd-agent-card {
+  min-width: 0; /* a grid item never grows to its longest unbroken string */
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1917,7 +1966,7 @@
 
 .sd-agent-name {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--fs-body);
   font-weight: 600;
   color: #ffffff;
   letter-spacing: -0.01em;
@@ -1927,16 +1976,20 @@
 }
 
 .sd-agent-id {
-  font-size: 12px;
+  display: block;
+  font-size: var(--fs-small);
   font-family: var(--sd-font-sans);
   color: var(--sd-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* long file paths are cut with … (full path in the title) */
 }
 
 .sd-agent-status-badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 12px;
+  font-size: var(--fs-small);
   font-weight: 600;
   color: var(--sd-ok);
   background: rgba(74, 222, 128, 0.08);
@@ -1947,20 +2000,13 @@
 
 .sd-agent-desc {
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--fs-small);
   line-height: 1.5;
   color: var(--sd-muted);
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-
-.sd-agent-tools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-top: auto;
 }
 
 /* Tools row — shared across Agents / Hooks / Skills */
@@ -1975,7 +2021,7 @@
 }
 
 .sd-agent-tools-lbl {
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: var(--sd-muted);
   font-weight: 500;
   white-space: nowrap;
@@ -1984,7 +2030,7 @@
 }
 
 .sd-tool-tag {
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: rgba(148, 163, 184, 0.85);
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.07);
@@ -1997,22 +2043,12 @@
 }
 
 .sd-tool-sep {
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: rgba(148, 163, 184, 0.35);
   line-height: 1;
   user-select: none;
 }
 
-.sd-tool-more {
-  font-size: 12px;
-  color: var(--sd-accent);
-  background: var(--sd-accent-soft);
-  border: 1px solid rgba(14, 165, 233, 0.2);
-  padding: 1px 5px;
-  border-radius: 3px;
-  white-space: nowrap;
-  cursor: default;
-}
 
 /* ==========================================================================
    MCP Connect Page
@@ -2048,11 +2084,11 @@
 
 .sd-mcp-head .settings-btn {
   padding: 3px 10px;
-  font-size: 12px;
+  font-size: var(--fs-small);
 }
 
 .sd-mcp-name {
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   font-weight: 600;
   color: #ffffff;
 }
@@ -2067,7 +2103,7 @@
 
 .sd-mcp-cmd code {
   font-family: var(--sd-font-sans);
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: #38bdf8;
   white-space: nowrap;
 }
@@ -2101,7 +2137,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--fs-small);
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
   padding: 4px 10px;
@@ -2125,7 +2161,7 @@
 }
 
 .sd-readme-content {
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   line-height: 1.7;
   color: var(--sd-text);
   max-width: 900px;
@@ -2142,9 +2178,9 @@
   letter-spacing: -0.01em;
 }
 
-.sd-readme-content h1 { font-size: 22px; border-bottom: 1px solid var(--sd-border); padding-bottom: 8px; }
-.sd-readme-content h2 { font-size: 17px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); padding-bottom: 6px; }
-.sd-readme-content h3 { font-size: 14.5px; }
+.sd-readme-content h1 { font-size: var(--fs-heading); border-bottom: 1px solid var(--sd-border); padding-bottom: 8px; }
+.sd-readme-content h2 { font-size: var(--fs-input); border-bottom: 1px solid rgba(255, 255, 255, 0.06); padding-bottom: 6px; }
+.sd-readme-content h3 { font-size: var(--fs-body); }
 
 .sd-readme-content p {
   margin: 10px 0;
@@ -2152,7 +2188,7 @@
 
 .sd-readme-content code {
   font-family: var(--sd-font-mono);
-  font-size: 12px;
+  font-size: var(--fs-small);
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.06);
   padding: 2px 6px;
@@ -2164,7 +2200,7 @@
   width: 100%;
   border-collapse: collapse;
   margin: 14px 0;
-  font-size: 12.5px;
+  font-size: var(--fs-small);
 }
 
 .sd-readme-content th,
@@ -2197,12 +2233,12 @@
   padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid var(--sd-border);
-  font-size: 12px;
+  font-size: var(--fs-small);
 }
 .sd-mcp-file-badge code {
   color: #38bdf8;
   font-family: var(--sd-font-mono);
-  font-size: 12px;
+  font-size: var(--fs-small);
 }
 .sd-mcp-json-box {
   background: rgba(15, 23, 42, 0.85);
@@ -2215,14 +2251,14 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12.5px;
+  font-size: var(--fs-small);
   color: var(--sd-muted);
   border-bottom: 1px solid var(--sd-border);
   padding-bottom: 8px;
   margin-bottom: 10px;
 }
 .sd-json-copy-btn {
-  font-size: 12px;
+  font-size: var(--fs-small);
   padding: 3px 8px;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.08);
@@ -2237,7 +2273,7 @@
 .sd-json-pre {
   margin: 0;
   font-family: var(--sd-font-mono);
-  font-size: 12px;
+  font-size: var(--fs-small);
   line-height: 1.5;
   color: #cbd5e1;
   max-height: 320px;
@@ -2251,7 +2287,7 @@
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.75);
-  z-index: 1000;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2285,7 +2321,7 @@
 }
 .sd-modal-head h4 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--fs-body);
   font-weight: 600;
   color: #ffffff;
 }
@@ -2299,7 +2335,7 @@
 .sd-info-file-tag {
   color: #38bdf8;
   font-family: var(--sd-font-mono);
-  font-size: 12px;
+  font-size: var(--fs-small);
 }
 
 /* Code blocks in markdown */
@@ -2313,7 +2349,7 @@
 .sd-code-head {
   background: rgba(255, 255, 255, 0.03);
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: var(--sd-muted);
   border-bottom: 1px solid var(--sd-border);
   font-family: var(--sd-font-mono);
@@ -2325,10 +2361,12 @@
 }
 .sd-code-block code {
   font-family: var(--sd-font-mono);
-  font-size: 12px;
+  font-size: var(--fs-small);
   line-height: 1.5;
   color: #e2e8f0;
 }
+/* hljs github-dark theme paints token colors; its own background would cover the card's */
+#settings-container .sd-code-block code.hljs { background: transparent; }
 
 /* ==========================================================================
    Font-sync compat — các class pages.ts / index.ts / memory.ts dùng nhưng
@@ -2339,7 +2377,7 @@
 #settings-container .sd-page-head { margin-bottom: 4px; font-family: var(--sd-font-sans); }
 #settings-container .sd-lead {
   margin: 0 0 0px;
-  font-size: 13px;
+  font-size: var(--fs-ui);
   line-height: 1.6;
   color: var(--sd-muted);
   font-family: var(--sd-font-sans);
@@ -2347,43 +2385,36 @@
 
 /* Legacy form aliases: pages.ts dùng form-group/sd-input-row/...,
    styles.css gốc đặt tên settings-field/settings-input-row/... */
-#settings-container .form-group,
-#settings-container .settings-field {
+#settings-container .form-group {
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin-bottom: 18px;
   font-family: var(--sd-font-sans);
 }
-#settings-container .form-group > label,
-#settings-container .settings-field label {
-  font-size: 12.5px;
+#settings-container .form-group > label {
+  font-size: var(--fs-small);
   font-weight: 500;
   color: var(--sd-text);
   font-family: var(--sd-font-sans);
 }
-#settings-container .sd-input-row,
-#settings-container .settings-input-row {
+#settings-container .sd-input-row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 #settings-container .sd-input-row > input,
-#settings-container .sd-input-row > select,
-#settings-container .settings-input-row > input,
-#settings-container .settings-input-row > select {
+#settings-container .sd-input-row > select {
   flex: 1;
   min-width: 0;
 }
-#settings-container .sd-field-note,
-#settings-container .settings-hint {
-  font-size: 12px;
+#settings-container .sd-field-note {
+  font-size: var(--fs-small);
   color: var(--sd-muted);
   line-height: 1.5;
   font-family: var(--sd-font-sans);
 }
-#settings-container .sd-action-row,
-#settings-container .settings-actions {
+#settings-container .sd-action-row {
   display: flex;
   justify-content: flex-end;
   align-items: center;
@@ -2414,7 +2445,7 @@
   outline: none;
   color: var(--sd-text);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--fs-ui);
   font-family: var(--sd-font-sans);
 }
 #settings-container .sd-agents-counter {
@@ -2424,20 +2455,19 @@
   font-family: var(--sd-font-sans);
 }
 #settings-container .sd-agents-count-val {
-  font-size: 18px;
+  font-size: var(--fs-title);
   font-weight: 700;
   color: #ffffff;
   font-variant-numeric: tabular-nums;
 }
 #settings-container .sd-agents-count-lbl {
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: var(--sd-muted);
 }
 
 /* Tiles dùng trong overview (class .sd-tile trong pages.ts) */
 #settings-container .sd-tile { font-family: var(--sd-font-sans); }
 #settings-container .sd-tile .sd-tile-label { font-family: var(--sd-font-sans); }
-#settings-container .sd-apps-block { display: flex; flex-direction: column; gap: 8px; }
 
 /* GPU / apps list render động từ index.ts */
 #settings-container .sd-gpu-list,
@@ -2448,14 +2478,14 @@
   font-family: var(--sd-font-sans);
 }
 #settings-container .sd-gpu-item { display: flex; flex-direction: column; gap: 4px; }
-#settings-container .sd-gpu-name { font-size: 13px; font-weight: 600; color: var(--sd-text); }
+#settings-container .sd-gpu-name { font-size: var(--fs-ui); font-weight: 600; color: var(--sd-text); }
 #settings-container .sd-gpu-item .sd-gpu-stat,
-#settings-container .sd-gpu-stat { font-size: 12px; color: var(--sd-muted); }
+#settings-container .sd-gpu-stat { font-size: var(--fs-small); color: var(--sd-muted); }
 #settings-container .sd-app-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12.5px;
+  font-size: var(--fs-small);
   color: var(--sd-text);
   font-family: var(--sd-font-sans);
 }
@@ -2470,7 +2500,7 @@
 /* Agent command box + copy button (render động) */
 #settings-container .sd-agent-cmd-box { display: flex; flex-direction: column; gap: 5px; }
 #settings-container .sd-agent-cmd-lbl {
-  font-size: 12px;
+  font-size: var(--fs-small);
   font-weight: 600;
   color: var(--sd-accent);
   letter-spacing: 0.03em;
@@ -2489,7 +2519,7 @@
   flex: 1;
   min-width: 0;
   font-family: var(--sd-font-sans);
-  font-size: 13px;
+  font-size: var(--fs-ui);
   font-weight: 500;
   color: #7dd3fc;
   white-space: nowrap;
@@ -2498,7 +2528,7 @@
 }
 #settings-container .sd-copy-cmd-btn {
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: var(--fs-small);
   padding: 4px 10px;
   border-radius: 6px;
   border: 1px solid var(--sd-border-strong);
@@ -2518,7 +2548,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12.5px;
+  font-size: var(--fs-small);
   color: var(--sd-muted);
   font-family: var(--sd-font-sans);
 }
@@ -2543,25 +2573,25 @@
 }
 #settings-container .sd-mcp-stat { display: flex; flex-direction: column; gap: 2px; }
 #settings-container .sd-mcp-stat-num {
-  font-size: 20px;
+  font-size: var(--fs-heading);
   font-weight: 700;
   color: #ffffff;
   font-variant-numeric: tabular-nums;
 }
-#settings-container .sd-mcp-stat-lbl { font-size: 12px; color: var(--sd-muted); }
+#settings-container .sd-mcp-stat-lbl { font-size: var(--fs-small); color: var(--sd-muted); }
 #settings-container .text-success { color: var(--sd-ok); }
 #settings-container .sd-badge-k { color: var(--sd-muted); }
 #settings-container .sd-mcp-list-card { font-family: var(--sd-font-sans); }
 #settings-container .sd-mcp-list-card h4 {
   margin: 0 0 12px;
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   font-weight: 600;
   font-family: var(--sd-font-sans);
 }
 
 /* Markdown render từ formatMarkdown() trong index.ts */
 #settings-container .sd-prose {
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   line-height: 1.7;
   color: var(--sd-text);
   font-family: var(--sd-font-sans);
@@ -2581,18 +2611,19 @@
 }
 #settings-container .sd-inline-code {
   font-family: var(--sd-font-mono);
-  font-size: 12px;
+  font-size: var(--fs-small);
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.06);
   padding: 2px 6px;
   border-radius: 4px;
   color: #38bdf8;
 }
+#settings-container .sd-inline-code--nowrap { white-space: nowrap; }
 #settings-container .sd-table {
   width: 100%;
   border-collapse: collapse;
   margin: 14px 0;
-  font-size: 12.5px;
+  font-size: var(--fs-small);
   font-family: var(--sd-font-sans);
 }
 #settings-container .sd-table th,
@@ -2601,13 +2632,32 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   text-align: left;
 }
+#settings-container .sd-table th[align="center"],
+#settings-container .sd-table td[align="center"],
+#settings-container .sd-table th[style*="text-align: center"],
+#settings-container .sd-table td[style*="text-align: center"],
+#settings-container .sd-table th[style*="text-align:center"],
+#settings-container .sd-table td[style*="text-align:center"] {
+  text-align: center !important;
+}
+#settings-container .sd-table th[align="right"],
+#settings-container .sd-table td[align="right"],
+#settings-container .sd-table th[style*="text-align: right"],
+#settings-container .sd-table td[style*="text-align: right"],
+#settings-container .sd-table th[style*="text-align:right"],
+#settings-container .sd-table td[style*="text-align:right"] {
+  text-align: right !important;
+}
+#settings-container .sd-table th[align="left"],
+#settings-container .sd-table td[align="left"] {
+  text-align: left !important;
+}
 #settings-container .sd-table th {
   background: rgba(14, 165, 233, 0.12);
   color: #ffffff;
   font-weight: 600;
 }
 #settings-container .sd-hr { border: 0; border-top: 1px solid var(--sd-border); margin: 14px 0; }
-#settings-container .sd-ol-item { font-family: var(--sd-font-sans); }
 
 /* Graphfy node variants */
 #settings-container .npu-item { border-style: dashed; }
@@ -2615,21 +2665,13 @@
 /* Command / agent call notes + parameter list */
 #settings-container .sd-agent-cmd-note {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: var(--sd-muted);
 }
-#settings-container .sd-agent-cmd-note code,
-#settings-container .sd-cmd-params code {
+#settings-container .sd-agent-cmd-note code {
   font-family: var(--sd-font-sans);
   font-weight: 600;
   color: #7dd3fc;
-}
-#settings-container .sd-cmd-params {
-  margin: 8px 0 0;
-  padding-left: 18px;
-  font-size: 12.5px;
-  color: var(--sd-text);
-  line-height: 1.6;
 }
 
 /* Prompt editor modal */
@@ -2643,8 +2685,8 @@
   border-radius: 8px;
   background: var(--sd-surface-2, #0a0e14);
   color: var(--sd-text);
-  font-family: var(--sd-font-mono);
-  font-size: 13px;
+  font-family: var(--sd-font-sans);
+  font-size: var(--fs-ui);
   line-height: 1.6;
   resize: vertical;
   outline: none;
@@ -2673,7 +2715,7 @@
   flex-wrap: wrap;
   gap: 16px;
   margin-bottom: 4px;
-  font-size: 12.5px;
+  font-size: var(--fs-small);
   color: var(--sd-muted);
 }
 #settings-container .gf-legend { display: inline-flex; align-items: center; gap: 6px; }
@@ -2683,10 +2725,14 @@
 #settings-container .gf-map { min-width: 900px; }
 #settings-container .gf-svg { display: block; width: 100%; height: auto; user-select: none; touch-action: pan-x pan-y; }
 #settings-container .gf-grid-dot { fill: rgba(148, 163, 184, 0.12); }
-#settings-container .gf-edge { fill: none; stroke: var(--gf-e); stroke-width: 1.2; opacity: 0.28; }
+#settings-container .gf-edge { fill: none; stroke: var(--gf-e); stroke-width: 1.2; opacity: 0.08; }
 #settings-container .gf-edge-llm { opacity: 0.4; }
 #settings-container .gf-link, #settings-container .gf-node { transition: opacity 0.15s ease; }
 #settings-container .gf-support { opacity: 0.3; }
+/* edges to the shared hubs (server, tools, UIUX): hidden unless "Hiện tất cả" or one of their nodes is hovered */
+#settings-container .gf-hub { display: none; }
+#settings-container .gf-map.gf-all .gf-hub,
+#settings-container .gf-edges:has(.gf-dim) .gf-hub:not(.gf-dim) { display: inline; }
 #settings-container .gf-link.gf-dim, #settings-container .gf-node.gf-dim { opacity: 0.08; }
 #settings-container .gf-link:not(.gf-dim):not(.gf-support) .gf-edge { transition: opacity 0.15s; }
 #settings-container .gf-edges:has(.gf-dim) .gf-link:not(.gf-dim) .gf-edge { opacity: 0.9; stroke-width: 1.6; }
@@ -2703,7 +2749,7 @@
 @media (prefers-reduced-motion: reduce) {
   #settings-container .gf-brain-trace, #settings-container .gf-brain-pad, #settings-container .gf-brain-aura { animation: none; }
 }
-#settings-container .gf-lane-title { font-size: 12px; font-weight: 600; letter-spacing: 0.3px; font-family: var(--sd-font-sans); }
+#settings-container .gf-lane-title { font-size: var(--fs-small); font-weight: 600; letter-spacing: 0.3px; font-family: var(--sd-font-sans); }
 #settings-container .gf-pulse { fill: var(--gf-e); filter: drop-shadow(0 0 4px var(--gf-e)); }
 #settings-container .gf-node { cursor: grab; }
 #settings-container .gf-node.dragging { cursor: grabbing; }
@@ -2716,8 +2762,7 @@
 #settings-container .gf-node:hover .gf-node-box,
 #settings-container .gf-node:focus-visible .gf-node-box { stroke: var(--gf-c); }
 #settings-container .gf-node:focus-visible { outline: none; }
-#settings-container .gf-node-label { fill: var(--sd-text); font-size: 12.5px; font-weight: 500; font-family: var(--sd-font-sans); }
-#settings-container .gf-node-sub { fill: var(--sd-muted); font-size: 12px; font-family: var(--sd-font-sans); }
+#settings-container .gf-node-label { fill: var(--sd-text); font-size: var(--fs-small); font-weight: 500; font-family: var(--sd-font-sans); }
 @media (prefers-reduced-motion: reduce) {
   #settings-container .gf-pulse { display: none; }
 }
@@ -2743,9 +2788,9 @@
   background: rgba(255, 255, 255, 0.02);
 }
 #settings-container .sd-status-grid .status-dot { grid-area: dot; align-self: center; }
-#settings-container .sd-status-grid .status-name { grid-area: name; font-size: 13px; }
+#settings-container .sd-status-grid .status-name { grid-area: name; font-size: var(--fs-ui); }
 #settings-container .sd-status-grid .status-text,
-#settings-container .sd-status-grid .status-detail { grid-area: text; margin-left: 0; font-size: 12px; }
+#settings-container .sd-status-grid .status-detail { grid-area: text; margin-left: 0; font-size: var(--fs-small); }
 #settings-container .sd-status-grid .status-detail { display: none; }
 
 /* MCP servers as a card grid instead of full-width rows. */
@@ -2799,6 +2844,19 @@
 }
 
 @media (max-width: 768px) {
+  .sd-page-head-row {
+    gap: 8px;
+  }
+
+  .sd-page-head-row h3 {
+    font-size: var(--fs-title);
+  }
+
+  .sd-page-head-actions .settings-btn.danger-restart {
+    padding: 4px 10px;
+    font-size: var(--fs-label);
+  }
+
   #page-logs .sd-page-head p {
     display: none;
   }
@@ -2832,3 +2890,61 @@
     max-width: 94%;
   }
 }
+
+/* Bot Mascot selector grid on user settings page */
+.bot-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 8px;
+  max-height: 250px;
+  overflow-y: auto;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.bot-choice-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 4px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.bot-choice-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.bot-choice-item.active {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: #38bdf8;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+}
+
+.bot-choice-canvas {
+  width: 26px;
+  height: 26px;
+  display: block;
+}
+
+.bot-choice-label {
+  font-size: var(--fs-label);
+  font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+

@@ -33,9 +33,9 @@ async function open(browser, opts = {}) {
   const loader = await page.evaluate(() => {
     const l = document.querySelector(".chat-bubble.typing-loader");
     const blobs = [...l.querySelectorAll(".blob-c")].map((b) => getComputedStyle(b).animationName);
-    return { blobs: blobs.join(","), goo: getComputedStyle(l.querySelector(".loader-inner-c")).filter.includes("sl-goo"), own: !!l.querySelector("svg filter#sl-goo"), global: !!document.querySelector("body > svg"), w: Math.round(l.getBoundingClientRect().width), h: Math.round(l.getBoundingClientRect().height) };
+    return { oneLine: 13 * parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-scale")) * 1.5 + 14, blobs: blobs.join(","), goo: getComputedStyle(l.querySelector(".loader-inner-c")).filter.includes("sl-goo"), own: !!l.querySelector("svg filter#sl-goo"), global: !!document.querySelector("body > svg"), w: Math.round(l.getBoundingClientRect().width), h: Math.round(l.getBoundingClientRect().height) };
   });
-  check(loader.blobs === "stream-spin,stream-spin,stream-spin,stream-spin" && loader.goo && loader.own && !loader.global && loader.w >= 44 && loader.w <= 52 && loader.h === 32, "1e. loader 4 khối quay + bộ lọc goo (chất lỏng) nằm trong chính loader, không SVG toàn trang, bong bóng ~50x32", JSON.stringify(loader));
+  check(loader.blobs === "stream-spin,stream-spin,stream-spin,stream-spin" && loader.goo && loader.own && !loader.global && loader.w >= 44 && loader.w <= 52 && Math.abs(loader.h - loader.oneLine) <= 0.6, "1e. loader 4 khối quay + bộ lọc goo (chất lỏng) nằm trong chính loader, không SVG toàn trang, bong bóng rộng ~50px, cao bằng một dòng chữ (13px × thang chữ × 1,5 + 14)", JSON.stringify(loader));
   for (let i = 1; i <= 5; i++) send({ type: "flow_step", step: { id: i, label: "Bước " + i, status: i < 5 ? "completed" : "active" } });
   send({ type: "status", state: "thinking" });
   await page.waitForTimeout(900);
@@ -66,7 +66,7 @@ async function open(browser, opts = {}) {
     }
     return { up: Math.round(up), down: Math.round(down) };
   });
-  check(spill.up >= 3 && spill.down >= 3 && spill.down <= 8, "1h. hiệu ứng vẫn tràn ra ngoài bong bóng (>=3px) nhưng vừa trong chỗ chừa sẵn (<=8px)", JSON.stringify(spill));
+  check(spill.up >= 1 && spill.down >= 1 && spill.down <= 8, "1h. hiệu ứng vẫn tràn ra ngoài bong bóng (>=1px; bong bóng cao hơn khi chữ lớn hơn nên tràn ít đi) nhưng vừa trong chỗ chừa sẵn (<=8px)", JSON.stringify(spill));
   send({ type: "text_chunk", text: "Xin chào, thưa Ngài. " }); await page.waitForTimeout(700);
   const after = await page.evaluate(() => { const h = document.getElementById("chat-history"), last = h.lastElementChild.getBoundingClientRect(); return Math.round(h.getBoundingClientRect().bottom - last.bottom); });
   check(Math.abs(after - gap.gapBelow) <= 2, "1i. chữ chạy ra thì bong bóng vẫn nằm đúng chỗ đó (không nhảy lên xuống)", `${gap.gapBelow}px → ${after}px`);

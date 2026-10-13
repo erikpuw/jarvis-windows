@@ -1,12 +1,13 @@
 """
 JARVIS RAG Folder Watcher - Auto-index documents khi them file moi.
 
-Watch thu muc data/documents/ (hoac RAG_WATCH_FOLDER env).
+Watch thu muc data/wiki/Documents/ (hoac RAG_WATCH_FOLDER env) - nguon duy nhat cua RAG.
 Supports: .pdf, .docx, .pptx, .xlsx, .txt, .md, .csv
 """
 
 import asyncio
 import logging
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -15,6 +16,13 @@ from typing import Optional
 log = logging.getLogger("jarvis.rag_watcher")
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".xlsx", ".txt", ".md", ".csv", ".html", ".htm"}
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def watch_folder() -> Path:
+    """Thư mục RAG theo dõi; nằm trong vault Obsidian (data/wiki) để Obsidian đọc được tệp gốc."""
+    folder = Path(os.getenv("RAG_WATCH_FOLDER") or "data/wiki/Documents")
+    return folder if folder.is_absolute() else _PROJECT_ROOT / folder
 
 # DB luu vet file da index de tranh re-index
 WATCH_DB_PATH = Path(__file__).parent.parent.parent / "data" / "rag_watch.db"

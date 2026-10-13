@@ -16,7 +16,7 @@ TOKEN_HEADER = "X-Memory-Token"
 # Các endpoint dữ liệu của Memory Control, lịch sử chat và nhật ký; /api/memory-lock/* nằm ngoài để mở khóa được.
 PROTECTED_PREFIXES = (
     "/api/learnings", "/api/memories", "/api/workflows", "/api/outcomes",
-    "/api/conversations", "/api/notes", "/api/evolution", "/api/memory-control",
+    "/api/conversations", "/api/evolution", "/api/memory-control",
     "/api/history", "/api/logs",  # lịch sử chat và jarvis.log: cùng nội dung nhạy cảm, cùng mật khẩu
 )
 

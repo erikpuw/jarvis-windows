@@ -9,11 +9,9 @@
 import { defineMorphIcon, type MorphIconElement } from "morphicons/element";
 import {
   Video, VideoOff, Mic, MicOff, Volume2, VolumeX, SquareTerminal, X,
-  History, MapPin, EllipsisVertical, Plus, ChevronDown,
-  Paperclip, Send, LoaderCircle, Check, CircleDashed,
+  Plus, ChevronDown, Paperclip, Send, LoaderCircle, Check, CircleDashed,
   Save, PlugZap, Upload, Trash2, RefreshCw, type IconNode,
-  AppWindow, Monitor, Moon, Mail, Bird, Image, Music, NotebookPen, FolderOpen,
-  Wrench, FileText, Search, Shield, Eye, Camera, Bot, Slash, AtSign, Orbit, CircleOff,
+  Orbit, CircleOff, Settings, Menu,
 } from "lucide";
 
 defineMorphIcon();
@@ -32,13 +30,13 @@ const cls = (c: string) => (el: HTMLElement) => el.classList.contains(c);
 const shown = (el: HTMLElement) => el.style.display !== "none" && el.style.display !== "";
 
 const SPECS: Spec[] = [
+  { btn: "btn-controls", watch: "controls", on: cls("open"), off: Menu, onIcon: X, size: 18 },
   { btn: "btn-webcam-toggle", on: cls("active"), off: VideoOff, onIcon: Video, size: 18 },
   { btn: "btn-mute", on: cls("muted"), off: Mic, onIcon: MicOff, size: 18 },
   { btn: "btn-tts-toggle", on: cls("muted"), off: Volume2, onIcon: VolumeX, size: 18 },
   { btn: "btn-cmd-bar", on: cls("active"), off: SquareTerminal, onIcon: ChevronDown, size: 18 },
   { btn: "btn-orb-toggle", on: cls("orb-off"), off: Orbit, onIcon: CircleOff, size: 18 },
-  { btn: "btn-map", on: cls("active"), off: MapPin, onIcon: X, size: 18 },
-  { btn: "btn-menu", watch: "menu-dropdown", on: shown, off: EllipsisVertical, onIcon: X, size: 18 },
+  { btn: "btn-settings", on: cls("active"), off: Settings, onIcon: Settings, size: 18 },
   { btn: "btn-upload", watch: "file-pinned-container", on: shown, off: Plus, onIcon: Paperclip, size: 14, stroke: 2.5 },
   { btn: "cmd-send", on: cls("sent"), off: Send, onIcon: Check, size: 14 },
 ];
@@ -51,7 +49,7 @@ const STATUS_ICON: Record<string, IconNode> = { active: LoaderCircle, completed:
  * a detached <morph-icon> destroys its animation driver.
  * Classes go on a wrapper span because <morph-icon> is display:contents.
  */
-export function setStatusIcon(host: Element, status: string, prefix: "flow" | "tracker", size: number): void {
+export function setStatusIcon(host: Element, status: string, prefix: "flow" = "flow", size = 14): void {
   const icon = STATUS_ICON[status] ?? CircleDashed;
   let wrap = host.querySelector<HTMLElement>(":scope > .status-glyph");
   if (!wrap) {
@@ -164,20 +162,4 @@ export async function runAction(
   btn.classList.remove("is-ok", "is-error");
   icon.morphTo(ACTION_ICON[kind]);
   return ok;
-}
-
-// Agent cards: backend titles are "<emoji> Agent <Name>" (engine/agents/agent_*.py).
-// Keyed by the name after "Agent "; an agent missing here still renders, with Bot.
-const AGENT_ICON: Record<string, IconNode> = {
-  control: AppWindow, desktop: Monitor, dream: Moon, email: Mail, goose: Bird,
-  history: History, image: Image, media: Music, notes: NotebookPen,
-  office: FolderOpen, project: Wrench, rag: FileText, search: Search, security: Shield,
-  vision: Eye, webcam: Camera,
-};
-
-/** "💻 Agent Desktop" → { name: "Agent Desktop", icon }. */
-export function agentBadge(title: string): { name: string; icon: MorphIconElement } {
-  const name = title.replace(/^[^\p{L}\p{N}]+/u, "").trim() || "Agent";
-  const key = name.toLowerCase().replace(/^agent\s+/, "").split(/\s+/)[0];
-  return { name, icon: makeIcon(AGENT_ICON[key] ?? Bot, 15, 1.75) };
 }

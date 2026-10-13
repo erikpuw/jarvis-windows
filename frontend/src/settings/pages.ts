@@ -8,7 +8,6 @@ import {
   Bot, BotMessageSquare, Boxes, Network, BookOpen, Info,
   Puzzle, Plug, Sparkles, Flame, Terminal, SquareCode, Workflow, GitFork,
   Webhook, Anchor, ScrollText, FileText, FileClock,
-  type IconNode,
 } from "lucide";
 import type { SettingsPageDef, SettingsPageId } from "./types";
 
@@ -22,20 +21,27 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
   { id: "system", label: "Hệ thống", description: "Chi tiết phần cứng, dịch vụ và ứng dụng đang chạy.", icon: Cpu, activeIcon: Activity, needsKey: true },
   { id: "memory", label: "Bộ nhớ", description: "Xem, sửa và xoá có kiểm tra quan hệ toàn bộ dữ liệu học và bộ nhớ của JARVIS.", icon: Database, activeIcon: HardDrive, needsKey: true },
   { id: "logs", label: "Nhật ký", description: "Lịch sử chat, Jarvis log, log bảo mật và log TTS. Một trang riêng, không kiểm tra kết nối nên không tự ghi thêm dòng vào log. Cần mật khẩu giống Bộ nhớ.", icon: FileClock, activeIcon: ScrollText, needsKey: true },
-  { id: "agents", label: "Agents", description: "Danh sách và hướng dẫn câu lệnh của các AI Agent chuyên biệt.", icon: Bot, activeIcon: BotMessageSquare, needsKey: true },
+  { id: "agents", label: "Mention", description: "Gõ @tên trong command-bar để gọi đúng một công cụ; @rag hỏi kho tài liệu đã nạp.", icon: Bot, activeIcon: BotMessageSquare, needsKey: true },
   { id: "hooks", label: "Hooks", description: "Các hooks xử lý vòng đời sự kiện quét trực tiếp từ thư mục hooks/.", icon: Webhook, activeIcon: Anchor, needsKey: true },
   { id: "skills", label: "Skills", description: "Các kỹ năng chuyên môn tự động hóa quét trực tiếp từ thư mục skills/.", icon: Sparkles, activeIcon: Flame, needsKey: true },
   { id: "prompts", label: "Prompts", description: "Các khuôn mẫu prompt hệ thống định nghĩa hành vi quét từ thư mục prompt/.", icon: ScrollText, activeIcon: FileText, needsKey: true },
-  { id: "commands", label: "Commands", description: "Các lệnh điều khiển nhanh, shortcut và shell commands từ thư mục commands/.", icon: Terminal, activeIcon: SquareCode, needsKey: true },
+  { id: "commands", label: "Commands", description: "Gõ /tên_lệnh trong command-bar để chạy đúng một công cụ; /help liệt kê mọi lệnh.", icon: Terminal, activeIcon: SquareCode, needsKey: true },
   { id: "plugins", label: "Plugins", description: "Quản lý và kích hoạt các plugin mở rộng chức năng hệ thống từ plugins/.", icon: Puzzle, activeIcon: Plug, needsKey: false },
   { id: "mcp", label: "MCP Connect", description: "Quản lý kết nối các máy chủ Model Context Protocol nạp từ config/mcp_config.json.", icon: Boxes, activeIcon: Network, needsKey: false },
   { id: "graphfy", label: "Graphfy", description: "Bản đồ cấu trúc JARVIS tự sinh từ code: module nào gọi module nào, và mọi chỗ gọi LLM.", icon: Workflow, activeIcon: GitFork, needsKey: false },
   { id: "info", label: "Thông tin", description: "Kiến trúc hệ thống, hướng dẫn sử dụng và tài liệu chi tiết từ README.md.", icon: BookOpen, activeIcon: Info, needsKey: false },
 ];
 
-const pageHead = (id: SettingsPageId): string => {
+const pageHead = (id: SettingsPageId, actionHtml = ""): string => {
   const page = SETTINGS_PAGES.find(p => p.id === id)!;
-  return `<header class="sd-page-head"><h3>${page.label}</h3><p>${page.description}</p></header>`;
+  return `
+    <header class="sd-page-head">
+      <div class="sd-page-head-row">
+        <h3>${page.label}</h3>
+        ${actionHtml ? `<div class="sd-page-head-actions">${actionHtml}</div>` : ""}
+      </div>
+      <p>${page.description}</p>
+    </header>`;
 };
 
 const feedback = (buttonId: string): string =>
@@ -87,6 +93,7 @@ const ICONS = {
   search: `<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>`,
   hook: `<path d="M18 8a6 6 0 0 0-9.33-5"/><path d="m14 15-4-4 4-4"/><path d="M2 12h12a4 4 0 0 1 4 4v2a2 2 0 0 1-4 0v-2"/>`,
   file: `<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/>`,
+  refresh: `<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>`,
 };
 
 const tile = (prefix: string, label: string, iconKey: keyof typeof ICONS, subId = ""): string => `
@@ -136,7 +143,7 @@ const overviewPage = (): string => `
           ${kv("Mô hình embedding", "ov-embed-model")}
           ${kv("TTS đang chạy", "ov-tts-engine")}
           ${kv("MCP đã kết nối", "ov-mcp")}
-          ${kv("Agents", "ov-agents")}
+          ${kv("Mention", "ov-agents")}
           ${kv("Kỹ năng · Lệnh", "ov-skills-cmds")}
         </dl>
       </div>
@@ -167,7 +174,11 @@ const overviewPage = (): string => `
 
 const connectPage = (): string => `
   <section class="sd-page" data-page="connect" id="page-connect" hidden>
-    ${pageHead("connect")}
+    ${pageHead("connect", `
+      <button type="button" class="settings-btn danger-restart" id="btn-restart" aria-label="Khởi động lại hệ thống">
+        ${svgIcon(ICONS.refresh, 12)} Restart
+      </button>
+    `)}
     <div class="sd-grid">
       <div class="sd-card span-6">
         <h4>${svgIcon(ICONS.key, 17)} Mô hình ngôn ngữ (LLM API)</h4>
@@ -201,7 +212,7 @@ const connectPage = (): string => `
           </div>
           <div class="sd-field-note" id="status-fish">Đang sử dụng VieNeu TTS Engine nội bộ (cục bộ).</div>
         </div>
-        <div class="sd-action-row" style="margin-top: 16px;">
+        <div class="sd-action-row" style="margin-top: 16px; display: flex; align-items: center; gap: 8px;">
           <button type="button" class="settings-btn primary" id="btn-save-keys">Lưu toàn bộ cài đặt kết nối</button>
           ${feedback("btn-save-keys")}
         </div>
@@ -271,6 +282,22 @@ const userPage = (): string => `
         <div class="sd-action-row">
           <button type="button" class="settings-btn primary" id="btn-save-prefs">Lưu thông tin cá nhân</button>
           ${feedback("btn-save-prefs")}
+        </div>
+      </div>
+      <div class="sd-card span-6" id="card-bot-mascot">
+        <div class="sd-card-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <h4 style="margin: 0;">${svgIcon(ICONS.bot, 17)} Linh vật Bot (Command Bar)</h4>
+          <span class="sd-badge">Xem trước</span>
+        </div>
+        <p class="sd-card-desc" style="font-size:var(--fs-small); color: var(--text-muted, #94a3b8); margin-bottom: 10px;">
+          Chọn hình dạng bot để hiển thị thay thế trên thanh lệnh (chỉ xem thử trong phiên làm việc, không lưu vĩnh viễn, mặc định: <strong>Square</strong>).
+        </p>
+        <div class="bot-selector-grid" id="bot-selector-grid">
+          <!-- Render danh sách 18 bot bởi initBotSelector() -->
+        </div>
+        <div class="sd-action-row" style="margin-top: 12px; display: flex; align-items: center; justify-content: space-between;">
+          <button type="button" class="settings-btn" id="btn-reset-bot-square">Đặt lại mặc định (Square)</button>
+          <span class="sd-hint" id="bot-active-status" style="font-size:var(--fs-label); color: #38bdf8;">Đang hiển thị: Square</span>
         </div>
       </div>
     </div>
@@ -385,15 +412,15 @@ const agentsPage = (): string => `
     <div class="sd-agents-toolbar">
       <div class="sd-search-box">
         ${svgIcon(ICONS.search, 16, 2)}
-        <input type="text" id="agents-search-input" placeholder="Tìm kiếm AI Agent theo tên, chức năng hoặc lệnh gọi..." autocomplete="off">
+        <input type="text" id="agents-search-input" placeholder="Tìm mention theo tên hoặc chức năng..." autocomplete="off">
       </div>
       <div class="sd-agents-counter">
         <span class="sd-agents-count-val" id="agents-count-val">0</span>
-        <span class="sd-agents-count-lbl">Agents sẵn sàng</span>
+        <span class="sd-agents-count-lbl">Mention dùng được</span>
       </div>
     </div>
     <div class="sd-agents-grid" id="agents-grid">
-      <div class="sd-empty sd-loading-state"><span>Đang nạp danh sách Agents…</span></div>
+      <div class="sd-empty sd-loading-state"><span>Đang nạp danh sách Mention…</span></div>
     </div>
   </section>`;
 
@@ -473,15 +500,15 @@ const commandsPage = (): string => `
     <div class="sd-agents-toolbar">
       <div class="sd-search-box">
         ${svgIcon(ICONS.search, 16, 2)}
-        <input type="text" id="commands-search-input" placeholder="Tìm kiếm Lệnh theo tên, cú pháp, tệp tin..." autocomplete="off">
+        <input type="text" id="commands-search-input" placeholder="Tìm lệnh theo tên hoặc cú pháp..." autocomplete="off">
       </div>
       <div class="sd-agents-counter">
         <span class="sd-agents-count-val" id="commands-count-val">0</span>
-        <span class="sd-agents-count-lbl">Commands từ commands/</span>
+        <span class="sd-agents-count-lbl">Lệnh / dùng được</span>
       </div>
     </div>
     <div class="sd-agents-grid" id="commands-grid">
-      <div class="sd-empty sd-loading-state"><span>Đang nạp danh sách Commands từ thư mục commands/…</span></div>
+      <div class="sd-empty sd-loading-state"><span>Đang nạp danh sách lệnh…</span></div>
     </div>
   </section>`;
 
@@ -586,7 +613,8 @@ const graphfyPage = (): string => `
     <div class="gf-toolbar">
       <span class="gf-legend"><i style="background:#38bdf8"></i>Import giữa module (màu theo làn nguồn)</span>
       <span class="gf-legend"><i style="background:#c084fc"></i>Gọi LLM</span>
-      <span class="gf-hint">Tự sinh từ code · rê chuột để lọc đường và xem file · kéo thả để sắp xếp</span>
+      <span class="gf-hint">Tự sinh từ code · đường tới server, tools, UIUX ẩn bớt · rê chuột để xem đường và file · kéo thả để sắp xếp</span>
+      <button type="button" class="settings-btn" id="btn-graphfy-all" aria-pressed="false">Hiện tất cả</button>
       <button type="button" class="settings-btn" id="btn-graphfy-reset">Bố cục mặc định</button>
     </div>
     <div class="sd-card gf-card"><div id="graphfy-map" class="gf-map"><div class="sd-empty">Đang dựng sơ đồ…</div></div></div>

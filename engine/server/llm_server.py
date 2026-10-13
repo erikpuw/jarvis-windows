@@ -2,9 +2,11 @@ import os
 import json
 import logging
 import re
+import socket
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 from openai import AsyncOpenAI, OpenAI
 
 log = logging.getLogger("jarvis.llm_server")
@@ -12,6 +14,145 @@ log = logging.getLogger("jarvis.llm_server")
 _llm_client = None
 _embed_client = None
 _USAGE_FILE = Path(__file__).parent.parent.parent / "data" / "usage_log.jsonl"
+
+_llm_status = {
+    "online": False,
+    "last_check": 0.0,
+    "warned": False,
+}
+_embed_status = {
+    "online": False,
+    "last_check": 0.0,
+    "warned": False,
+}
+_stream_tts_status = {
+    "online": False,
+    "last_check": 0.0,
+    "warned": False,
+}
+
+
+def get_server_host_port(url_str: str | None, default_port: int, default_host: str = "127.0.0.1") -> tuple[str, int]:
+    """Trích xuất hostname và port từ URL cấu hình."""
+    if not url_str:
+        return default_host, default_port
+    try:
+        parsed = urlparse(url_str)
+        return parsed.hostname or default_host, parsed.port or default_port
+    except Exception:
+        return default_host, default_port
+
+
+def is_port_open(host: str, port: int, timeout: float = 0.3) -> bool:
+    """Kiểm tra nhanh kết nối TCP tới cổng máy chủ."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(timeout)
+            return s.connect_ex((host, port)) == 0
+    except Exception:
+        return False
+
+
+def check_llm_server(force: bool = False) -> tuple[bool, str, int]:
+    """Kiểm tra kết nối tới máy chủ LLM (cổng 8080).
+    Trả về (is_online, message, port).
+    """
+    global _llm_status
+    base_url = os.getenv("LOCAL_URL")
+    host, port = get_server_host_port(base_url, 8080)
+    now = time.monotonic()
+
+    if not force and (now - _llm_status["last_check"] < 3.0):
+        online = _llm_status["online"]
+    else:
+        online = is_port_open(host, port)
+        _llm_status["last_check"] = now
+
+        if online:
+            if not _llm_status["online"] and _llm_status["warned"]:
+                log.info("Kết nối thành công đến máy chủ LLM cổng %s, hệ thống hoạt động bình thường.", port)
+            _llm_status["online"] = True
+            _llm_status["warned"] = False
+        else:
+            _llm_status["online"] = False
+            if not _llm_status["warned"]:
+                log.warning("Máy chủ LLM cổng %s chưa hoạt động (trạng thái: chờ kết nối).", port)
+                _llm_status["warned"] = True
+
+    if online:
+        msg = f"Máy chủ LLM cổng {port} đang hoạt động bình thường"
+    else:
+        msg = f"Máy chủ LLM cổng {port} chưa hoạt động (trạng thái: chờ kết nối)"
+
+    return online, msg, port
+
+
+def check_embed_server(force: bool = False) -> tuple[bool, str, int]:
+    """Kiểm tra kết nối tới máy chủ Embed (cổng 8081).
+    Trả về (is_online, message, port).
+    """
+    global _embed_status
+    base_url = os.getenv("LOCAL_EMBED_URL")
+    host, port = get_server_host_port(base_url, 8081)
+    now = time.monotonic()
+
+    if not force and (now - _embed_status["last_check"] < 3.0):
+        online = _embed_status["online"]
+    else:
+        online = is_port_open(host, port)
+        _embed_status["last_check"] = now
+
+        if online:
+            if not _embed_status["online"] and _embed_status["warned"]:
+                log.info("Kết nối thành công đến máy chủ Embed cổng %s, hệ thống hoạt động bình thường.", port)
+            _embed_status["online"] = True
+            _embed_status["warned"] = False
+        else:
+            _embed_status["online"] = False
+            if not _embed_status["warned"]:
+                log.warning("Máy chủ Embed cổng %s chưa hoạt động (trạng thái: chờ kết nối).", port)
+                _embed_status["warned"] = True
+
+    if online:
+        msg = f"Máy chủ Embed cổng {port} đang hoạt động bình thường"
+    else:
+        msg = f"Máy chủ Embed cổng {port} chưa hoạt động (trạng thái: chờ kết nối)"
+
+    return online, msg, port
+
+
+def check_stream_tts_server(force: bool = False) -> tuple[bool, str, int]:
+    """Kiểm tra kết nối tới máy chủ stream_TTS (cổng 8082).
+    Trả về (is_online, message, port).
+    """
+    global _stream_tts_status
+    base_url = os.getenv("TTS_STREAM_URL", "http://127.0.0.1:8082")
+    host, port = get_server_host_port(base_url, 8082)
+    now = time.monotonic()
+
+    if not force and (now - _stream_tts_status["last_check"] < 3.0):
+        online = _stream_tts_status["online"]
+    else:
+        online = is_port_open(host, port)
+        _stream_tts_status["last_check"] = now
+
+        if online:
+            if not _stream_tts_status["online"] and _stream_tts_status["warned"]:
+                log.info("Kết nối thành công đến máy chủ stream_TTS cổng %s, hệ thống hoạt động bình thường.", port)
+            _stream_tts_status["online"] = True
+            _stream_tts_status["warned"] = False
+        else:
+            _stream_tts_status["online"] = False
+            if not _stream_tts_status["warned"]:
+                log.warning("Máy chủ stream_TTS cổng %s chưa hoạt động (trạng thái: chờ kết nối).", port)
+                _stream_tts_status["warned"] = True
+
+    if online:
+        msg = f"Máy chủ stream_TTS cổng {port} đang hoạt động bình thường"
+    else:
+        msg = f"Máy chủ stream_TTS cổng {port} chưa hoạt động (trạng thái: chờ kết nối)"
+
+    return online, msg, port
 
 
 def _is_bonsai() -> bool:
@@ -68,7 +209,7 @@ MODEL_PROFILES = {
         "repetition_penalty": None,
         "max_thinking": 16384, "max_instruct": 8192,
         "think_start": "<|channel>thought", "think_end": "<channel|>",
-        "merge_system_first": False,  # Gemma chịu được system giữa hội thoại
+        "merge_system_first": True,  # Gemma 4: một system turn duy nhất ở đầu (đo 2026-10-08)
         "native_tools": True,
     },
 }
@@ -168,8 +309,8 @@ def _log_usage(in_tokens: int, out_tokens: int, call_type: str = "api", cached_t
 def get_llm_client():
     global _llm_client
     if _llm_client is None:
-        api_key = os.getenv("LOCAL_API_KEY")
-        base_url = os.getenv("LOCAL_URL")
+        api_key = os.getenv("LOCAL_API_KEY") or "dummy"
+        base_url = os.getenv("LOCAL_URL") or "http://127.0.0.1:8080/v1"
         
         # Check model switch config
         if _is_bonsai():
@@ -187,20 +328,26 @@ def get_llm_client():
         # fallback nào kích hoạt, trong khi người dùng chỉ thấy "đang nghĩ"
         # không phản hồi suốt thời gian đó.
         llm_timeout = float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "180"))
-        _llm_client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=llm_timeout)
+        _llm_client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=llm_timeout, max_retries=1)
         _llm_client.model = model
     return _llm_client
 
 
 def get_embed_client():
     global _embed_client
+    api_key = os.getenv("LOCAL_EMBED_API")
+    base_url = os.getenv("LOCAL_EMBED_URL")
+    if not api_key or not base_url:
+        return None
+
+    # Kiểm tra máy chủ Embed trước khi khởi tạo / trả về client
+    online, _, _ = check_embed_server()
+    if not online:
+        return None
+
     if _embed_client is None:
-        api_key = os.getenv("LOCAL_EMBED_API")
-        base_url = os.getenv("LOCAL_EMBED_URL")
-        if not api_key or not base_url:
-            return None
         embed_timeout = float(os.getenv("LOCAL_EMBED_TIMEOUT_SECONDS", "30"))
-        _embed_client = OpenAI(api_key=api_key, base_url=base_url, timeout=embed_timeout)
+        _embed_client = OpenAI(api_key=api_key, base_url=base_url, timeout=embed_timeout, max_retries=1)
         log.info("Initialized lazy embedding client pointing to %s", base_url)
     return _embed_client
 
@@ -322,7 +469,8 @@ async def call_llm(
     tool_choice: str = None,
     temperature: float = None,
     max_tokens: int = None,
-    response_format: dict = None
+    response_format: dict = None,
+    thinking_budget: int = None,
 ):
     # Single choke point for every LLM caller in the process — hot path,
     # agents, Dream, Learning, Self-Healing, Evolution, RAG. Admission control
@@ -331,7 +479,7 @@ async def call_llm(
     async with get_inference_gate().slot(interactive=in_interactive_turn()):
         return await _call_llm_inner(
             messages, model, thinking, stream, tools, tool_choice,
-            temperature, max_tokens, response_format,
+            temperature, max_tokens, response_format, thinking_budget,
         )
 
 
@@ -344,9 +492,16 @@ async def _call_llm_inner(
     tool_choice: str = None,
     temperature: float = None,
     max_tokens: int = None,
-    response_format: dict = None
+    response_format: dict = None,
+    thinking_budget: int = None,
 ):
     client = get_llm_client()
+    # Kiểm tra kết nối tới máy chủ LLM (cổng 8080) trước khi tạo request thực tế
+    if isinstance(client, AsyncOpenAI):
+        is_online, status_msg, llm_port = check_llm_server()
+        if not is_online:
+            raise ConnectionError(f"Máy chủ LLM cổng {llm_port} chưa hoạt động (trạng thái: chờ kết nối)")
+
     model_name = model or client.model
     prof = active_model_profile()
 
@@ -374,8 +529,8 @@ async def _call_llm_inner(
             else:
                 cleaned.append(msg)
 
-    # Template Qwen/Bonsai raise "System message must be at the beginning" nếu có
-    # system message không nằm đầu (Jarvis chèn context giữa hội thoại). Gemma chịu được.
+    # Một system turn duy nhất ở đầu: template Qwen/Bonsai raise nếu system không nằm đầu; Gemma 4 không báo lỗi
+    # nhưng chỉ được huấn luyện với một system turn (ai.google.dev) — đo 2026-10-08: gộp giữ nguyên chất lượng chat.
     if prof["merge_system_first"] and any(m.get("role") == "system" for m in cleaned[1:]):
         sys_parts = [str(m.get("content") or "") for m in cleaned if m.get("role") == "system"]
         rest = [m for m in cleaned if m.get("role") != "system"]
@@ -384,6 +539,8 @@ async def _call_llm_inner(
     # Xây dựng sampling params (temperature, top_p, presence_penalty) + extra_body (top_k, min_p, ...)
     sp = sampling_params(thinking, temperature)
     extra_body = {**sp["extra_body"], **reasoning_controls(thinking)}
+    if thinking and thinking_budget is not None:  # giới hạn token suy nghĩ theo request (think_mode_probe 2026-10-12)
+        extra_body["thinking_budget_tokens"] = thinking_budget
 
     # Tính max_tokens mặc định theo mode
     mode = "thinking" if thinking else "instruct"
@@ -436,24 +593,28 @@ async def _call_llm_inner(
             async def stream_wrapper(original_stream):
                 stripper = StreamThinkStripper()
                 last_usage = None
-                async for chunk in original_stream:
-                    if not chunk.choices:
-                        if hasattr(chunk, "usage") and chunk.usage:
-                            last_usage = chunk.usage
+                try:
+                    async for chunk in original_stream:
+                        if not chunk.choices:
+                            if hasattr(chunk, "usage") and chunk.usage:
+                                last_usage = chunk.usage
+                            yield chunk
+                            continue
+                        delta = chunk.choices[0].delta
+                        if hasattr(delta, "content") and delta.content:
+                            delta.content = stripper.process(delta.content)
+                        # reasoning_content không nên hiển thị cho consumer (nằm ở delta.reasoning_content)
+                        if hasattr(delta, "reasoning_content"):
+                            delta.reasoning_content = None
                         yield chunk
-                        continue
-                    delta = chunk.choices[0].delta
-                    if hasattr(delta, "content") and delta.content:
-                        delta.content = stripper.process(delta.content)
-                    # reasoning_content không nên hiển thị cho consumer (nằm ở delta.reasoning_content)
-                    if hasattr(delta, "reasoning_content"):
-                        delta.reasoning_content = None
-                    yield chunk
-                if last_usage:
-                    cached_t = 0
-                    if hasattr(last_usage, "prompt_tokens_details") and last_usage.prompt_tokens_details:
-                        cached_t = getattr(last_usage.prompt_tokens_details, "cached_tokens", 0) or 0
-                    _log_usage(last_usage.prompt_tokens, last_usage.completion_tokens, cached_tokens=cached_t)
+                    if last_usage:
+                        cached_t = 0
+                        if hasattr(last_usage, "prompt_tokens_details") and last_usage.prompt_tokens_details:
+                            cached_t = getattr(last_usage.prompt_tokens_details, "cached_tokens", 0) or 0
+                        _log_usage(last_usage.prompt_tokens, last_usage.completion_tokens, cached_tokens=cached_t)
+                finally:  # dừng sớm (kẹt lặp, huỷ) → đóng kết nối để llama-server không sinh tiếp
+                    if hasattr(original_stream, "close"):
+                        await original_stream.close()
 
             return stream_wrapper(response)
         else:
@@ -469,11 +630,23 @@ async def _call_llm_inner(
             return response
 
     except Exception as e:
-        log.error(
-            "LLM API call failed after %.2fs: %s: %s",
-            time.monotonic() - request_started,
-            type(e).__name__,
-            e,
-            exc_info=True,
+        is_conn_err = (
+            isinstance(e, ConnectionError)
+            or "connection" in type(e).__name__.lower()
+            or "connect" in str(e).lower()
         )
+        if is_conn_err:
+            _, _, llm_port = check_llm_server(force=True)
+            log.warning(
+                "Máy chủ LLM cổng %s chưa hoạt động (trạng thái: chờ kết nối).",
+                llm_port,
+            )
+        else:
+            log.error(
+                "LLM API call failed after %.2fs: %s: %s",
+                time.monotonic() - request_started,
+                type(e).__name__,
+                e,
+                exc_info=True,
+            )
         raise

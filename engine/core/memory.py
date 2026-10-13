@@ -23,6 +23,7 @@ import numpy as np
 from turbovec import IdMapIndex
 
 from engine.core.session_context import get_session
+from engine.core.db_ids import insert_with_lowest_free_id
 
 log = logging.getLogger("jarvis.memory")
 
@@ -98,16 +99,6 @@ def init_db():
             content='memories', content_rowid='id'
         );
 
-        CREATE TABLE IF NOT EXISTS pins (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            label TEXT NOT NULL,
-            lat REAL NOT NULL,
-            lng REAL NOT NULL,
-            created_at REAL NOT NULL
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_pins_coords ON pins(lat, lng);
-
         CREATE TABLE IF NOT EXISTS feedback (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             message_id TEXT DEFAULT '',
@@ -118,15 +109,33 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at DESC);
     """)
-    # Cột ask_user (spec §6): câu Jarvis xin phép ở lượt đó; content giữ bản sạch cho FTS/UI/Telegram.
-    if "ask_user" not in {r["name"] for r in conn.execute("PRAGMA table_info(messages)")}:
-        conn.execute("ALTER TABLE messages ADD COLUMN ask_user TEXT DEFAULT ''")
-    # Cột action_run (spec §11): tên tool khi có <action_run>; chỉ trả về nếu ask_user cũng có.
-    if "action_run" not in {r["name"] for r in conn.execute("PRAGMA table_info(messages)")}:
-        conn.execute("ALTER TABLE messages ADD COLUMN action_run TEXT DEFAULT ''")
+    msg_cols = {r["name"] for r in conn.execute("PRAGMA table_info(messages)")}
+    for col in ("ask_user", "action_run"):
+        if col in msg_cols:
+            try:
+                conn.execute(f"ALTER TABLE messages DROP COLUMN {col}")
+            except Exception as e:
+                log.debug("DROP COLUMN %s skipped: %s", col, e)
     conn.commit()
     conn.close()
-    log.info("🗄️ Memory database initialized with pins support")
+    log.info("🗄️ Memory database initialized")
+
+
+def delete_messages_by_id(conn: sqlite3.Connection, ids: list[int]) -> int:
+    """Delete messages and their feedback so a reused message ID cannot inherit it."""
+    ids = tuple(dict.fromkeys(int(message_id) for message_id in ids))
+    if not ids:
+        return 0
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+    conn.executemany(
+        """DELETE FROM feedback
+           WHERE message_id=? AND EXISTS (SELECT 1 FROM messages WHERE id=?)""",
+        [(str(message_id), message_id) for message_id in ids],
+    )
+    return conn.executemany(
+        "DELETE FROM messages WHERE id=?", [(message_id,) for message_id in ids]
+    ).rowcount
 
 
 # ---------------------------------------------------------------------------
@@ -153,9 +162,11 @@ def save_memory(content: str, mem_type: str = "fact", source: str = "", importan
         log.info(f"📝 Memory [{mem_type}] duplicate skipped, id={mem_id}")
         return mem_id
 
-    cur = conn.execute(
-        "INSERT INTO memories (type, content, source, importance, created_at) VALUES (?, ?, ?, ?, ?)",
-        (mem_type, content, source, importance, time.time())
+    cur = insert_with_lowest_free_id(
+        conn,
+        "memories",
+        ("type", "content", "source", "importance", "created_at"),
+        (mem_type, content, source, importance, time.time()),
     )
     mem_id = cur.lastrowid
     conn.execute(
@@ -428,9 +439,7 @@ def delete_memory_control_record(kind: str, record_id: int) -> bool:
     preview_memory_dependencies(kind, record_id)  # kiểm tra loại hợp lệ và bản ghi tồn tại
     if kind == "conversation":
         conn = _get_db()
-        affected = conn.execute(
-            "DELETE FROM messages WHERE id=?", (record_id,)
-        ).rowcount
+        affected = delete_messages_by_id(conn, [record_id])
         conn.commit()
         conn.close()
         return affected > 0
@@ -446,9 +455,7 @@ def save_message(role: str, content: str, session_id: str = "", ask_user: str = 
     session_id = session_id or get_session()
     conn = _get_db()
 
-    # Duplicate = same role AND content as the very last row OF THIS SESSION. A
-    # genuine repeat like a second "ừ" (with an assistant turn in between) must
-    # not be skipped, and another session's rows must not count (spec §6).
+    # Duplicate = same role AND content as the very last row OF THIS SESSION.
     last = conn.execute(
         "SELECT id, role, content FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT 1",
         (session_id,),
@@ -458,51 +465,28 @@ def save_message(role: str, content: str, session_id: str = "", ask_user: str = 
         log.info(f"💬 Message duplicate skipped: role={role} session={session_id or '-'}")
         return last["id"]
 
-    cur = conn.execute(
-        "INSERT INTO messages (role, content, session_id, created_at, ask_user, action_run) VALUES (?, ?, ?, ?, ?, ?)",
-        (role, content, session_id, time.time(), ask_user or "", action_run or ""),
+    cur = insert_with_lowest_free_id(
+        conn,
+        "messages",
+        ("role", "content", "session_id", "created_at"),
+        (role, content, session_id, time.time()),
     )
     conn.commit()
     conn.close()
+
     log.info(f"💬 Message [{role}] session={session_id or '-'}")
     return cur.lastrowid
-
-
-def get_pending_offer(max_age_seconds: int = 600) -> tuple[str, str]:
-    """(Câu <ask_user>, tên tool <action_run>) của tin assistant NGAY TRƯỚC tin user hiện tại.
-    Có lượt khác chen vào hoặc quá max_age_seconds → ("", "").
-    action_run trả về chỉ nếu ask_user cũng có (spec §11)."""
-    conn = _get_db()
-    rows = conn.execute(
-        "SELECT role, ask_user, action_run, created_at FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT 2",
-        (get_session(),),
-    ).fetchall()
-    conn.close()
-    if len(rows) == 2 and rows[0]["role"] == "user" and rows[1]["role"] == "assistant":
-        if time.time() - (rows[1]["created_at"] or 0) > max_age_seconds:
-            return "", ""
-        ask = rows[1]["ask_user"] or ""
-        return ask, ((rows[1]["action_run"] or "") if ask else "")
-    return "", ""
-
-
-def get_pending_ask(max_age_seconds: int = 600) -> str:
-    """Câu <ask_user> của tin assistant NGAY TRƯỚC tin user hiện tại (user được lưu trước khi định tuyến).
-    Có lượt khác chen vào → "" (câu hỏi hết hiệu lực). Câu hỏi quá cũ (mặc định >600s,
-    cùng ý tưởng cửa sổ an toàn với learning.unlearn_last_route) cũng → ""."""
-    return get_pending_offer(max_age_seconds)[0]
-
 
 def get_messages(limit: int = 100, session_id: str = "") -> list[dict]:
     conn = _get_db()
     if session_id:
         rows = conn.execute(
-            "SELECT role, content, created_at, ask_user, action_run, session_id FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT ?",
+            "SELECT id, role, content, created_at, session_id FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT ?",
             (session_id, limit),
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT role, content, created_at, ask_user, action_run, session_id FROM messages ORDER BY id DESC LIMIT ?",
+            "SELECT id, role, content, created_at, session_id FROM messages ORDER BY id DESC LIMIT ?",
             (limit,),
         ).fetchall()
     conn.close()
@@ -534,9 +518,6 @@ def build_unified_routing_history(
         if normalized and (normalized[-1]["role"], normalized[-1]["content"]) == (role, content):
             continue
         entry = {"role": role, "content": content}
-        if item.get("ask_user"):
-            entry["ask_user"] = item["ask_user"]
-            entry["action_run"] = item.get("action_run") or ""
         normalized.append(entry)
 
     clean_current = str(current_text or "").strip()
@@ -557,48 +538,6 @@ def build_unified_routing_history(
     return bounded
 
 
-# ---------------------------------------------------------------------------
-# Map Pins Storage Helpers
-# ---------------------------------------------------------------------------
-
-def save_pin_to_db(label: str, lat: float, lng: float) -> bool:
-    try:
-        conn = _get_db()
-        # Xoá pin cũ ở cùng tọa độ nếu có
-        conn.execute("DELETE FROM pins WHERE ABS(lat - ?) < 0.00001 AND ABS(lng - ?) < 0.00001", (lat, lng))
-        conn.execute(
-            "INSERT INTO pins (label, lat, lng, created_at) VALUES (?, ?, ?, ?)",
-            (label.strip(), lat, lng, time.time())
-        )
-        conn.commit()
-        conn.close()
-        log.info(f"📍 Saved pin '{label}' at {lat}, {lng}")
-        return True
-    except Exception as e:
-        log.error(f"Failed to save pin to DB: {e}")
-        return False
-
-def get_pins_from_db() -> list[dict]:
-    try:
-        conn = _get_db()
-        rows = conn.execute("SELECT label, lat, lng FROM pins ORDER BY id DESC").fetchall()
-        conn.close()
-        return [dict(r) for r in rows]
-    except Exception as e:
-        log.error(f"Failed to get pins from DB: {e}")
-        return []
-
-def delete_pin_from_db(lat: float, lng: float) -> bool:
-    try:
-        conn = _get_db()
-        conn.execute("DELETE FROM pins WHERE ABS(lat - ?) < 0.00001 AND ABS(lng - ?) < 0.00001", (lat, lng))
-        conn.commit()
-        conn.close()
-        log.info(f"📍 Deleted pin near {lat}, {lng}")
-        return True
-    except Exception as e:
-        log.error(f"Failed to delete pin from DB: {e}")
-        return False
 
 
 
@@ -878,9 +817,11 @@ def save_feedback(message_id: str, rating: int, comment: str = "") -> int:
     rating: 1 = thumbs up, -1 = thumbs down, 0 = neutral.
     """
     conn = _get_db()
-    cur = conn.execute(
-        "INSERT INTO feedback (message_id, rating, comment, created_at) VALUES (?, ?, ?, ?)",
-        (str(message_id), int(rating), str(comment), time.time())
+    cur = insert_with_lowest_free_id(
+        conn,
+        "feedback",
+        ("message_id", "rating", "comment", "created_at"),
+        (str(message_id), int(rating), str(comment), time.time()),
     )
     fb_id = cur.lastrowid
     conn.commit()

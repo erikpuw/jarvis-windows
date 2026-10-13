@@ -265,3 +265,25 @@ def test_strip_think_keeps_markdown_newlines_and_tables():
                 os.environ.pop(k, None)
                 if v is not None:
                     os.environ[k] = v
+
+
+def test_thinking_budget_goes_into_extra_body(monkeypatch):
+    """think_mode_probe 2026-10-12: thinking_budget_tokens theo request giới hạn phần nghĩ (64 → ~250 ký tự)."""
+    saved = _with_env(**BASE, CHANG_MODEL="true")
+    seen = {}
+    monkeypatch.setattr(llm_server, "get_llm_client", lambda: _FakeClient(seen))
+    try:
+        asyncio.run(llm_server._call_llm_inner([{"role": "user", "content": "hi"}], thinking=True, stream=False,
+                                               thinking_budget=128))
+    except Exception:
+        pass
+    try:
+        assert seen["extra_body"]["thinking_budget_tokens"] == 128
+        seen.clear()
+        try:
+            asyncio.run(llm_server._call_llm_inner([{"role": "user", "content": "hi"}], thinking=True, stream=False))
+        except Exception:
+            pass
+        assert "thinking_budget_tokens" not in seen["extra_body"]
+    finally:
+        _restore(saved)

@@ -1,0 +1,988 @@
+[
+ {
+  "kind": "act",
+  "text": "mở giùm cái excel",
+  "history": [],
+  "tool": "open_app",
+  "args": {
+   "app_name": [
+    "excel"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "bật zalo lên cho tôi",
+  "history": [],
+  "tool": "open_app",
+  "args": {
+   "app_name": [
+    "zalo"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "khởi động visual studio code",
+  "history": [],
+  "tool": "open_app",
+  "args": {
+   "app_name": [
+    "visual studio code",
+    "vs code",
+    "vscode",
+    "code"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "đóng chrome lại",
+  "history": [],
+  "tool": "close_app",
+  "args": {
+   "app_name": [
+    "chrome"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "tắt cái zalo đi",
+  "history": [],
+  "tool": "close_app",
+  "args": {
+   "app_name": [
+    "zalo"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "thoát excel giúp tôi",
+  "history": [],
+  "tool": "close_app",
+  "args": {
+   "app_name": [
+    "excel"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "vặn nhỏ âm lượng xuống",
+  "history": [],
+  "tool": "win_control",
+  "args": {
+   "instruction": [
+    "âm lượng"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "bấm nút play trên spotify",
+  "history": [],
+  "tool": "win_control",
+  "args": {
+   "instruction": [
+    "play"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "tắt tiếng máy tính đi",
+  "history": [],
+  "tool": "win_control",
+  "args": {
+   "instruction": [
+    "tiếng"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "chụp lại màn hình cho tôi xem",
+  "history": [],
+  "tool": "capture_screen",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "screenshot màn hình gửi qua đây",
+  "history": [],
+  "tool": "capture_screen",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "chụp màn hình giúp tôi",
+  "history": [],
+  "tool": "capture_screen",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "màn hình đang hiện gì vậy",
+  "history": [],
+  "tool": "read_screen",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "đọc giúp tôi nội dung trên màn hình",
+  "history": [],
+  "tool": "read_screen",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "trên màn hình có báo lỗi gì không",
+  "history": [],
+  "tool": "read_screen",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "nhìn qua webcam xem có ai không",
+  "history": [],
+  "tool": "read_webcam",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "camera đang thấy gì",
+  "history": [],
+  "tool": "read_webcam",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "webcam thấy tôi đang cầm gì",
+  "history": [],
+  "tool": "read_webcam",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "cpu đang chạy bao nhiêu phần trăm",
+  "history": [],
+  "tool": "system_status",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "ổ c còn trống bao nhiêu",
+  "history": [],
+  "tool": "system_status",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "những tiến trình nào đang ngốn ram",
+  "history": [],
+  "tool": "system_status",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "kiểm tra bảo mật máy giúp tôi",
+  "history": [],
+  "tool": "check_security",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "máy có cổng nào đang mở bất thường không",
+  "history": [],
+  "tool": "check_security",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "xem firewall có đang bật không",
+  "history": [],
+  "tool": "check_security",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "nghe bài lạc trôi",
+  "history": [],
+  "tool": "play_media",
+  "args": {
+   "query": [
+    "lạc trôi"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "mở video hướng dẫn nấu phở trên youtube",
+  "history": [],
+  "tool": "play_media",
+  "args": {
+   "query": [
+    "phở"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "phát bài nơi này có anh",
+  "history": [],
+  "tool": "play_media",
+  "args": {
+   "query": [
+    "nơi này có anh"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "cần thơ mai có mưa không",
+  "history": [],
+  "tool": "weather",
+  "args": {
+   "location": [
+    "cần thơ"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "nhiệt độ đà lạt bây giờ",
+  "history": [],
+  "tool": "weather",
+  "args": {
+   "location": [
+    "đà lạt"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "thời tiết huế cuối tuần",
+  "history": [],
+  "tool": "weather",
+  "args": {
+   "location": [
+    "huế"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "tin mới nhất về bóng đá việt nam",
+  "history": [],
+  "tool": "search_news",
+  "args": {
+   "topic": [
+    "bóng đá"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "báo chí nói gì về vụ cháy chung cư",
+  "history": [],
+  "tool": "search_news",
+  "args": {
+   "topic": [
+    "cháy"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "tin tức công nghệ hôm nay",
+  "history": [],
+  "tool": "search_news",
+  "args": {
+   "topic": [
+    "công nghệ"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "giá xăng hôm nay",
+  "history": [],
+  "tool": "market_price",
+  "args": {
+   "item": [
+    "xăng"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "tỷ giá euro bao nhiêu",
+  "history": [],
+  "tool": "market_price",
+  "args": {
+   "item": [
+    "euro",
+    "eur"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "giá vàng sjc mua vào bao nhiêu",
+  "history": [],
+  "tool": "market_price",
+  "args": {
+   "item": [
+    "vàng"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "iphone 16 pro max giá bao nhiêu",
+  "history": [],
+  "tool": "search_products",
+  "args": {
+   "query": [
+    "iphone 16"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "tìm nồi chiên không dầu dưới 2 triệu",
+  "history": [],
+  "tool": "search_products",
+  "args": {
+   "query": [
+    "nồi chiên"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "so sánh giá tai nghe airpods pro",
+  "history": [],
+  "tool": "search_products",
+  "args": {
+   "query": [
+    "airpods"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "cgv đang chiếu phim gì",
+  "history": [],
+  "tool": "cinema",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "tuần này rạp có phim gì mới",
+  "history": [],
+  "tool": "cinema",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "lịch chiếu phim hôm nay",
+  "history": [],
+  "tool": "cinema",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "epic tuần này tặng game gì",
+  "history": [],
+  "tool": "free_games",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "có game nào đang miễn phí không",
+  "history": [],
+  "tool": "free_games",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "epic store đang free game nào",
+  "history": [],
+  "tool": "free_games",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "hôm nay là ngày bao nhiêu âm lịch",
+  "history": [],
+  "tool": "lunar_today",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "ngày mai âm lịch là ngày mấy",
+  "history": [],
+  "tool": "lunar_today",
+  "args": {
+   "day": [
+    "mai"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "xem giờ hoàng đạo hôm nay",
+  "history": [],
+  "tool": "lunar_today",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "tử vi song tử",
+  "history": [],
+  "tool": "zodiac",
+  "args": {
+   "sign": [
+    "song tử",
+    "gemini"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "cung sư tử hôm nay thế nào",
+  "history": [],
+  "tool": "zodiac",
+  "args": {
+   "sign": [
+    "sư tử",
+    "leo"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "xem tử vi bảo bình",
+  "history": [],
+  "tool": "zodiac",
+  "args": {
+   "sign": [
+    "bảo bình",
+    "aquarius"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "phạt nồng độ cồn xe máy bao nhiêu",
+  "history": [],
+  "tool": "legal_lookup",
+  "args": {
+   "query": [
+    "nồng độ cồn"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "luật lao động quy định nghỉ phép năm thế nào",
+  "history": [],
+  "tool": "legal_lookup",
+  "args": {
+   "query": [
+    "nghỉ phép"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "vượt đèn đỏ bị phạt bao nhiêu",
+  "history": [],
+  "tool": "legal_lookup",
+  "args": {
+   "query": [
+    "đèn đỏ"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "huyện củ chi có bao nhiêu xã",
+  "history": [],
+  "tool": "vn_admin_lookup",
+  "args": {
+   "query": [
+    "củ chi"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "mã hành chính của tỉnh bình dương",
+  "history": [],
+  "tool": "vn_admin_lookup",
+  "args": {
+   "query": [
+    "bình dương"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "quận 1 gồm những phường nào",
+  "history": [],
+  "tool": "vn_admin_lookup",
+  "args": {
+   "query": [
+    "quận 1"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "hôm nay tôi nặng 68 ký",
+  "history": [],
+  "tool": "gym",
+  "args": {
+   "action": [
+    "record_bodyweight"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "ghi buổi tập: bench press 3 hiệp 10 cái 60kg",
+  "history": [],
+  "tool": "gym",
+  "args": {
+   "action": [
+    "log_workout"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "thống kê tiến độ tập 2 tuần qua",
+  "history": [],
+  "tool": "gym",
+  "args": {
+   "action": [
+    "stats"
+   ]
+  }
+ },
+ {
+  "kind": "know",
+  "text": "ai là người phát minh ra bóng đèn",
+  "history": [],
+  "tool": "KNOW",
+  "args": {}
+ },
+ {
+  "kind": "know",
+  "text": "lịch sử của vạn lý trường thành",
+  "history": [],
+  "tool": "KNOW",
+  "args": {}
+ },
+ {
+  "kind": "know",
+  "text": "thuyết tương đối là gì",
+  "history": [],
+  "tool": "KNOW",
+  "args": {}
+ },
+ {
+  "kind": "chat",
+  "text": "hôm nay tôi được thăng chức",
+  "history": [],
+  "tool": null,
+  "args": {}
+ },
+ {
+  "kind": "chat",
+  "text": "nhạc này hay ghê",
+  "history": [],
+  "tool": null,
+  "args": {}
+ },
+ {
+  "kind": "chat",
+  "text": "tôi tự mở word rồi",
+  "history": [],
+  "tool": null,
+  "args": {}
+ },
+ {
+  "kind": "chat",
+  "text": "cách cài python trên windows",
+  "history": [],
+  "tool": null,
+  "args": {}
+ },
+ {
+  "kind": "chat",
+  "text": "ngủ ngon nhé jarvis",
+  "history": [],
+  "tool": null,
+  "args": {}
+ },
+ {
+  "kind": "chat",
+  "text": "cảm ơn nhé",
+  "history": [],
+  "tool": null,
+  "args": {}
+ },
+ {
+  "kind": "chat",
+  "text": "mệt quá đi",
+  "history": [],
+  "tool": null,
+  "args": {}
+ },
+ {
+  "kind": "chat",
+  "text": "bạn tên gì",
+  "history": [],
+  "tool": null,
+  "args": {}
+ },
+ {
+  "kind": "chat",
+  "text": "kể chuyện cười đi",
+  "history": [],
+  "tool": null,
+  "args": {}
+ },
+ {
+  "kind": "chat",
+  "text": "tôi vừa ăn phở xong",
+  "history": [],
+  "tool": null,
+  "args": {}
+ },
+ {
+  "kind": "chat",
+  "text": "không cần mở nữa đâu",
+  "history": [],
+  "tool": null,
+  "args": {}
+ },
+ {
+  "kind": "chat",
+  "text": "tôi đang xem youtube",
+  "history": [],
+  "tool": null,
+  "args": {}
+ },
+ {
+  "kind": "chat",
+  "text": "hôm qua đi chơi vui lắm",
+  "history": [],
+  "tool": null,
+  "args": {}
+ },
+ {
+  "kind": "chat",
+  "text": "làm sao để ngủ ngon hơn",
+  "history": [],
+  "tool": null,
+  "args": {}
+ },
+ {
+  "kind": "chat",
+  "text": "sao cứ mở nhầm hoài vậy",
+  "history": [
+   {
+    "role": "user",
+    "content": "mở giúp tôi task manager"
+   },
+   {
+    "role": "assistant",
+    "content": "Đã mở Task Manager thưa ngài.",
+    "steps": [
+     {
+      "say": "Tôi sẽ mở Task Manager.",
+      "tool": "open_app",
+      "args": {
+       "app_name": "task manager"
+      },
+      "result": "Mở ứng dụng 'task manager': Thành công",
+      "outcome": "success"
+     }
+    ],
+    "final_say": "Đã mở Task Manager thưa ngài."
+   }
+  ],
+  "tool": null,
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "mở lại đi",
+  "history": [
+   {
+    "role": "user",
+    "content": "tắt notepad"
+   },
+   {
+    "role": "assistant",
+    "content": "Đã đóng Notepad thưa ngài.",
+    "steps": [
+     {
+      "say": "Tôi sẽ đóng Notepad.",
+      "tool": "close_app",
+      "args": {
+       "app_name": "notepad"
+      },
+      "result": "Đóng ứng dụng 'notepad': Thành công",
+      "outcome": "success"
+     }
+    ],
+    "final_say": "Đã đóng Notepad thưa ngài."
+   }
+  ],
+  "tool": "open_app",
+  "args": {
+   "app_name": [
+    "notepad"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "còn sài gòn thì sao",
+  "history": [
+   {
+    "role": "user",
+    "content": "thời tiết hà nội"
+   },
+   {
+    "role": "assistant",
+    "content": "Hà Nội 28 độ thưa ngài.",
+    "steps": [
+     {
+      "say": "Tôi xem thời tiết Hà Nội.",
+      "tool": "weather",
+      "args": {
+       "location": "hà nội"
+      },
+      "result": "Hà Nội 28°C, nắng",
+      "outcome": "success"
+     }
+    ],
+    "final_say": "Hà Nội 28 độ thưa ngài."
+   }
+  ],
+  "tool": "weather",
+  "args": {
+   "location": [
+    "sài gòn",
+    "hồ chí minh",
+    "saigon"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "còn giá xăng thì sao",
+  "history": [
+   {
+    "role": "user",
+    "content": "giá vàng hôm nay"
+   },
+   {
+    "role": "assistant",
+    "content": "Vàng SJC bán 144,8 triệu thưa ngài.",
+    "steps": [
+     {
+      "say": "Tôi xem giá vàng.",
+      "tool": "market_price",
+      "args": {
+       "item": "vàng"
+      },
+      "result": "Vàng SJC mua 141.800.000, bán 144.800.000",
+      "outcome": "success"
+     }
+    ],
+    "final_say": "Vàng SJC bán 144,8 triệu thưa ngài."
+   }
+  ],
+  "tool": "market_price",
+  "args": {
+   "item": [
+    "xăng"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "đóng nó lại",
+  "history": [
+   {
+    "role": "user",
+    "content": "mở chrome"
+   },
+   {
+    "role": "assistant",
+    "content": "Đã mở Chrome thưa ngài.",
+    "steps": [
+     {
+      "say": "Tôi mở Chrome.",
+      "tool": "open_app",
+      "args": {
+       "app_name": "chrome"
+      },
+      "result": "Mở ứng dụng 'chrome': Thành công",
+      "outcome": "success"
+     }
+    ],
+    "final_say": "Đã mở Chrome thưa ngài."
+   }
+  ],
+  "tool": "close_app",
+  "args": {
+   "app_name": [
+    "chrome"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "có tin gì mới hơn không",
+  "history": [
+   {
+    "role": "user",
+    "content": "tin tức về bão"
+   },
+   {
+    "role": "assistant",
+    "content": "Bão số 5 đang vào miền Trung thưa ngài.",
+    "steps": [
+     {
+      "say": "Tôi tìm tin về bão.",
+      "tool": "search_news",
+      "args": {
+       "topic": "bão"
+      },
+      "result": "Bão số 5 hướng vào miền Trung",
+      "outcome": "success"
+     }
+    ],
+    "final_say": "Bão số 5 đang vào miền Trung thưa ngài."
+   }
+  ],
+  "tool": "search_news",
+  "args": {
+   "topic": [
+    "bão"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "còn cung song tử",
+  "history": [
+   {
+    "role": "user",
+    "content": "tử vi bọ cạp hôm nay"
+   },
+   {
+    "role": "assistant",
+    "content": "Bọ Cạp hôm nay thuận lợi thưa ngài.",
+    "steps": [
+     {
+      "say": "Tôi xem tử vi Bọ Cạp.",
+      "tool": "zodiac",
+      "args": {
+       "sign": "bọ cạp"
+      },
+      "result": "Bọ Cạp: công việc thuận lợi",
+      "outcome": "success"
+     }
+    ],
+    "final_say": "Bọ Cạp hôm nay thuận lợi thưa ngài."
+   }
+  ],
+  "tool": "zodiac",
+  "args": {
+   "sign": [
+    "song tử",
+    "gemini"
+   ]
+  }
+ },
+ {
+  "kind": "multi",
+  "text": "chụp màn hình xong mở paint",
+  "history": [],
+  "multi": [
+   "capture_screen",
+   "open_app"
+  ]
+ },
+ {
+  "kind": "multi",
+  "text": "xem thời tiết đà nẵng rồi mở nhạc thư giãn",
+  "history": [],
+  "multi": [
+   "weather",
+   "play_media"
+  ]
+ },
+ {
+  "kind": "multi",
+  "text": "tắt zalo rồi mở chrome",
+  "history": [],
+  "multi": [
+   "close_app",
+   "open_app"
+  ]
+ },
+ {
+  "kind": "multi",
+  "text": "cho tôi giá vàng rồi giá xăng",
+  "history": [],
+  "multi": [
+   "market_price",
+   "market_price"
+  ]
+ },
+ {
+  "kind": "multi",
+  "text": "mở notepad và mở calculator",
+  "history": [],
+  "multi": [
+   "open_app",
+   "open_app"
+  ]
+ },
+ {
+  "kind": "multi",
+  "text": "kiểm tra ram rồi kiểm tra bảo mật",
+  "history": [],
+  "multi": [
+   "system_status",
+   "check_security"
+  ]
+ },
+ {
+  "kind": "chat",
+  "text": "tôi đang ngồi coi log server chạy thử",
+  "history": []
+ },
+ {
+  "kind": "chat",
+  "text": "để tôi xem lại cái trang web load có nhanh không đã",
+  "history": []
+ },
+ {
+  "kind": "chat",
+  "text": "mình đang theo dõi xem máy có ổn định sau khi cập nhật không",
+  "history": []
+ }
+]

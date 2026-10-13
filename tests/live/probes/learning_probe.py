@@ -29,7 +29,14 @@ SHOULD = [  # (id, lịch sử trước đó, câu của ngài) — phải lưu 
      "đừng xin lỗi dài dòng như vậy, một câu thôi là đủ rồi"),
     ("praise", [("assistant", "Giá vàng SJC hôm nay là 80 triệu, nguồn ghi rõ thời điểm cập nhật."), ],
      "đúng rồi, trả lời có nêu nguồn và thời điểm như vậy là chuẩn, cứ giữ nhé"),
+    ("complain-reask", [("user", "phát bài hôm qua đó"), ("assistant", "Ngài muốn nghe bài nào ạ?")],
+     "tôi nói rồi mà, đừng hỏi lại câu đó nữa, cứ làm theo bài gần nhất"),
+    ("criticize-ramble", [("assistant", "Dạ thưa ngài, câu này có nhiều khía cạnh lắm ạ: lịch sử, bối cảnh, ý nghĩa, rồi còn…")],
+     "trả lời gì mà lan man quá vậy"),
+    ("tone-request", [], "nói chuyện với tôi bằng giọng miền Nam cho thân thiện nha"),
 ]
+# Luật cách Jarvis nói/cư xử phải là behaviour_lesson (vào <style>), không phải preference/user_fact (vào <about_user>).
+EXPECT_KIND = {"tone-request": "behaviour_lesson", "complain-style": "behaviour_lesson", "criticize-ramble": "behaviour_lesson"}
 SHOULD_NOT = [  # phải lưu 0 mục
     ("mood-tired", [], "Jarvis ơi, tôi mệt lắm đó"),
     ("mood-lazy", [], "tôi lười mở notepad quá"),
@@ -37,6 +44,9 @@ SHOULD_NOT = [  # phải lưu 0 mục
     ("thanks", [("assistant", "Đã mở Task Manager.")], "cảm ơn nhé"),
     ("weather-q", [], "hôm nay thời tiết thế nào nhỉ"),
     ("one-shot-cmd", [], "mở task manager giúp tôi"),
+    ("one-time-ok", [("assistant", "Tôi đã chỉnh giao diện cho nhẹ hơn rồi ạ.")], "ừ giờ chạy ổn rồi đó"),
+    ("casual-chat", [("assistant", "Dạ hôm nay trời đẹp thật ạ.")], "ừ trời đẹp ghê, chiều đi dạo chút cho khỏe"),
+    ("restate-known", [], "nhắc lại nè, trả lời ngắn gọn thôi"),  # explicit-short đã học điều này: không tạo dòng mới
 ]
 SEED = [("lesson", "Khi người dùng nghi ngờ một sự thật, hãy xác nhận nhẹ nhàng trước khi khẳng định lại.", "doubt_check"),
         ("user_fact", "Người dùng uống cà phê sữa vào buổi sáng.", "morning_coffee")]
@@ -68,6 +78,7 @@ async def main() -> int:
         engine._store_learning(content, "behaviour_lesson" if kind == "lesson" else kind, key)
     real_get = memory.get_messages
     ok_should = bad_not = 0
+    wrong_kind = []
     try:
         print("--- NÊN học:")
         for cid, hist, text in SHOULD:
@@ -75,6 +86,8 @@ async def main() -> int:
             learned = res.get("stored", 0) > 0 or delta > 0
             ok_should += learned
             kinds = [f"{p.get('kind')}:{p.get('content', '')[:48]}" for p in res.get("items", [])]
+            if cid in EXPECT_KIND and learned and any(p.get("kind") != EXPECT_KIND[cid] for p in res.get("items", [])):
+                wrong_kind.append(cid)
             print(f"  {'OK  ' if learned else 'MISS'} {cid:15} {kinds}")
         print("--- KHÔNG nên học:")
         for cid, hist, text in SHOULD_NOT:
@@ -85,9 +98,23 @@ async def main() -> int:
             print(f"  {'SAI ' if learned else 'OK  '} {cid:15} {kinds}")
     finally:
         memory.get_messages = real_get
+    # Nội dung bài học chỉ nêu khái niệm: không kèm "(ví dụ: …)"/"(Evidence: …)", không chép lại câu của ngài.
+    import re as _re
+    said = [t for _, _, t in SHOULD + SHOULD_NOT]
+    quoted = []
+    for rec in engine.list_learning_records(limit=200)["items"]:
+        c = str(rec.get("content", ""))
+        words = c.lower().split()
+        grams = {" ".join(words[i:i + 6]) for i in range(len(words) - 5)}  # 6 từ liên tiếp = chép câu; cụm khái niệm ngắn trùng chữ là bình thường
+        lesson = rec.get("type") == "lesson"  # user_fact phải giữ chi tiết sự thật nên được miễn kiểm chép câu
+        if _re.search(r"\((?:ví dụ|vd|evidence|chẳng hạn)", c, _re.I) or (lesson and any(g in t.lower() for t in said for g in grams)):
+            quoted.append(c[:90])
+    print(f"Nội dung trích câu/ví dụ: {len(quoted)} (cần 0) | sai loại (luật hành vi ghi thành sở thích): {wrong_kind} (cần [])")
+    for c in quoted:
+        print("   ", c)
     need = int(len(SHOULD) * 0.7 + 0.999)
     print(f"\nNÊN học: {ok_should}/{len(SHOULD)} (cần ≥ {need}) | KHÔNG nên học mà vẫn lưu: {bad_not}/{len(SHOULD_NOT)} (cần 0)")
-    passed = ok_should >= need and bad_not == 0
+    passed = ok_should >= need and bad_not == 0 and not quoted and not wrong_kind
     print("PASS" if passed else "FAIL")
     return 0 if passed else 1
 

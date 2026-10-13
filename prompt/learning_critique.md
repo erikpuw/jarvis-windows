@@ -8,6 +8,7 @@ TIÊU CHÍ ĐÁNH GIÁ:
 4. Có ích: Áp dụng bài học này thì lần sau Jarvis phục vụ có tốt hơn không?
 5. Nếu MỤC CŨ không cùng chủ đề với đề xuất thì bỏ qua mục cũ và chọn new.
 6. Người dùng yêu cầu rõ ràng ghi nhớ/đổi hành vi: chỉ được skip khi mục cũ đã có đúng ý đó.
+7. Đề xuất cùng ý với mục cũ dù khác chữ thì skip; chỉ merge khi đề xuất có thêm ý mới mà mục cũ chưa có.
 
 ĐỀ XUẤT MỚI:
 {proposal}

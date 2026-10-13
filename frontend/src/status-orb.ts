@@ -17,7 +17,7 @@ const MAP: Record<string, { orb: OrbState; speed: number }> = {
 };
 
 const DRAW_SIZE = 32; // hand-tuned scale 32; the canvas is shown a little smaller
-const SHOW_PX = 28;
+const SHOW_PX = 32;
 const MORPH_MS = 700;
 
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k;

@@ -18,9 +18,9 @@ LLM_NODE = "server/llm_server"
 LANES = {
     "server": "input", "server/telegram_bot": "input", "server/slash_commands": "input",
     "server/whisper_server": "input", "security": "input", "UIUX": "input",
-    "router": "turn", "orchestrator": "turn", "agents": "turn", "tools": "turn",
+    "router": "turn", "tools": "turn",
     "plans": "turn", "jobs": "turn", "prompts": "turn", "main": "turn",
-    "server/mcp_server": "turn", "core/actions": "turn", "core/guardrails": "input",
+    "server/mcp_server": "turn", "core/guardrails": "input",
     LLM_NODE: "llm",
     "server/voice_streamer": "output", "server/tts_manager": "output",
     "server/stream_tts": "output", "server/tts_engine": "output",
@@ -35,7 +35,7 @@ LANES = {
     "core/rag_document_store": "ingestion", "core/rag_pdf_ingest": "ingestion",
     # shared helpers: drawn dimmed so they do not bury the real flows
     "core/json_parser": "support", "core/trace_logger": "support", "core/activity_gate": "support",
-    "core/process_tree": "support", "core/command_registry": "support", "server/redis_server": "support",
+    "core/process_tree": "support", "server/redis_server": "support",
 }
 
 

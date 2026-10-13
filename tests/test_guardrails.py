@@ -11,8 +11,8 @@ logging.disable(logging.CRITICAL)
 
 from engine.core import guardrails
 from engine.core.guardrails import verify_input, verify_output
-import engine.core.actions as actions
 from engine.tools import desktop_automation as da
+from engine.tools import registry
 
 
 def test_input_lets_ordinary_vietnamese_through():
@@ -71,10 +71,6 @@ def test_output_allows_ordinary_apps():
 def test_output_rejects_malformed_arguments_instead_of_raising():
     assert verify_output("open_app", None)[0] is False
     assert verify_output("open_app", "notepad")[0] is False
-    assert verify_output("execute_command", {"command_name": "open_app", "args": "[1, 2]"})[0] is False
-    assert verify_output("execute_command", {"command_name": "open_app", "args": '"cmd"'})[0] is False
-    assert verify_output("execute_command", {"command_name": "open_app", "args": '{"app_name": "cmd"}'})[0] is False
-    assert verify_output("execute_command", {"command_name": "open_app", "args": '{"app_name": "notepad"}'})[0] is True
 
 
 def test_output_leaves_other_tools_alone():
@@ -91,14 +87,14 @@ def test_tool_does_not_run_when_the_guardrail_itself_fails():
     def broken(*a, **k):
         raise RuntimeError("guardrail crashed")
 
-    orig = (guardrails.verify_output, actions.open_application)
-    guardrails.verify_output, actions.open_application = broken, fake_open
+    orig = guardrails.verify_output
+    guardrails.verify_output = broken
     try:
-        result = asyncio.run(actions._execute_tool_inner("open_app", {"app_name": "notepad"}))
+        result = asyncio.run(registry.run("open_app", {"app_name": "notepad"}, registry.ToolContext()))
     finally:
-        guardrails.verify_output, actions.open_application = orig
+        guardrails.verify_output = orig
     assert calls == []
-    assert result.startswith("Lỗi bảo mật"), result
+    assert result.outcome == "failed"
 
 
 def test_desktop_never_puts_raw_name_into_powershell():

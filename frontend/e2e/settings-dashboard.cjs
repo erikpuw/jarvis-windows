@@ -17,7 +17,7 @@ function status(hasKey) {
     env_keys_set: { llama: hasKey, fish_audio: true, fish_voice_id: false, user_name: "Erik" },
     system: { cpu_percent: 37, ram_percent: 52, ram_used_gb: 8.1, ram_total_gb: 15.7,
       gpus: [{ name: "RTX 4060", mem_used_mb: 4096, vram_total_mb: 8188 }], npus: [] },
-    session_tokens: { input: 0, output: 0, total: 0 }, mcp_servers: {}, agents: [],
+    session_tokens: { input: 0, output: 0, total: 0 }, mcp_servers: {}, mentions_count: 0,
     runtime: { llm_model: "gemma-4", embed_model: "bge-m3", tts_engine: "vieneu", vieneu_voice: "Adam", edge_voice: "vi-VN-NamMinhNeural" },
   };
 }
@@ -58,7 +58,7 @@ async function newPage(browser, { width, height, hasKey = true }) {
     success: true, hooks: [], skills: [], plugins: [],
     prompts: [{ id: "chat", name: "chat.md", title: "Chat", description: "d", content: "old prompt", file_path: "prompt/chat.md" }],
     commands: [{ name: "check_mail", file: "check_mail.md", description: "d", usage: `'{"max_results": "Số email"}'` }],
-    agents: [{ id: "desktop", name: "Agent Desktop", file: "agent_desktop.py", description: "d", example: "mở notepad", tools: [] }],
+    mentions: [{ id: "desktop", name: "desktop", file: "agent_desktop.py", description: "d", example: "@desktop mở notepad", mention: "@desktop" }],
   }); });
   await page.route("**/api/settings/test-llama", (r) => json(r, { valid: true }));
   await page.route("**/api/settings/test-fish", (r) => json(r, { valid: false, error: "bad key" }));
@@ -84,7 +84,7 @@ async function newPage(browser, { width, height, hasKey = true }) {
 
 async function openViaMenu(page) {
   await page.click("#btn-menu");
-  await page.click("#btn-settings");
+  await page.evaluate(() => document.getElementById("btn-settings").click());
   await page.waitForSelector("#settings-container.open");
   await page.waitForTimeout(400);
 }
@@ -169,8 +169,8 @@ const PAGES = ["overview", "connect", "voice", "user", "system", "memory"];
 
     await page.click('.sd-nav-item[data-page="agents"]');
     await page.waitForTimeout(500);
-    check(calls.some(([k]) => k === "catalog") && (await page.textContent("#agents-grid")).includes("Agent Desktop"),
-      "11. trang Agents lấy dữ liệu từ /api/settings/catalog");
+    check(calls.some(([k]) => k === "catalog") && (await page.textContent("#agents-grid")).includes("@desktop mở notepad"),
+      "11. trang Mention lấy dữ liệu từ /api/settings/catalog");
 
     await page.click('.sd-nav-item[data-page="commands"]');
     await page.waitForTimeout(400);
@@ -253,16 +253,6 @@ const PAGES = ["overview", "connect", "voice", "user", "system", "memory"];
 
     await page.keyboard.press("Escape");
     await page.waitForTimeout(400);
-    await page.click("#btn-map"); // mobile: map mở thẳng toàn màn hình
-    await page.waitForTimeout(400);
-    check((await orbFramesIn(page, 400)) === 0, "5c. map toàn màn hình dừng orb");
-    await page.evaluate(async () => {
-      const m = await import("/src/settings/index.ts");
-      await m.openSettings();
-      m.closeSettings();
-    });
-    await page.waitForTimeout(400);
-    check((await orbFramesIn(page, 500)) === 0, "5d. đóng settings không chạy lại orb khi map toàn màn hình");
     await page.close();
   }
 

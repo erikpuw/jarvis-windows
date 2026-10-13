@@ -90,6 +90,7 @@ def test_full_run_drops_invented_rules_and_skips_unchanged_inputs():
             style = ev.STYLE_FILE.read_text(encoding="utf-8")
             assert first["success"]
             assert "giọng thân thiện" in style
+            assert not ev.STYLE_FILE.with_suffix(".md.bak").exists(), "Không được sinh ra file .bak"
             log_text = ev.EVOLUTION_LOG.read_text(encoding="utf-8")
             # Routing proposals land in Evolution.md, never in a live-consumed file.
             assert "## Routing" in log_text and "agent_control" in log_text

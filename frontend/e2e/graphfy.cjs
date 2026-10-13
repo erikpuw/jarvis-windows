@@ -45,7 +45,7 @@ const MAP = {
   await page.goto(BASE);
   await page.evaluate(() => localStorage.setItem("jarvis.graphfy.positions.v3", '{"router":[5000,5000]}'));
   await page.click("#btn-menu");
-  await page.click("#btn-settings");
+  await page.evaluate(() => document.getElementById("btn-settings").click());
   await page.waitForSelector("#settings-container.open");
   await page.click('.sd-nav-item[data-page="graphfy"]');
   await page.waitForSelector("#graphfy-map .gf-node", { timeout: 5000 }).catch(() => {});
@@ -84,7 +84,14 @@ const MAP = {
   const dim = await page.$eval('#graphfy-map .gf-link[data-to="core/json_parser"]', (e) => parseFloat(getComputedStyle(e).opacity));
   check(dim < 0.5, "8. module hỗ trợ bị làm mờ", String(dim));
   const pulses = await page.$$eval("#graphfy-map .gf-link", (els) => els.map((e) => [e.dataset.to, !!e.querySelector("animateMotion")]));
-  check(pulses.every(([to, p]) => (to === "core/json_parser") !== p), "9. xung sáng mô phỏng chạy trên mọi đường (trừ hỗ trợ)", JSON.stringify(pulses));
+  const kinds = await page.$$eval("#graphfy-map .gf-link", (els) => els.map((e) => e.dataset.kind));
+  check(pulses.every(([, p], i) => p === (kinds[i] === "llm")), "9. xung sáng chỉ chạy trên đường gọi LLM (đỡ rối)", JSON.stringify(pulses));
+  // edges to the shared hubs (server, tools, UIUX) are hidden until "Hiện tất cả"
+  const hubShown = () => page.$eval('#graphfy-map .gf-link[data-from="server"][data-to="router"]', (e) => getComputedStyle(e).display !== "none");
+  check(!(await hubShown()), "9b. đường import tới khối dùng chung (server) ẩn mặc định");
+  await page.click("#btn-graphfy-all");
+  check(await hubShown(), "9c. bấm Hiện tất cả: đường tới server hiện lại");
+  await page.click("#btn-graphfy-all");
 
   await page.hover('#graphfy-map .gf-node[data-id="core/dream"]');
   const hl = await page.$$eval("#graphfy-map .gf-link", (els) => els.map((e) => [e.dataset.from + ">" + e.dataset.to, e.classList.contains("gf-dim")]));

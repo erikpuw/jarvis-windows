@@ -1,1 +1,0 @@
-Phân loại yêu cầu HIỆN TẠI của người dùng theo đúng một nhãn trong `general`, `general_knowledge`, `orchestrator`, `attachment_clarify`, theo hướng dẫn route skill bên dưới. Ưu tiên yêu cầu hiện tại; lịch sử chỉ là ngữ cảnh. Chỉ trả về đúng tên nhãn, không giải thích.

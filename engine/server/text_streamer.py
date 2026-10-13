@@ -43,6 +43,13 @@ def clean_latex_math(text: str) -> str:
     # 5. Khử các dấu $ nhiễu còn sót lại quanh ký tự toán học hoặc gạch chéo ngược
     text = re.sub(r'\$([^$]+)\$', r'\1', text)
 
+    # 6. Giải mã các chuỗi \uXXXX Unicode escape (nếu có từ LLM hoặc JSON) sang ký tự UTF-8 chuẩn
+    if "\\u" in text:
+        try:
+            text = re.sub(r'\\u([0-9a-fA-F]{4})', lambda m: chr(int(m.group(1), 16)), text)
+        except Exception:
+            pass
+
     return text
 
 

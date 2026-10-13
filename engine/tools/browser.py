@@ -173,6 +173,66 @@ class JarvisScraplingBrowser:
             ))
 
         log.info("Search '%s' returned %d results", query, len(results))
+        if not results:
+            log.info("DDG html search empty for '%s', trying DDG Lite...", query)
+            results = await self._search_ddg_lite(query, locale=locale, max_results=max_results)
+        if not results:
+            log.info("DDG Lite search empty for '%s', trying Bing...", query)
+            results = await self._search_bing(query, max_results=max_results)
+        return results
+
+    async def _search_ddg_lite(
+        self,
+        query: str,
+        *,
+        locale: str | None = None,
+        max_results: int = 10,
+    ) -> list[SearchResult]:
+        url = f"https://lite.duckduckgo.com/lite/?q={quote(query)}"
+        if locale:
+            url += f"&kl={quote(locale)}"
+        try:
+            page = await AsyncFetcher.get(url, stealthy_headers=True, timeout=TIMEOUT_MS)
+        except Exception as e:
+            log.warning("DDG Lite search fetch failed: %s", e)
+            return []
+        if page is None:
+            return []
+        links = page.css("a.result-link")
+        snippets = page.css("td.result-snippet")
+        results: list[SearchResult] = []
+        for i in range(min(len(links), max_results)):
+            title = (links[i].css("::text").get() or "").strip()
+            raw_href = links[i].css("::attr(href)").get()
+            real_url = self._resolve_ddg_url(raw_href) if raw_href else None
+            snip = " ".join(snippets[i].css("::text").getall()).strip() if i < len(snippets) else ""
+            if title and real_url:
+                results.append(SearchResult(title=title, url=real_url, snippet=snip))
+        return results
+
+    async def _search_bing(
+        self,
+        query: str,
+        *,
+        max_results: int = 10,
+    ) -> list[SearchResult]:
+        url = f"https://www.bing.com/search?q={quote(query)}"
+        try:
+            page = await AsyncFetcher.get(url, stealthy_headers=True, timeout=TIMEOUT_MS)
+        except Exception as e:
+            log.warning("Bing search fetch failed: %s", e)
+            return []
+        if page is None:
+            return []
+        results: list[SearchResult] = []
+        for b in page.css("li.b_algo"):
+            if len(results) >= max_results:
+                break
+            title = (b.css("h2 a::text").get() or "").strip()
+            href = b.css("h2 a::attr(href)").get()
+            snip = " ".join(b.css("p::text, .b_caption p::text").getall()).strip()
+            if title and href:
+                results.append(SearchResult(title=title, url=href, snippet=snip))
         return results
 
     # ------------------------------------------------------------------
@@ -463,12 +523,12 @@ class JarvisScraplingBrowser:
 
             if not text:
                 text = self._extract_main_text(page)
-                
+
             image_url = self._extract_image_url(page)
 
             return PageContent(
                 title=title,
-                url=url,
+                url=getattr(page, "url", None) or url,  # link gốc sau chuyển hướng (news.google.com → bài báo)
                 text_content=text[:5000],
                 word_count=len(text.split()) if text else 0,
                 image_url=image_url,

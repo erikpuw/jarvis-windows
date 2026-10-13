@@ -569,3 +569,201 @@ def test_a_refused_element_click_points_the_model_to_shell_click():
 
     asyncio.run(wc.run_cua_task("x", None, None, ask_llm=ask, confirm=None, session_factory=FakeCua, shell=FakeShell()))
     assert "shell_click" in seen[1]
+
+
+def test_uri_launch_with_pid_0_lists_real_windows_for_the_model(monkeypatch):
+    """jarvis.log 2026-10-12 05:26: launch_app ms-settings trả pid 0, model tìm cửa sổ pid 0 → bỏ cuộc."""
+    monkeypatch.setenv("CUA_CONFIRM", "off")
+    monkeypatch.setattr("engine.tools.desktop_control.cua_runner._URI_WINDOW_WAIT", 0)
+    settings = {"is_error": False, "text": "", "data": {"windows": [
+        {"pid": 77, "window_id": 88, "app_name": "SystemSettings.exe", "title": "Settings", "is_on_screen": True}]}}
+    launched = {"is_error": False, "text": "✅ Launched ms-settings:windowsupdate (pid 0) in background.", "data": {}}
+    seen = []
+
+    async def ask(messages):
+        seen.append(messages[-1]["content"])
+        if len(seen) == 1:
+            return json.dumps({"tool": "launch_app", "args": {"name": "ms-settings:windowsupdate"}})
+        return json.dumps({"finish": "xong"})
+
+    asyncio.run(wc.run_cua_task("cập nhật windows", None, None,
+                                session_factory=lambda: FakeCua({"launch_app": launched, "list_windows": settings}),
+                                ask_llm=ask, confirm=None))
+    assert "pid=77 window_id=88" in seen[1] and "Settings" in seen[1]
+
+
+@pytest.mark.parametrize("pid", [77, "77"])
+def test_window_id_is_filled_from_listed_windows(monkeypatch, pid):
+    """DB 2026-10-12 18:52: 'cập nhật windows update' dừng ở "thiếu tham số" — sau launch pid 0 code đã liệt kê
+    cửa sổ, nhưng chỉ nhớ window_id sau get_window_state, nên get_window_state {pid} (thiếu window_id) bị từ chối."""
+    monkeypatch.setenv("CUA_CONFIRM", "off")
+    monkeypatch.setattr("engine.tools.desktop_control.cua_runner._URI_WINDOW_WAIT", 0)
+    settings = {"is_error": False, "text": "", "data": {"windows": [
+        {"pid": 77, "window_id": 88, "app_name": "SystemSettings.exe", "title": "Settings", "is_on_screen": True}]}}
+    launched = {"is_error": False, "text": "✅ Launched ms-settings:windowsupdate (pid 0) in background.", "data": {}}
+    cua = FakeCua({"launch_app": launched, "list_windows": settings, "get_window_state": STATE})
+    out = asyncio.run(wc.run_cua_task("cập nhật windows", None, None, session_factory=lambda: cua, confirm=None,
+                                      ask_llm=_say({"tool": "launch_app", "args": {"name": "ms-settings:windowsupdate"}},
+                                                   {"tool": "get_window_state", "args": {"pid": pid}},
+                                                   {"finish": "xong"})))
+    assert out == "xong"
+    assert ("get_window_state", {"pid": 77, "window_id": 88, "include_screenshot": False}) in cua.calls
+
+
+@pytest.mark.parametrize("reply", [
+    {"tool": "launch_app", "name": "notepad"},
+    {"tool": "launch_app", "arguments": {"name": "notepad"}},
+    {"tool": "launch_app", "parameters": {"name": "notepad"}},
+])
+def test_args_outside_the_args_key_are_accepted(monkeypatch, reply):
+    """jarvis.log 2026-10-12 19:08: 12 bước 'launch_app {} -> Thiếu tham số: name' — tham số không nằm trong "args"."""
+    monkeypatch.setenv("CUA_CONFIRM", "off")
+    out, cua, _ = _run([reply, {"finish": "xong"}])
+    assert out == "xong" and cua.calls == [("launch_app", {"name": "notepad"})]
+
+
+def test_same_failed_action_twice_stops_the_run():
+    """jarvis.log 2026-10-12 19:08: cùng lời gọi hỏng lặp đủ 12 bước rồi mới báo lỗi."""
+    bad = {"tool": "get_window_state", "args": {}}
+    out, cua, _ = _run([bad, bad, {"finish": "không tới đây"}])
+    assert out.startswith("Lỗi:") and "Thiếu tham số" in out and cua.calls == []
+
+
+def test_string_args_fill_the_single_required_param(monkeypatch):
+    """jarvis.log 2026-10-12 19:12: model trả {"tool": "launch_app", "args": "ms-settings:windowsupdate"}."""
+    monkeypatch.setenv("CUA_CONFIRM", "off")
+    out, cua, _ = _run(['{"tool": "launch_app", "args": "notepad"}', {"finish": "xong"}])
+    assert out == "xong" and cua.calls == [("launch_app", {"name": "notepad"})]
+
+
+def _record_run(actions, results, monkeypatch, mode="off"):
+    monkeypatch.setenv("CUA_CONFIRM", mode)
+    monkeypatch.setattr("engine.tools.desktop_control.cua_runner._URI_WINDOW_WAIT", 0)
+    cua = FakeCua(results)
+    record = []
+    out = asyncio.run(wc.run_cua_task("cập nhật windows", None, None, session_factory=lambda: cua,
+                                      ask_llm=_say(*actions), confirm=None, record=record))
+    return out, cua, record
+
+
+SETTINGS_WIN = {"is_error": False, "text": "", "data": {"windows": [
+    {"pid": 77, "window_id": 88, "app_name": "SystemSettings.exe", "title": "Settings", "is_on_screen": True}]}}
+UPDATE_STATE = {"is_error": False, "text": "", "data": {"snapshot_id": "s1", "elements": [
+    {"element_index": 25, "role": "Button", "label": "Check for updates", "actions": ["invoke"]}]}}
+
+
+def test_record_saves_actions_by_label_not_index(monkeypatch):
+    launched = {"is_error": False, "text": "✅ Launched ms-settings:windowsupdate (pid 0) in background.", "data": {}}
+    out, cua, record = _record_run(
+        [{"tool": "launch_app", "args": {"name": "ms-settings:windowsupdate"}},
+         {"tool": "get_window_state", "args": {"pid": 77, "window_id": 88, "query": "Check"}},
+         {"tool": "click", "args": {"pid": 77, "window_id": 88, "element_index": 25}},
+         {"finish": "Đã bấm Check for updates."}],
+        {"launch_app": launched, "list_windows": SETTINGS_WIN, "get_window_state": UPDATE_STATE}, monkeypatch)
+    assert out == "Đã bấm Check for updates."
+    assert record == [
+        {"action": "launch_app", "name": "ms-settings:windowsupdate"},
+        {"action": "click", "window": {"app": "SystemSettings.exe", "title": "Settings"},
+         "target": {"role": "Button", "label": "Check for updates"}},
+    ]
+
+
+def test_record_marks_unknown_window(monkeypatch):
+    out, cua, record = _record_run(
+        [{"tool": "get_window_state", "args": {"pid": 5, "window_id": 6}},
+         {"tool": "click", "args": {"pid": 5, "window_id": 6, "element_index": 3}},
+         {"finish": "xong"}],
+        {"get_window_state": STATE}, monkeypatch)
+    assert record == [None]
+
+
+REPLAY = [{"action": "launch_app", "name": "ms-settings:windowsupdate"},
+          {"action": "click", "window": {"app": "SystemSettings.exe", "title": "Settings"},
+           "target": {"role": "Button", "label": "Check for updates"}}]
+
+
+def _replay_run(results, monkeypatch, actions=(), answers=(True, True, True), mode="each"):
+    monkeypatch.setenv("CUA_CONFIRM", mode)
+    monkeypatch.setattr("engine.tools.desktop_control.cua_runner._URI_WINDOW_WAIT", 0)
+    cua, asked, record = FakeCua(results), [], []
+    it = iter(answers)
+
+    async def confirm(msg):
+        asked.append(msg)
+        return next(it, True)
+    seen = []
+
+    async def ask(messages):
+        seen.append(messages[1]["content"])
+        return json.dumps(actions[len(seen) - 1]) if len(seen) <= len(actions) else json.dumps({"finish": "model xong"})
+    out = asyncio.run(wc.run_cua_task("cập nhật windows", None, None, session_factory=lambda: cua, ask_llm=ask,
+                                      confirm=confirm, record=record, replay=REPLAY))
+    return out, cua, asked, record, seen
+
+
+def test_replay_runs_saved_steps_with_fresh_index_and_asks_each(monkeypatch):
+    launched = {"is_error": False, "text": "✅ Launched (pid 0)", "data": {}}
+    state = {"is_error": False, "text": "", "data": {"snapshot_id": "s9", "elements": [
+        {"element_index": 31, "role": "Button", "label": "Check for updates"}]}}
+    out, cua, asked, record, seen = _replay_run(
+        {"launch_app": launched, "list_windows": SETTINGS_WIN, "get_window_state": state}, monkeypatch)
+    assert out.startswith("Đã làm lại các bước đã lưu")
+    assert ("click", {"pid": 77, "window_id": 88, "element_index": 31, "snapshot_id": "s9"}) in cua.calls
+    assert len(asked) == 2 and seen == [] and record == REPLAY
+
+
+def test_replay_matches_window_title_substring(monkeypatch):
+    wins = {"is_error": False, "text": "", "data": {"windows": [
+        {"pid": 9, "window_id": 10, "app_name": "SystemSettings.exe", "title": "Settings - Windows Update"}]}}
+    state = {"is_error": False, "text": "", "data": {"snapshot_id": "s2", "elements": [
+        {"element_index": 4, "role": "Button", "label": "Check for updates"}]}}
+    out, cua, *_ = _replay_run({"list_windows": wins, "get_window_state": state}, monkeypatch, mode="off")
+    assert ("click", {"pid": 9, "window_id": 10, "element_index": 4, "snapshot_id": "s2"}) in cua.calls
+
+
+def test_replay_drift_hands_over_to_model(monkeypatch):
+    state = {"is_error": False, "text": "", "data": {"snapshot_id": "s3", "elements": [
+        {"element_index": 2, "role": "Button", "label": "Pause updates"}]}}
+    out, cua, asked, record, seen = _replay_run(
+        {"list_windows": SETTINGS_WIN, "get_window_state": state}, monkeypatch, mode="off")
+    assert out == "model xong" and "dừng ở bước 2" in seen[0]
+    assert record == [REPLAY[0]]
+    assert not any(c[0] == "click" for c in cua.calls)
+
+
+def test_replay_refusal_stops(monkeypatch):
+    out, cua, asked, *_ = _replay_run({"list_windows": SETTINGS_WIN}, monkeypatch, answers=(False,))
+    assert out == "Lỗi: đã dừng ở bước 1 vì bạn không xác nhận." and cua.calls == []
+
+
+def test_replay_risky_label_asks_even_when_confirm_off(monkeypatch):
+    risky = [{"action": "click", "window": {"app": "SystemSettings.exe", "title": "Settings"},
+              "target": {"role": "Button", "label": "Uninstall"}}]
+    state = {"is_error": False, "text": "", "data": {"snapshot_id": "s4", "elements": [
+        {"element_index": 7, "role": "Button", "label": "Uninstall"}]}}
+    monkeypatch.setenv("CUA_CONFIRM", "off")
+    asked = []
+
+    async def confirm(msg):
+        asked.append(msg)
+        return False
+    out = asyncio.run(wc.run_cua_task("gỡ", None, None, session_factory=lambda: FakeCua(
+        {"list_windows": SETTINGS_WIN, "get_window_state": state}), ask_llm=_say({"finish": "x"}),
+        confirm=confirm, replay=risky))
+    assert len(asked) == 1 and out.startswith("Lỗi: đã dừng ở bước 1")
+
+
+def test_replay_keeps_preview_install_block(monkeypatch):
+    # review 2026-10-13: get_window_state lọc theo query bỏ mất dòng "Preview Update" phía trên → nút không bị chặn
+    def state(args):
+        els = PREVIEW_PAGE["data"]["elements"]
+        q = (args.get("query") or "").casefold()
+        return {**PREVIEW_PAGE, "data": {**PREVIEW_PAGE["data"],
+                                         "elements": [e for e in els if q in e["label"].casefold()]}}
+    monkeypatch.setenv("CUA_CONFIRM", "off")
+    cua = FakeCua({"list_windows": SETTINGS_WIN, "get_window_state": state})
+    step = [{"action": "click", "window": {"app": "SystemSettings.exe", "title": "Settings"},
+             "target": {"role": "Hyperlink", "label": "Download & install"}}]
+    out = asyncio.run(wc.run_cua_task("cập nhật", None, None, session_factory=lambda: cua,
+                                      ask_llm=_say({"finish": "x"}), confirm=None, replay=step))
+    assert "Preview" in out and not any(c[0] == "click" for c in cua.calls)

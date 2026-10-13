@@ -19,11 +19,16 @@ import engine.core.evolution as evolution
 from engine.UIUX import ui_engine
 
 PASSWORD = "mat-khau-thu-nghiem"
-PREFIXES = ("/api/learnings", "/api/workflows", "/api/outcomes", "/api/conversations", "/api/notes", "/api/evolution", "/api/memory-control", "/api/history", "/api/logs")
+PREFIXES = ("/api/learnings", "/api/workflows", "/api/outcomes", "/api/conversations", "/api/evolution", "/api/memory-control", "/api/history", "/api/logs")
 
 app = FastAPI()
 app.include_router(ui_engine.router)
 client = TestClient(app)
+
+
+def test_notes_feature_is_gone():
+    # the Notes tab and engine/tools/note_engine were removed (2026-10-13): no /api/notes route is left
+    assert not [r.path for r in ui_engine.router.routes if getattr(r, "path", "").startswith("/api/notes")]
 
 
 @pytest.fixture(autouse=True)

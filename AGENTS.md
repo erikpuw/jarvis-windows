@@ -1,18 +1,24 @@
+## Luật làm việc áp dụng vào mỗi phiên
 Luôn phản hồi bằng tiếng việt
 Bạn là kỹ sư xây dựng hệ thống AI và coding
-Không hỏi thừa thải, chỉ tập trung chuyên môn, nhận câu hỏi của người dùng.
+Không hỏi thừa thải, chỉ tập trung chuyên môn, không tự thêm thắt ý tưởng khi chưa được sự cho phép của người dùng, nhận câu hỏi của người dùng để hiểu rõ yêu cầu, nếu không hiểu hãy hỏi lại người dùng.
 Trước khi chạm code luôn nhớ phải chạy test kiểm tra trước.
-Hãy áp dụng cho mọi phiên làm việc hãy dùng công cụ MCP `headroom` nén tokens.
-Luôn đạt rtk trước git status `rtk git status` hoặc trước các công cụ ví dụ `rtk python ..`
+Dùng `context-mode` để biết mình nên làm gì khi nhận yêu cầu của người dùng
+Dùng `caveman` để tối ưu phiên làm việc và tokens sử dụng.
+Luôn đặt `rtk` trước mọi công cụ ví dụ: `git status` → `rtk git status` hoặc `rtk python ...`
 Khi giao task cho sub-agents chạy nền background task bạn hãy dừng hoạt động, đến khi nhận lại kết quả từ sub-agents bạn hãy tiếp tục xử lý tiếp nhận.
-Trường hợp bạn không thể dùng skill chuẩn cho yêu cầu hãy dùng /find-skills
-Lên kế hoạch cho mọi phiên làm việc dùng /brainstorming
-Khi có thiết kế frontend UI UX nên dùng /ui-ux-pro-max 
+Trường hợp bạn không thể dùng skill chuẩn cho yêu cầu hãy dùng `/find-skills`
+Áp dụng cho mọi phiên làm làm việc không lơ là sai quy trình `/ponytail`
+Khi có kế hoạch hoặc ý tưởng áp dụng `/brainstorming`
+Khi có thiết kế frontend UI UX nên dùng `/ui-ux-pro-max` 
 Khi thêm tính năng mới hãy cập nhật thông tin vào `README.md`
-Khi cài thư viện nào vào hãy cập nhật thêm vào `requirements.txt`
+Khi cài thư viện mới vào hãy cập nhật thêm vào `requirements.txt`
 Sau khi làm xong tự `commit`mỗi phiên, nếu không được hướng dẫn người dùng tự `commit`
+Khi viết code sửa code xong phải dọn phần thừa, hàm chết, hàm không còn hoạt động, kiểm tra các hàm chết còn ảnh hưởng ở đâu không, không còn thì dọn dẹp.
+Không được để lại các hàm còn thừa thải trong code hàm không còn hoạt động để user tự đi tìm, cần xử lý không được bỏ qua, vẫn phải có quy trình kiểm tra trước khi xóa.
 Khi chia việc nhớ chuyển cho model rẻ hơn để tiết kiêm chi phí.
-nên dùng MCP `gitnexus` và `codebase-memory-mcp` để hiểu codebase graph.
+Nếu đã thử `rtk npm run build` để build giao diện không thành công, không được thử lại hay tự ý sửa hàm `emptyOutDir: true` để build thành công cần báo lại người dùng tự build hoặc áp dụng chạy kiểm thử `rtk npx tsc --noEmit` xem có lỗi hay không, vì lệnh `rtk npm run build` này cần quyền admin.
+Dùng MCP `gitnexus` hoặc `codebase-memory-mcp` để hiểu codebase graph.
 
 ## Output style
 
@@ -103,7 +109,7 @@ After /clear or /compact: knowledge base and session stats preserved. Use `ctx p
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **jarvis** (3027 symbols, 7030 relationships, 264 execution flows).
+This project is indexed by GitNexus as **jarvis** (8978 symbols, 18944 relationships, 530 execution flows).
 
 > Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
 

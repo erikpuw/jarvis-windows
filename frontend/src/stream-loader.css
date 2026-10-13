@@ -7,7 +7,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 32px;
+  min-height: calc(var(--bubble-font-size, 13.5px) * 1.5 + 14px); /* = one line of text, see .chat-bubble.assistant */
   min-width: 48px;
   padding: 6px 12px;
   box-sizing: border-box;
@@ -28,9 +28,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  /* the gooey blobs spill outside their bubble (that is the effect). Scaled to 0.72 they stay within the 8px the
-     chat keeps under the last bubble, so the bubble sits where the streamed text will */
-  transform: scale(0.72);
+  /* the gooey blobs spill outside their bubble (that is the effect). The whole cluster is zoomed (blob sizes keep their
+     ratio): 0.77 = a ~29px spin area, about 1px past each side of the 8px the chat keeps under the last bubble */
+  transform: scale(0.77);
 }
 
 .loader-layer-pin {
@@ -101,31 +101,26 @@
   background: #38bdf8;
 }
 
-/* Exit animation when the text stream begins (460 ms, COLLAPSE_MS in stream-loader.ts): the four balls keep flying (stream-spin is
-   untouched) and, as one cluster, swell a little (a light pump, like hopping up) and then shrink back to the centre and dissolve.
-   Nothing else changes: same place (the host is positioned where the flex-centred loader host sat), same balls, same sizes, still four separate balls until they are tiny. */
+/* Exit animation when the text stream begins (300 ms; the text starts to type at STREAM_TEXT_AFTER_LOADER_MS in main.ts, when the balls are
+   almost gone, so the first letter is not hidden under them): the four balls keep flying (stream-spin is untouched) and, as one cluster,
+   shrink back to the centre and fade. No zoom. Nothing else changes: same place (the host is positioned where the flex-centred loader host
+   sat), same balls, same sizes, still four separate balls until they are tiny. */
 .stream-bubble-host.collapsing {
   position: absolute;
   top: 8px; /* = where the flex-centred loader host sat: 1px border + 6px padding + 1px to centre 14px in 18px */
   left: 12px; /* 1px border + 12px padding - 1px: the host is 22px wide in a 46px-wide inner box */
   pointer-events: none;
   z-index: 2;
-  animation: stream-collapse-host 0.46s linear forwards;
+  animation: stream-collapse-host 0.3s cubic-bezier(0.45, 0, 0.25, 1) forwards;
 }
 
 @keyframes stream-collapse-host {
-  0% {
-    transform: scale(0.72);
+  from {
+    transform: scale(0.77);
     opacity: 1;
-    animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1);
   }
-  30% {
-    transform: scale(0.82);
-    opacity: 1;
-    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  100% {
-    transform: scale(0.05);
+  to {
+    transform: scale(0.02);
     opacity: 0;
   }
 }

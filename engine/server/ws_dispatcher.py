@@ -77,10 +77,7 @@ class WebSocketEventDispatcher:
 
     @staticmethod
     def _is_low_priority(data: dict[str, Any]) -> bool:
-        if data.get("type") == "flow_step":
-            return True
-        card = data.get("card")
-        return data.get("type") == "interactive" and isinstance(card, dict) and card.get("type") == "tracker"
+        return data.get("type") == "flow_step"
 
     @staticmethod
     def _coalesce_key(data: dict[str, Any]) -> str:

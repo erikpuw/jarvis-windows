@@ -136,6 +136,8 @@ class RAGPDFIngestor:
                         content = await self.ocr_convert(page_number, page)
                         method = "ocr"
 
+                from engine.core.rag_engine import clean_document_text
+                content = clean_document_text(content)
                 if not content or not content.strip():
                     raise RuntimeError("không tạo được Markdown")
                 self.store.write_page(

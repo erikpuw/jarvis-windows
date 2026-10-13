@@ -35,7 +35,3 @@ def test_request_words_removed_only_for_youtube_ranking():
     assert m._strip_request_words("chúng ta của hiện tại") == "chúng ta hiện tại"
 
 
-def test_media_summary_rules_keep_tool_table_and_now_playing():
-    rules = m.summary_rules("Tìm thấy 4 kết quả\n| Poster | Tên bài | Nghệ sĩ | Thời Lượng |\n✅ ĐANG PHÁT: X")
-    assert "Tên sản phẩm" not in rules and "Giá" not in rules  # mẫu bảng mua sắm, không phải nhạc/phim
-    assert "NGUYÊN VĂN" in rules and "ĐANG PHÁT" in rules

@@ -33,16 +33,15 @@ export interface SettingsPageDef {
   needsKey: boolean;
 }
 
-export interface AgentItem {
+/** One @ the command bar accepts (engine/turn/entry: @rag + every registry tool). */
+export interface MentionItem {
   id: string;
   name: string;
   file: string;
   description: string;
+  /** "@id <params>" */
   example: string;
-  tools?: string[];
-  aliases?: string[];
-  /** "@id" — accepted by the command bar (engine/router/fast_paths.resolve_mention). */
-  mention?: string;
+  mention: string;
 }
 
 export interface HookItem {
@@ -80,6 +79,7 @@ export interface CommandItem {
   file?: string;
   description: string;
   usage?: string;
+  example?: string;
   category?: string;
   tags?: string[];
   file_path?: string;
@@ -139,8 +139,7 @@ export interface StatusResponse {
   plugins_list?: PluginItem[];
   prompts_list?: PromptItem[];
   hooks_list?: HookItem[];
-  agents?: AgentItem[];
-  agents_count?: number;
+  mentions_count?: number;
   open_apps?: string[];
   system?: {
     cpu_percent?: number;

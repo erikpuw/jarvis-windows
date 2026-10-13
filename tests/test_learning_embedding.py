@@ -470,17 +470,19 @@ def test_delete_workflow_and_outcome_still_work(engine, tmp_path, monkeypatch):
     wf_dir = tmp_path / "Workflows"  # không để _sync_workflow_wiki đụng wiki thật
     wf_dir.mkdir()
     monkeypatch.setattr(learning, "WORKFLOWS_WIKI_DIR", wf_dir)
+    monkeypatch.setattr(learning, "WORKFLOWS_HUB_WIKI_PATH", wf_dir / "Công cụ.md")
     c = sqlite3.connect(learning.MEMORY_DB_PATH)
-    c.execute("INSERT INTO validated_workflows(agent,intent,tool_chain,argument_keys,success_evidence,validation_count,"
-              "status,wiki_path,created_at,updated_at) VALUES('desktop','x','[\"open_app\"]','[]','ok',1,'validated',?,1,1)",
-              (str(wf_dir / "desktop.md"),))
-    c.execute("INSERT INTO agent_outcomes(agent,query,status,result,traces,created_at) VALUES('desktop','q','success','ok','[]',1)")
+    c.execute("INSERT INTO workflows(tools,intent,tool_chain,sample_queries,success_evidence,validation_count,"
+              "wiki_path,created_at,updated_at) VALUES('open_app','x','[{\"tool\": \"open_app\"}]','[]','ok',1,?,1,1)",
+              (str(wf_dir / "open_app.md"),))
+    c.execute("INSERT INTO outcomes(tools,query,status,result,traces,created_at) VALUES('open_app','q','success','ok','[]',1)")
     c.commit()
-    wid = c.execute("SELECT id FROM validated_workflows").fetchone()[0]
-    oid = c.execute("SELECT id FROM agent_outcomes").fetchone()[0]
+    wid = c.execute("SELECT id FROM workflows").fetchone()[0]
+    oid = c.execute("SELECT id FROM outcomes").fetchone()[0]
     c.close()
     assert engine.delete_learning_control_record("workflow", wid) is True
     assert engine.delete_learning_control_record("outcome", oid) is True
+    assert (wf_dir / "Công cụ.md").exists()  # hub ghi vào thư mục tạm, không đè hub thật (review 2026-10-13)
 
 
 def test_reembed_with_embedder_down_keeps_existing_vectors(engine, monkeypatch):

@@ -95,3 +95,18 @@ if __name__ == "__main__":
         if name.startswith("test_"):
             fn()
             print("ok", name)
+
+
+def test_appliance_cards_keep_only_requested_type(monkeypatch):
+    """2026-10-12: Điện máy xanh tìm "máy giặt 11kg" trả tủ lạnh Toshiba lên đầu bảng."""
+    import asyncio
+    from engine.tools import shop_engine as S
+    cards = [{"name": "Tủ lạnh Toshiba Inverter 461 lít", "price_vnd": 12840000, "url": "u1", "rating": 5, "sold": 45},
+             {"name": "Máy giặt LG AI DD Inverter 11 kg", "price_vnd": 11990000, "url": "u2", "rating": 4.9, "sold": 22700}]
+
+    async def fake_load(item, url):
+        return cards
+    monkeypatch.setattr(S, "_load_cards", fake_load)
+    item = {"source": "Điện máy xanh", "url": "x"}
+    _, rows = asyncio.run(S._fetch_cards(item, "máy giặt 11kg", {}, sort=False, per_term=None))
+    assert [r["name"] for r in rows] == ["Máy giặt LG AI DD Inverter 11 kg"]

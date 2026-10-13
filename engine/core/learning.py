@@ -7,6 +7,7 @@ import re
 import sys
 import unicodedata
 from pathlib import Path
+from engine.core.db_ids import insert_with_lowest_free_id
 from typing import Optional, Any
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -33,11 +34,28 @@ def _write_wiki_link_index(path: Path, targets) -> None:
     path.write_text(content, encoding="utf-8")
 
 
+_QUERY_PUNCT = re.compile(r"[.,!?;:\"'“”‘’…()\[\]]")
+
+
+def normalize_query(text: str) -> str:
+    """Khoá khớp workflow: chữ thường, bỏ dấu câu, gộp khoảng trắng."""
+    return " ".join(_QUERY_PUNCT.sub(" ", text or "").casefold().split())
+
+
 def _sync_learning_hub() -> None:
     _write_wiki_link_index(
         LEARNING_HUB_WIKI_PATH,
         ("Errors", "Learning", "Preferences", "Evolution"),
     )
+
+
+_EXAMPLE_PAREN_RE = re.compile(r"\s*\((?:ví dụ|vd|chẳng hạn|evidence)\b[^)]*\)", re.IGNORECASE)
+
+
+def strip_examples(text: str) -> str:
+    """Bài học chỉ nêu khái niệm: bỏ "(ví dụ: …)"/"(Evidence: …)". Các câu đó vào prompt chat mỗi lượt và model chép
+    theo (Learning.md 2026-10-08 có "(ví dụ: 'mở bài tôi thích')"); bằng chứng đã nằm ở trường evidence."""
+    return re.sub(r"\.\s*\.", ".", _EXAMPLE_PAREN_RE.sub("", text or "")).strip()
 
 
 def _is_valid_learning_text(content: Any, min_len: int = 10, max_len: int = 1200) -> bool:
@@ -46,24 +64,6 @@ def _is_valid_learning_text(content: Any, min_len: int = 10, max_len: int = 1200
         return False
     normalized = " ".join(content.split()).strip()
     return min_len <= len(normalized) <= max_len
-
-
-def outcome_for_turn(session, turn_started_at: float) -> tuple[int | None, str | None]:
-    """Return the agent outcome recorded during the current turn, else (None, None).
-
-    The old route_agents.py stamped the session with its last outcome and never
-    cleared it. engine.router does not depend on that (it reads recent outcomes
-    from the DB), but learning did: every later turn was treated as that old
-    tool run, so the old workflow was re-validated each time and conversation
-    learning was skipped for the rest of the session.
-    """
-    recorded_at = getattr(session, "last_agent_outcome_at", None)
-    if recorded_at is None or recorded_at < turn_started_at:
-        return None, None
-    return (
-        getattr(session, "last_agent_outcome_id", None),
-        getattr(session, "last_agent_outcome_status", None),
-    )
 
 
 LEXICAL_DUPLICATE_THRESHOLD = 0.40
@@ -75,6 +75,16 @@ def _lexical_tokens(text: str) -> set[str]:
     folded = unicodedata.normalize("NFKD", (text or "").lower().replace("đ", "d"))
     folded = "".join(c for c in folded if not unicodedata.combining(c))
     return {w for w in re.findall(r"[a-z0-9]+", folded) if len(w) > 1}
+
+
+_FILLER_TOKENS = {"luon", "that", "rat", "hay", "nhe", "nha", "khi", "va", "cua", "cho", "la", "se", "nen", "phai", "cung",
+                  "hon", "nhu", "vay", "the", "nao"}
+
+
+def adds_new_information(new: str, old: str) -> bool:
+    """Câu mới có thêm ý mà câu cũ chưa có không (≥ 2 từ nội dung mới)? Nói lại điều đã học bằng chữ khác thì không
+    (probe 2026-10-08: 'Luôn trả lời ngắn gọn.' đè lên 'Trả lời ngắn gọn, không giải thích dài dòng.')."""
+    return len(_lexical_tokens(new) - _lexical_tokens(old) - _FILLER_TOKENS) >= 2
 
 
 def _lexically_similar(a: str, b: str) -> bool:
@@ -145,21 +155,14 @@ class LearningEngine:
         self,
         user_message: str,
         assistant_message: str,
-        outcome_id: int | None = None,
-        outcome_status: str | None = None,
     ) -> asyncio.Future:
         """Queue one completed turn; processing starts only while chat is idle."""
         self._ensure_runtime_state()
         loop = asyncio.get_running_loop()
         completion = loop.create_future()
-        if outcome_status in {"failed", "cancelled"}:
-            completion.set_result({"stored": 0, "discarded": True, "reason": "unsuccessful outcome"})
-            return completion
         if self._learning_queue is None:
             self._learning_queue = asyncio.Queue()
-        self._learning_queue.put_nowait(
-            (user_message, assistant_message, outcome_id, completion)
-        )
+        self._learning_queue.put_nowait((user_message, assistant_message, completion))
         if self._learning_worker_task is None or self._learning_worker_task.done():
             self._learning_worker_task = asyncio.create_task(
                 self._learning_worker(), name="conversation-learning-worker"
@@ -169,14 +172,12 @@ class LearningEngine:
     async def _learning_worker(self) -> None:
         while True:
             item = await self._learning_queue.get()
-            user_message, assistant_message, outcome_id, completion = item
+            user_message, assistant_message, completion = item
             try:
                 while True:
                     await self._wait_until_chat_idle()
                     run_task = asyncio.create_task(
-                        self._process_scheduled_learning(
-                            user_message, assistant_message, outcome_id
-                        )
+                        self._process_scheduled_learning(user_message, assistant_message)
                     )
                     self._active_learning_task = run_task
                     try:
@@ -199,24 +200,11 @@ class LearningEngine:
             finally:
                 self._learning_queue.task_done()
 
-    async def _process_scheduled_learning(
-        self, user_message: str, assistant_message: str, outcome_id: int | None
-    ) -> dict:
-        learning_result = await self.process_conversation_learning(
-            user_message, assistant_message, outcome_id=outcome_id
-        )
-        reflection_result = await self.reflect_on_session(
-            [
-                {"role": "user", "content": user_message},
-                {"role": "assistant", "content": assistant_message},
-            ],
-            outcome_id=outcome_id,
-        )
+    async def _process_scheduled_learning(self, user_message: str, assistant_message: str) -> dict:
+        learning_result = await self.process_conversation_learning(user_message, assistant_message)
         # Chỉ kích hoạt Evolution Engine khi lượt này thực sự học được điều gì mới;
         # tránh gọi LLM phân tích lại toàn bộ Learning.md/Preferences.md một cách vô ích.
-        learned_something_new = (
-            learning_result.get("stored", 0) > 0 or bool(reflection_result.get("workflow"))
-        )
+        learned_something_new = learning_result.get("stored", 0) > 0
         if learned_something_new:
             try:
                 from engine.core.evolution import trigger_cognitive_evolution
@@ -228,13 +216,11 @@ class LearningEngine:
                 log.warning("Failed to trigger cognitive evolution: %s", evo_err)
 
         log.info(
-            "Conversation learning complete: conversation_stored=%s "
-            "conversation_discarded=%s workflow_stored=%s",
+            "Conversation learning complete: conversation_stored=%s conversation_discarded=%s",
             learning_result.get("stored", 0),
             learning_result.get("discarded", False),
-            bool(reflection_result.get("workflow")),
         )
-        return {"learning": learning_result, "reflection": reflection_result}
+        return {"learning": learning_result}
 
     def _on_evolution_task_done(self, task: asyncio.Task) -> None:
         self._evolution_tasks.discard(task)
@@ -291,33 +277,30 @@ class LearningEngine:
             CREATE INDEX IF NOT EXISTS idx_learn_type ON learnings(type);
             CREATE INDEX IF NOT EXISTS idx_learn_created ON learnings(created_at DESC);
 
-            CREATE TABLE IF NOT EXISTS agent_outcomes (
+            CREATE TABLE IF NOT EXISTS outcomes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent TEXT NOT NULL,
+                tools TEXT NOT NULL,
                 query TEXT NOT NULL,
                 status TEXT NOT NULL,
                 result TEXT DEFAULT '',
                 traces TEXT DEFAULT '[]',
                 created_at REAL NOT NULL
             );
-            CREATE INDEX IF NOT EXISTS idx_outcome_agent_status ON agent_outcomes(agent, status);
+            CREATE INDEX IF NOT EXISTS idx_outcomes_tools_status ON outcomes(tools, status);
 
-            CREATE TABLE IF NOT EXISTS validated_workflows (
+            CREATE TABLE IF NOT EXISTS workflows (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent TEXT NOT NULL,
+                tools TEXT NOT NULL,
                 intent TEXT NOT NULL,
-                tool_chain TEXT NOT NULL,
-                argument_keys TEXT NOT NULL,
+                tool_chain TEXT NOT NULL UNIQUE,
+                sample_queries TEXT NOT NULL DEFAULT '[]',
                 success_evidence TEXT NOT NULL,
                 validation_count INTEGER NOT NULL DEFAULT 1,
-                status TEXT NOT NULL DEFAULT 'validated',
                 wiki_path TEXT NOT NULL,
-                sample_queries TEXT NOT NULL DEFAULT '[]',
                 created_at REAL NOT NULL,
-                updated_at REAL NOT NULL,
-                UNIQUE(agent, tool_chain)
+                updated_at REAL NOT NULL
             );
-            CREATE INDEX IF NOT EXISTS idx_workflow_agent ON validated_workflows(agent, status);
+            CREATE INDEX IF NOT EXISTS idx_workflows_tools ON workflows(tools);
         """)
         learning_columns = {
             row[1] for row in conn.execute("PRAGMA table_info(learnings)").fetchall()
@@ -333,23 +316,35 @@ class LearningEngine:
         conn.commit()
         conn.close()
         self._migrate_legacy_learnings()
-        self._migrate_add_sample_queries_column()
+        self._migrate_outcomes_workflows()
         self._migrate_add_embedding_column()
         self._migrate_add_embedding_model_column()
         self._sync_learning_wiki()
 
-    def _migrate_add_sample_queries_column(self):
-        """Add sample_queries column to existing databases (safe to re-run)."""
-        conn = None
+    def _migrate_outcomes_workflows(self) -> None:
+        """2026-10-13: không còn agent — agent_outcomes → outcomes (giữ dữ liệu); validated_workflows định dạng
+        agent cũ không phát lại được → bỏ, kèm tệp wiki của agent cũ."""
+        conn = self._get_learning_db()
         try:
-            conn = self._get_learning_db()
-            conn.execute("ALTER TABLE validated_workflows ADD COLUMN sample_queries TEXT NOT NULL DEFAULT '[]'")
+            tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if "agent_outcomes" in tables:
+                conn.execute("INSERT INTO outcomes (tools, query, status, result, traces, created_at) "
+                             "SELECT agent, query, status, result, traces, created_at FROM agent_outcomes")
+                conn.execute("DROP TABLE agent_outcomes")
+            old_agents: list[str] = []
+            if "validated_workflows" in tables:
+                old_agents = [r[0] for r in conn.execute("SELECT DISTINCT agent FROM validated_workflows")]
+                conn.execute("DROP TABLE validated_workflows")
             conn.commit()
-        except sqlite3.OperationalError:
-            pass  # Column already exists
         finally:
-            if conn is not None:
-                conn.close()
+            conn.close()
+        for agent in old_agents:
+            try:
+                (WORKFLOWS_WIKI_DIR / f"{agent}.md").unlink(missing_ok=True)
+            except OSError as exc:
+                log.warning("Không xoá được wiki workflow cũ %s: %s", agent, exc)
+        if old_agents:
+            self._sync_workflow_hub()
 
     def _migrate_add_embedding_column(self):
         """Add embedding column (JSON float list) for semantic duplicate detection."""
@@ -523,7 +518,7 @@ class LearningEngine:
         importance = 8 if kind == "preference" else 7
         # Emoji chỉ thể hiện lúc chat trực tiếp; dữ liệu học lưu vào DB/wiki không giữ emoji.
         from engine.core.memory import strip_emojis
-        normalized_content = strip_emojis(content.strip())
+        normalized_content = strip_examples(strip_emojis(content.strip()))
         embedding_json, embedding_model = self._embedding_fields(normalized_content)
         conn = self._get_learning_db()
         existing_content = conn.execute(
@@ -570,10 +565,10 @@ class LearningEngine:
                     normalized_content,
                 )
                 return False
-            conn.execute(
-                """INSERT INTO learnings
-                   (type, semantic_key, content, source, importance, created_at, embedding, embedding_model)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            insert_with_lowest_free_id(
+                conn,
+                "learnings",
+                ("type", "semantic_key", "content", "source", "importance", "created_at", "embedding", "embedding_model"),
                 (
                     learn_type,
                     key,
@@ -658,6 +653,58 @@ class LearningEngine:
         ]
         for pattern in patterns:
             if re.search(pattern, t_low):
+                return True
+        return False
+
+    @staticmethod
+    def _is_explicit_complaint(text: str) -> bool:
+        """Kiểm tra xem người dùng có phàn nàn, chỉ trích, sửa sai hoặc cấm đoán hành vi không."""
+        if not text:
+            return False
+        t_low = text.lower()
+        patterns = [
+            r"sai\s+(?:rồi|bét|quá|nhé)",
+            r"không\s+phải(?:\s+vậy|\s+thế)?",
+            r"đừng\s+",
+            r"không\s+được\s+",
+            r"lại\s+nữa\s+rồi",
+            r"loạn\s+rồi",
+            r"sao\s+lại\s+",
+            r"tại\s+sao\s+lại\s+",
+            r"nhầm\s+rồi",
+            r"bậy\s+bạ",
+            r"vô\s+lý",
+            r"lung\s+tung",
+            r"tùm\s+lum",
+            r"đâu\s+có\s+(?:kêu|bảo|nói)",
+            r"không\s+có\s+(?:kêu|bảo|nói)",
+        ]
+        return any(re.search(p, t_low) for p in patterns)
+
+    def _has_explicit_signal(self, user_text: str, evidence: str, kind: str) -> bool:
+        """Chỉ cho phép đề xuất học khi có tín hiệu tường minh rõ ràng:
+        1. Yêu cầu học/ghi nhớ rõ ràng (_is_explicit_learning_request)
+        2. Phàn nàn/chỉ trích/sửa sai rõ ràng (_is_explicit_complaint)
+        3. Tự nói sự thật/sở thích cá nhân lâu dài ("tôi thích", "sở thích", "tên tôi là")
+        Mọi cuộc trò chuyện thông thường, trần thuật tạm thời bị loại bỏ 100%.
+        """
+        norm_combined = f"{user_text} {evidence}".lower()
+        if self._is_explicit_learning_request(user_text) or self._is_explicit_learning_request(evidence):
+            return True
+        if self._is_explicit_complaint(user_text) or self._is_explicit_complaint(evidence):
+            return True
+        if kind in ("user_fact", "preference"):
+            personal_patterns = [
+                r"\btôi\s+thích\b",
+                r"\bmình\s+thích\b",
+                r"\bsở\s+thích\b",
+                r"\btên\s+tôi\s+là\b",
+                r"\btôi\s+tên\s+là\b",
+                r"\bnghề\s+của\s+tôi\b",
+                r"\btôi\s+làm\s+(?:nghề|việc)\b",
+                r"\btôi\s+thường\s+(?:uống|ăn|tập|nghe)\b",
+            ]
+            if any(re.search(p, norm_combined) for p in personal_patterns):
                 return True
         return False
 
@@ -877,23 +924,13 @@ class LearningEngine:
         log.info("↩️ Retract learning id=%s (%s): %s", target_id, "restore" if previous else "delete", done)
         return bool(done)
 
-    async def process_conversation_learning(
-        self, user_message: str, assistant_message: str, outcome_id: int | None = None
-    ) -> dict:
+    async def process_conversation_learning(self, user_message: str, assistant_message: str) -> dict:
         """Quy trình học tự phản tư 2 vòng (spec 2026-09-25 §4):
         Vòng 1: Đề xuất (learning_propose.md)
         Vòng 2: Phản biện (learning_critique.md) với mục cũ gần nhất
         """
         if not user_message or not user_message.strip():
             return {"stored": 0, "discarded": True, "items": []}
-
-        if outcome_id is not None:
-            return {
-                "stored": 0,
-                "discarded": True,
-                "items": [],
-                "reason": "verified outcome uses workflow learning",
-            }
 
         # 3–5 lượt gần nhất từ DB (cùng nguồn với chat), lượt hiện tại luôn ở cuối
         turns: list[dict] = []
@@ -914,14 +951,6 @@ class LearningEngine:
         transcript = "\n".join(
             f"{'User' if t['role'] == 'user' else 'Assistant'}: {str(t['content']).strip()}" for t in turns
         )
-        try:
-            outcomes = await asyncio.to_thread(self.get_recent_agent_outcomes, 3)
-        except Exception:
-            outcomes = []
-        agent_outcomes_str = "\n".join(
-            f"- [{o['agent']}] \"{str(o['query'])[:200]}\" → thành công" for o in reversed(outcomes) if o.get("status") == "success"
-        )
-
         # Mục do lượt học trước ghi — chỉ những mục này mới được gỡ (retract)
         previous_run = self._just_learned
         self._just_learned = {}
@@ -936,7 +965,7 @@ class LearningEngine:
 
         from engine.prompts.learning import build_learning_propose_prompt, build_learning_critique_prompt
         propose_prompt = build_learning_propose_prompt(
-            context=transcript, agent_outcomes=agent_outcomes_str, just_learned=just_learned_str
+            context=transcript, just_learned=just_learned_str
         )
 
         try:
@@ -994,11 +1023,13 @@ class LearningEngine:
                 log.info("⏭️ Learning rejected: forbidden topic: %s", content)
                 continue
 
-            # Kiểm tra yêu cầu học tường minh
-            is_explicit = self._is_explicit_learning_request(user_last_message)
+            # Phản tư tường minh: Bắt buộc phải có tín hiệu rõ rệt (yêu cầu học, phàn nàn/cấm đoán, hoặc thông tin cá nhân)
+            if not self._has_explicit_signal(user_last_message, evidence, kind):
+                log.info("⏭️ Learning rejected: no explicit learning/complaint/personal signal in '%s'", evidence[:60])
+                continue
 
-            # Nếu không phải yêu cầu tường minh, kiểm tra trạng thái tạm thời
-            if not is_explicit and self._is_temporary_state_or_tool_query(evidence, content):
+            # Kiểm tra trạng thái tạm thời hoặc truy vấn công cụ
+            if self._is_temporary_state_or_tool_query(evidence, content):
                 log.info("⏭️ Learning rejected: temporary state: %s", content)
                 continue
 
@@ -1036,6 +1067,11 @@ class LearningEngine:
                     decision = "merge"
                     merged_content = content
                     log.info("🔄 Tự động chuyển new thành merge để viết chồng lên bài học cũ id=%s", closest.get("id"))
+            # Gộp/thêm mà không có ý mới so với mục cũ = nói lại điều đã học: không ghi (replace = đổi ý, vẫn cho qua).
+            if decision in ("merge", "new") and closest and not adds_new_information(
+                    merged_content or content, closest.get("content", "")):
+                log.info("⏭️ Bài học không thêm ý mới so với id=%s: %s", closest.get("id"), content)
+                decision = "skip"
 
             applied = await asyncio.to_thread(
                 self._apply_critique_decision,
@@ -1069,16 +1105,20 @@ class LearningEngine:
             return
 
         conn = self._get_learning_db()
+        conn.execute("BEGIN IMMEDIATE")
         for row in rows:
-            conn.execute(
-                """INSERT INTO learnings (type, content, source, importance, created_at)
-                   SELECT ?, ?, ?, ?, ?
-                   WHERE NOT EXISTS (
-                       SELECT 1 FROM learnings
-                       WHERE type = ? AND LOWER(TRIM(content)) = LOWER(TRIM(?))
-                   )""",
-                (*row, row[0], row[1]),
-            )
+            exists = conn.execute(
+                """SELECT 1 FROM learnings
+                   WHERE type = ? AND LOWER(TRIM(content)) = LOWER(TRIM(?))""",
+                (row[0], row[1]),
+            ).fetchone()
+            if not exists:
+                insert_with_lowest_free_id(
+                    conn,
+                    "learnings",
+                    ("type", "content", "source", "importance", "created_at"),
+                    tuple(row),
+                )
         conn.commit()
         conn.close()
         log.info("📚 Learning database initialized (query jarvis.db for conversations)")
@@ -1170,28 +1210,6 @@ class LearningEngine:
         scored.sort(key=lambda x: x["score"], reverse=True)
         return scored[:limit]
 
-    def get_behaviour_rules(self, limit: int = 5, max_chars: int = 600) -> list[str]:
-        """Lấy các bài học hành vi (type='lesson') theo importance DESC, id DESC.
-        Trả danh sách nội dung (content), cộng dồn độ dài, dừng TRƯỚC khi vượt max_chars, tối đa limit bài.
-        Không dùng embedding, không lọc theo từ khoá."""
-        conn = self._get_learning_db()
-        rows = conn.execute(
-            "SELECT id, content FROM learnings WHERE type=? ORDER BY importance DESC, id DESC LIMIT ?",
-            ("lesson", limit),
-        ).fetchall()
-        conn.close()
-
-        rules: list[str] = []
-        total_len = 0
-        for row in rows:
-            content = row["content"]
-            content_len = len(content)
-            if total_len + content_len > max_chars:
-                break
-            rules.append(content)
-            total_len += content_len
-        return rules
-
     def get_recent_learnings(self, limit: int = 5) -> list[dict]:
         conn = self._get_learning_db()
         rows = conn.execute(
@@ -1214,7 +1232,7 @@ class LearningEngine:
         limit: int,
         offset: int,
     ) -> dict:
-        if table not in {"learnings", "validated_workflows", "agent_outcomes"}:
+        if table not in {"learnings", "workflows", "outcomes"}:
             raise ValueError("Unsupported learning table")
         page_limit, page_offset = self._bounded_page(limit, offset)
         query = (q or "").strip().lower()
@@ -1268,20 +1286,12 @@ class LearningEngine:
         self, q: str = "", limit: int = 50, offset: int = 0
     ) -> dict:
         return self._list_learning_table(
-            "validated_workflows",
+            "workflows",
             (
-                "id, agent, intent, tool_chain, argument_keys, sample_queries, "
-                "success_evidence, validation_count, status, wiki_path, "
-                "created_at, updated_at"
+                "id, tools, intent, tool_chain, sample_queries, success_evidence, "
+                "validation_count, wiki_path, created_at, updated_at"
             ),
-            (
-                "agent",
-                "intent",
-                "tool_chain",
-                "sample_queries",
-                "success_evidence",
-                "status",
-            ),
+            ("tools", "intent", "tool_chain", "sample_queries", "success_evidence"),
             "updated_at",
             q,
             limit,
@@ -1293,11 +1303,11 @@ class LearningEngine:
         q: str = "",
         limit: int = 50,
         offset: int = 0,
-        agent: str = "",
+        tool: str = "",
     ) -> dict:
         page_limit, page_offset = self._bounded_page(limit, offset)
         search_query = (q or "").strip().lower()
-        agent_name = (agent or "").strip().lower()
+        tool_name = (tool or "").strip().lower()
         clauses: list[str] = []
         params: list[object] = []
         if search_query:
@@ -1311,17 +1321,17 @@ class LearningEngine:
                 + ")"
             )
             params.extend([f"%{search_query}%"] * len(search_columns))
-        if agent_name:
-            clauses.append("LOWER(agent) = ?")
-            params.append(agent_name)
+        if tool_name:
+            clauses.append("LOWER(tools) = ?")
+            params.append(tool_name)
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         conn = self._get_learning_db()
         total = conn.execute(
-            f"SELECT COUNT(*) FROM agent_outcomes{where}", params
+            f"SELECT COUNT(*) FROM outcomes{where}", params
         ).fetchone()[0]
         rows = conn.execute(
-            f"""SELECT id, agent, query, status, result, traces, created_at
-                FROM agent_outcomes{where}
+            f"""SELECT id, tools, query, status, result, traces, created_at
+                FROM outcomes{where}
                 ORDER BY created_at DESC LIMIT ? OFFSET ?""",
             [*params, page_limit, page_offset],
         ).fetchall()
@@ -1333,6 +1343,69 @@ class LearningEngine:
             "offset": page_offset,
         }
 
+    def record_outcome(self, tools: str, query: str, status: str, result: str, traces: list[dict]) -> int:
+        conn = self._get_learning_db()
+        try:
+            cur = insert_with_lowest_free_id(
+                conn, "outcomes", ("tools", "query", "status", "result", "traces", "created_at"),
+                (tools, query, status, result, json.dumps(traces, ensure_ascii=False), time.time()))
+            conn.commit()
+            return cur.lastrowid
+        finally:
+            conn.close()
+
+    def save_workflow(self, query: str, tool_chain: list[dict], evidence: str) -> int | None:
+        """Lưu/gộp workflow theo chuỗi tool; một câu chuẩn hoá chỉ thuộc một workflow (spec mục 3)."""
+        q = normalize_query(query)
+        if not q or not tool_chain:
+            return None
+        chain_json = json.dumps(tool_chain, ensure_ascii=False, sort_keys=True)
+        tools = "+".join(str(step.get("tool", "")) for step in tool_chain)
+        now = time.time()
+        conn = self._get_learning_db()
+        try:
+            for row in conn.execute("SELECT id, sample_queries FROM workflows WHERE tool_chain<>?",
+                                    (chain_json,)).fetchall():
+                samples = json.loads(row["sample_queries"] or "[]")
+                if q in samples:
+                    conn.execute("UPDATE workflows SET sample_queries=? WHERE id=?",
+                                 (json.dumps([s for s in samples if s != q], ensure_ascii=False), row["id"]))
+            row = conn.execute("SELECT id, sample_queries FROM workflows WHERE tool_chain=?", (chain_json,)).fetchone()
+            if row:
+                samples = [s for s in json.loads(row["sample_queries"] or "[]") if s != q] + [q]
+                conn.execute(
+                    "UPDATE workflows SET sample_queries=?, validation_count=validation_count+1, "
+                    "success_evidence=?, updated_at=? WHERE id=?",
+                    (json.dumps(samples[-20:], ensure_ascii=False), evidence[:300], now, row["id"]))
+                workflow_id = row["id"]
+            else:
+                workflow_id = insert_with_lowest_free_id(
+                    conn, "workflows",
+                    ("tools", "intent", "tool_chain", "sample_queries", "success_evidence", "validation_count",
+                     "wiki_path", "created_at", "updated_at"),
+                    (tools, query.strip(), chain_json, json.dumps([q], ensure_ascii=False), evidence[:300], 1,
+                     str(WORKFLOWS_WIKI_DIR / f"{tools}.md"), now, now)).lastrowid
+            conn.commit()
+        finally:
+            conn.close()
+        self._sync_workflow_wiki(tools)
+        return workflow_id
+
+    def find_workflow(self, text: str) -> dict | None:
+        q = normalize_query(text)
+        if not q:
+            return None
+        conn = self._get_learning_db()
+        try:
+            rows = conn.execute("SELECT id, tools, tool_chain, sample_queries FROM workflows "
+                                "ORDER BY updated_at DESC").fetchall()
+        finally:
+            conn.close()
+        for row in rows:
+            if q in json.loads(row["sample_queries"] or "[]"):
+                return {"id": row["id"], "tools": row["tools"], "tool_chain": json.loads(row["tool_chain"])}
+        return None
+
     def get_memory_control_counts(self) -> dict[str, int]:
         conn = self._get_learning_db()
         try:
@@ -1341,10 +1414,10 @@ class LearningEngine:
                     "SELECT COUNT(*) FROM learnings"
                 ).fetchone()[0],
                 "workflows": conn.execute(
-                    "SELECT COUNT(*) FROM validated_workflows"
+                    "SELECT COUNT(*) FROM workflows"
                 ).fetchone()[0],
                 "outcomes": conn.execute(
-                    "SELECT COUNT(*) FROM agent_outcomes"
+                    "SELECT COUNT(*) FROM outcomes"
                 ).fetchone()[0],
             }
         finally:
@@ -1358,18 +1431,11 @@ class LearningEngine:
             raise ValueError("invalid_wiki_path")
         return resolved
 
-    def _sync_workflow_wiki(
-        self, agent: str, requested_path: Path | None = None
-    ) -> None:
-        path = self._validated_workflow_wiki_path(
-            requested_path or (WORKFLOWS_WIKI_DIR / f"{agent}.md")
-        )
+    def _sync_workflow_wiki(self, tools: str, requested_path: Path | None = None) -> None:
+        path = self._validated_workflow_wiki_path(requested_path or (WORKFLOWS_WIKI_DIR / f"{tools}.md"))
         conn = self._get_learning_db()
         rows = conn.execute(
-            """SELECT * FROM validated_workflows
-               WHERE agent=?
-               ORDER BY validation_count DESC, updated_at DESC""",
-            (agent,),
+            "SELECT * FROM workflows WHERE tools=? ORDER BY validation_count DESC, updated_at DESC", (tools,)
         ).fetchall()
         conn.close()
         if not rows:
@@ -1377,41 +1443,33 @@ class LearningEngine:
                 path.unlink()
             self._sync_workflow_hub()
             return
-        lines = [f"# Validated workflows: {agent}", ""]
+        lines = [f"# Workflows: {tools}", ""]
         for row in rows:
-            tool_chain = json.loads(row["tool_chain"] or "[]")
-            argument_keys = json.loads(row["argument_keys"] or "[]")
-            sample_queries = json.loads(row["sample_queries"] or "[]")
-            lines.extend(
-                [
-                    f"## {row['intent']}",
-                    f"- Route: {row['agent']}",
-                    f"- Tool chain: {', '.join(tool_chain)}",
-                    f"- Argument keys: {', '.join(argument_keys) or 'none'}",
-                    (
-                        f"- Sample queries: {'; '.join(sample_queries[:5])}"
-                        if sample_queries
-                        else "- Sample queries: (none)"
-                    ),
-                    f"- Success evidence: {row['success_evidence']}",
-                    f"- Validations: {row['validation_count']}",
-                    "",
-                ]
+            chain = json.loads(row["tool_chain"] or "[]")
+            samples = json.loads(row["sample_queries"] or "[]")
+            steps = "; ".join(
+                f"{s.get('tool')}({json.dumps(s.get('args', {}), ensure_ascii=False)})"
+                + (f" + {len(s['cua_steps'])} thao tác cua" if s.get("cua_steps") else "")
+                for s in chain
             )
+            lines.extend([
+                f"## {row['intent']}",
+                f"- Tools: {row['tools']}",
+                f"- Tool chain: {steps}",
+                f"- Sample queries: {'; '.join(samples[:5]) or '(none)'}",
+                f"- Success evidence: {row['success_evidence']}",
+                f"- Validations: {row['validation_count']}",
+                "",
+            ])
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("\n".join(lines), encoding="utf-8")
         self._sync_workflow_hub()
 
     def _sync_workflow_hub(self) -> None:
         conn = self._get_learning_db()
-        agents = [
-            row["agent"]
-            for row in conn.execute(
-                "SELECT DISTINCT agent FROM validated_workflows ORDER BY agent"
-            ).fetchall()
-        ]
+        names = [row["tools"] for row in conn.execute("SELECT DISTINCT tools FROM workflows ORDER BY tools").fetchall()]
         conn.close()
-        _write_wiki_link_index(WORKFLOWS_HUB_WIKI_PATH, agents)
+        _write_wiki_link_index(WORKFLOWS_HUB_WIKI_PATH, names)
 
     def update_learning_control_record(
         self, kind: str, record_id: int, values: dict
@@ -1422,22 +1480,12 @@ class LearningEngine:
                 {"type", "semantic_key", "content", "source", "importance", "embedding", "embedding_model"},
             ),
             "workflow": (
-                "validated_workflows",
-                {
-                    "agent",
-                    "intent",
-                    "tool_chain",
-                    "argument_keys",
-                    "sample_queries",
-                    "success_evidence",
-                    "validation_count",
-                    "status",
-                    "wiki_path",
-                },
+                "workflows",
+                {"tools", "intent", "tool_chain", "sample_queries", "success_evidence", "validation_count", "wiki_path"},
             ),
             "outcome": (
-                "agent_outcomes",
-                {"agent", "query", "status", "result", "traces"},
+                "outcomes",
+                {"tools", "query", "status", "result", "traces"},
             ),
         }
         if kind not in schemas:
@@ -1446,6 +1494,7 @@ class LearningEngine:
 
         # Xử lý embedding riêng biệt nếu có (chỉ cho learning)
         embedding_value = values.get("embedding")
+        embedding_model_value = values.get("embedding_model")
 
         # Nếu có embedding parameter, xử lý nó
         if kind == "learning" and "embedding" in values:
@@ -1483,7 +1532,6 @@ class LearningEngine:
             raise ValueError("invalid_payload")
         for json_field in {
             "tool_chain",
-            "argument_keys",
             "sample_queries",
             "traces",
         }:
@@ -1541,7 +1589,7 @@ class LearningEngine:
                 raise ValueError("duplicate_key")
         old_workflow = (
             conn.execute(
-                """SELECT * FROM validated_workflows
+                """SELECT * FROM workflows
                    WHERE id=?""",
                 (record_id,),
             ).fetchone()
@@ -1562,13 +1610,13 @@ class LearningEngine:
         ).rowcount
         if kind == "workflow" and affected:
             conn.execute(
-                "UPDATE validated_workflows SET updated_at=? WHERE id=?",
+                "UPDATE workflows SET updated_at=? WHERE id=?",
                 (time.time(), record_id),
             )
         conn.commit()
         new_workflow = (
             conn.execute(
-                """SELECT agent, wiki_path FROM validated_workflows
+                """SELECT tools, wiki_path FROM workflows
                    WHERE id=?""",
                 (record_id,),
             ).fetchone()
@@ -1596,20 +1644,20 @@ class LearningEngine:
                 self._sync_learning_wiki()
             if old_workflow and affected:
                 self._sync_workflow_wiki(
-                    old_workflow["agent"], Path(old_workflow["wiki_path"])
+                    old_workflow["tools"], Path(old_workflow["wiki_path"])
                 )
             if new_workflow and (
                 not old_workflow
-                or new_workflow["agent"] != old_workflow["agent"]
+                or new_workflow["tools"] != old_workflow["tools"]
                 or new_workflow["wiki_path"] != old_workflow["wiki_path"]
             ):
                 self._sync_workflow_wiki(
-                    new_workflow["agent"], Path(new_workflow["wiki_path"])
+                    new_workflow["tools"], Path(new_workflow["wiki_path"])
                 )
         except Exception:
             original_row = old_workflow or old_learning
             restore_table = (
-                "validated_workflows"
+                "workflows"
                 if old_workflow
                 else "learnings"
             )
@@ -1674,15 +1722,15 @@ class LearningEngine:
             }
         if kind == "workflow":
             row = conn.execute(
-                "SELECT * FROM validated_workflows WHERE id=?", (record_id,)
+                "SELECT * FROM workflows WHERE id=?", (record_id,)
             ).fetchone()
             if not row:
                 conn.close()
                 raise LookupError("not_found")
             outcomes = conn.execute(
-                """SELECT id, agent, query, status FROM agent_outcomes
-                   WHERE agent=? ORDER BY created_at DESC LIMIT 20""",
-                (row["agent"],),
+                """SELECT id, tools, query, status FROM outcomes
+                   WHERE tools=? ORDER BY created_at DESC LIMIT 20""",
+                (row["tools"],),
             ).fetchall()
             conn.close()
             return {
@@ -1695,7 +1743,7 @@ class LearningEngine:
             }
         if kind == "outcome":
             row = conn.execute(
-                "SELECT * FROM agent_outcomes WHERE id=?", (record_id,)
+                "SELECT * FROM outcomes WHERE id=?", (record_id,)
             ).fetchone()
             conn.close()
             if not row:
@@ -1765,8 +1813,8 @@ class LearningEngine:
                 return False
             return affected > 0
         table = {
-            "workflow": "validated_workflows",
-            "outcome": "agent_outcomes",
+            "workflow": "workflows",
+            "outcome": "outcomes",
         }.get(kind)
         if not table:
             raise ValueError("unsupported_kind")
@@ -1795,13 +1843,13 @@ class LearningEngine:
         try:
             if workflow and affected:
                 self._sync_workflow_wiki(
-                    workflow["agent"], Path(workflow["wiki_path"])
+                    workflow["tools"], Path(workflow["wiki_path"])
                 )
         except Exception:
             restore = self._get_learning_db()
             columns = list(workflow.keys())
             restore.execute(
-                f"""INSERT INTO validated_workflows
+                f"""INSERT INTO workflows
                     ({', '.join(columns)}) VALUES
                     ({', '.join('?' for _ in columns)})""",
                 [workflow[column] for column in columns],
@@ -1816,141 +1864,10 @@ class LearningEngine:
             raise
         return affected > 0
 
-    def get_recent_agent_outcomes(self, limit: int = 2) -> list[dict]:
-        safe_limit = max(1, min(int(limit), 10))
-        conn = self._get_learning_db()
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT id, agent, query, status, result, traces, created_at "
-            "FROM agent_outcomes ORDER BY id DESC LIMIT ?",
-            (safe_limit,),
-        ).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
-
-    def get_active_routing_corrections(self, limit: int = 8) -> list[dict]:
-        safe_limit = max(1, min(int(limit), 20))
-        conn = self._get_learning_db()
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT id, content, source, created_at FROM learnings "
-            "WHERE type='routing_correction' ORDER BY created_at DESC LIMIT ?",
-            (safe_limit,),
-        ).fetchall()
-        conn.close()
-        corrections: list[dict] = []
-        for row in rows:
-            try:
-                item = json.loads(row["content"])
-            except (TypeError, json.JSONDecodeError):
-                log.warning("Skipping malformed routing correction id=%s", row["id"])
-                continue
-            if not isinstance(item, dict) or item.get("active") is not True:
-                continue
-            item["id"] = row["id"]
-            item["source"] = row["source"]
-            corrections.append(item)
-        return corrections
-
     # Gate chỉ hiểu 3 bucket này. Từng có correction ghi expected_route là
     # câu tiếng Việt ("chỉ trả lời hội thoại") khiến gate in nguyên văn vào
     # prompt mà model nhỏ không map được — phải ép về bucket hợp lệ lúc ghi.
     VALID_CORRECTION_ROUTES = {"general", "general_knowledge", "orchestrator"}
-
-    def store_routing_correction(
-        self,
-        correction_text: str,
-        evidence: str,
-        expected_route: str,
-        max_age_seconds: int = 600,
-    ) -> bool:
-        expected_route = (expected_route or "").strip().lower()
-        if expected_route not in self.VALID_CORRECTION_ROUTES:
-            log.warning(
-                "Routing correction expected_route %r invalid, coercing to 'general'",
-                expected_route,
-            )
-            expected_route = "general"
-        conn = self._get_learning_db()
-        conn.row_factory = sqlite3.Row
-        outcome = conn.execute(
-            "SELECT id, agent, query, created_at FROM agent_outcomes "
-            "WHERE status='success' ORDER BY id DESC LIMIT 1"
-        ).fetchone()
-        if not outcome or time.time() - float(outcome["created_at"]) > max_age_seconds:
-            conn.close()
-            return False
-        from engine.core.memory import strip_emojis
-        payload = json.dumps({
-            "user_query": strip_emojis(outcome["query"]),
-            "selected_route": outcome["agent"],
-            "expected_route": expected_route,
-            "correction_text": strip_emojis(correction_text),
-            "evidence": strip_emojis(evidence),
-            "active": True,
-        }, ensure_ascii=False)
-        conn.execute(
-            "UPDATE agent_outcomes SET status='misrouted' WHERE id=?",
-            (outcome["id"],),
-        )
-        cur = conn.execute(
-            "INSERT INTO learnings "
-            "(type, content, source, importance, created_at) VALUES (?, ?, ?, ?, ?)",
-            (
-                "routing_correction",
-                payload,
-                f"agent_outcome:{outcome['id']}",
-                9,
-                time.time(),
-            ),
-        )
-        conn.commit()
-        conn.close()
-        return cur.rowcount == 1
-
-    def forget_workflow_sample(self, query: str) -> int:
-        """Remove `query` from every validated workflow's sample_queries — the exact-match
-        keys engine.router.replay replays without asking the LLM. Returns how many workflows
-        changed."""
-        key = self._normalize_workflow_query(query)
-        if not key:
-            return 0
-        conn = self._get_learning_db()
-        agents = set()
-        for row in conn.execute("SELECT id, agent, sample_queries FROM validated_workflows").fetchall():
-            samples = json.loads(row["sample_queries"] or "[]")
-            kept = [s for s in samples if self._normalize_workflow_query(s) != key]
-            if len(kept) != len(samples):
-                conn.execute(
-                    "UPDATE validated_workflows SET sample_queries=? WHERE id=?",
-                    (json.dumps(kept, ensure_ascii=False), row["id"]),
-                )
-                agents.add(row["agent"])
-        conn.commit()
-        conn.close()
-        for agent in agents:
-            try:
-                self._sync_workflow_wiki(agent)
-            except Exception as exc:
-                log.warning("Workflow wiki resync failed for %s: %s", agent, exc)
-        return len(agents)
-
-    def unlearn_last_route(self, complaint_text: str, max_age_seconds: int = 600) -> bool:
-        """The user just complained that the last agent call was wrong (it should have been plain
-        chat). A tool that merely ran without error is not proof the route was right, so forget
-        that request as a reusable workflow and record a correction: engine.router then stops
-        replaying it."""
-        conn = self._get_learning_db()
-        outcome = conn.execute(
-            "SELECT query FROM agent_outcomes WHERE status='success' AND created_at >= ? "
-            "ORDER BY id DESC LIMIT 1",
-            (time.time() - max_age_seconds,),
-        ).fetchone()
-        conn.close()
-        if not outcome:
-            return False
-        self.forget_workflow_sample(outcome["query"])
-        return self.store_routing_correction(complaint_text, complaint_text, "general", max_age_seconds)
 
     @staticmethod
     def _truncate_trace_output(val: Any, max_len: int = 500) -> Any:
@@ -1962,251 +1879,6 @@ class LearningEngine:
         if isinstance(val, list):
             return [LearningEngine._truncate_trace_output(v, max_len) for v in val]
         return val
-
-    def record_agent_outcome(self, agent: str, query: str, status: str, result: str, traces: list[dict]) -> int:
-        """Lưu kết quả thực tế của agent; chỉ success mới đủ điều kiện thành lesson."""
-        if status not in ("success", "failed", "cancelled"):
-            raise ValueError("Invalid agent outcome status")
-        import json
-        # store_validated_workflow chỉ cần action_name + outcome từ traces.
-        n = max(len(traces), 1)
-        per_trace_limit = max(200, min(500, 5000 // n))
-        safe_traces = []
-        for t in traces[:12]:
-            safe = {}
-            for k, v in t.items():
-                if k in ("output", "result"):
-                    safe[k] = self._truncate_trace_output(v, per_trace_limit)
-                elif k in ("error_message",):
-                    safe[k] = self._truncate_trace_output(v, 300)
-                elif k == "args":
-                    safe[k] = self._truncate_trace_output(v, 200)
-                else:
-                    safe[k] = v
-            safe_traces.append(safe)
-        traces_json = json.dumps(safe_traces, ensure_ascii=False)
-        if len(traces_json) > 8000:
-            traces_json = json.dumps(safe_traces[:8], ensure_ascii=False)
-        conn = self._get_learning_db()
-        cur = conn.execute(
-            "INSERT INTO agent_outcomes (agent, query, status, result, traces, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (agent, query[:1000], status, result[:4000], traces_json, time.time()),
-        )
-        conn.commit()
-        conn.close()
-        return cur.lastrowid
-
-    @staticmethod
-    def _normalize_workflow_query(text: str) -> str:
-        return re.sub(r"\s+", " ", (text or "").strip()).casefold()
-
-    def get_exact_workflow_candidates(self, text: str) -> list[dict]:
-        """Return every validated workflow whose saved command exactly matches text."""
-        normalized_text = self._normalize_workflow_query(text)
-        if not normalized_text:
-            return []
-        corrections = self.get_active_routing_corrections(limit=8)
-        if any(
-            self._normalize_workflow_query(item.get("user_query", ""))
-            == normalized_text
-            and item.get("expected_route") in {"general", "general_knowledge"}
-            for item in corrections
-        ):
-            return []
-        return [
-            candidate
-            for candidate in self.get_validated_workflow_candidates(limit=None)
-            if any(
-                self._normalize_workflow_query(sample) == normalized_text
-                for sample in candidate["sample_queries"]
-            )
-        ]
-
-    def get_validated_workflow_candidates(self, limit: int | None = 5) -> list[dict]:
-        """Return workflow metadata for engine.router.replay; no similarity score is applied."""
-        import json
-        safe_limit = None if limit is None else max(1, min(int(limit), 20))
-        conn = self._get_learning_db()
-        select_sql = (
-            "SELECT id, agent, intent, tool_chain, argument_keys, success_evidence, "
-            "sample_queries, validation_count FROM validated_workflows "
-            "WHERE status='validated' ORDER BY validation_count DESC, updated_at DESC"
-        )
-        rows = (
-            conn.execute(select_sql).fetchall()
-            if safe_limit is None
-            else conn.execute(select_sql + " LIMIT ?", (safe_limit,)).fetchall()
-        )
-        conn.close()
-        candidates = []
-        for row in rows:
-            try:
-                tool_chain = json.loads(row["tool_chain"] or "[]")
-                argument_keys = json.loads(row["argument_keys"] or "[]")
-                sample_queries = json.loads(row["sample_queries"] or "[]")
-            except (TypeError, json.JSONDecodeError):
-                log.warning("Skipping malformed validated workflow id=%s", row["id"])
-                continue
-            if not row["agent"] or not tool_chain:
-                continue
-            candidates.append({
-                "id": row["id"],
-                "agent": row["agent"],
-                "intent": row["intent"],
-                "tool_chain": tool_chain,
-                "argument_keys": argument_keys,
-                "success_evidence": row["success_evidence"],
-                "sample_queries": sample_queries,
-                "validation_count": row["validation_count"],
-            })
-        return candidates
-
-    async def store_validated_workflow(self, outcome_id: int) -> dict | None:
-        """Distill a verified agent/tool execution into DB metadata and a concise Wiki playbook."""
-        import json
-        conn = self._get_learning_db()
-        outcome = conn.execute("SELECT agent, query, status, result, traces FROM agent_outcomes WHERE id=?", (outcome_id,)).fetchone()
-        if not outcome or outcome["status"] != "success":
-            conn.close()
-            return None
-        try:
-            traces = json.loads(outcome["traces"] or "[]")
-        except json.JSONDecodeError:
-            conn.close()
-            return None
-        if not traces or not all(trace.get("outcome") == "success" for trace in traces):
-            conn.close()
-            return None
-        from engine.core.memory import strip_emojis
-        agent = outcome["agent"]
-        original_query = strip_emojis((outcome["query"] or "").strip())
-
-        # Execution traces are the source of truth for what ran successfully.
-        # The LLM only distils descriptive metadata; it must not veto a
-        # verified tool execution or replace the executed agent/tool chain.
-        tool_chain = [str(trace.get("action_name", "")) for trace in traces if trace.get("action_name")]
-        if not tool_chain:
-            conn.close()
-            return None
-        from engine.prompts.learning import build_learning_workflow_prompt
-        distillation_prompt = build_learning_workflow_prompt(
-            original_query[:1500],
-            agent,
-            json.dumps(tool_chain, ensure_ascii=False),
-            (outcome["result"] or "")[:2000],
-            json.dumps(traces, ensure_ascii=False)[:2500],
-        )
-        try:
-            from engine.server.llm_server import call_llm
-            from engine.core.json_parser import safe_json_loads
-            response = await call_llm(
-                messages=[{"role": "user", "content": distillation_prompt}],
-                temperature=0.0,
-                thinking=False,
-                response_format={"type": "json_object"}
-            )
-            decision = safe_json_loads(response.choices[0].message.content.strip())
-        except Exception as distillation_err:
-            log.warning(
-                "Workflow distillation failed; storing verified trace with fallback metadata "
-                "outcome_id=%s: %s",
-                outcome_id,
-                distillation_err,
-            )
-            decision = {}
-        learned_intent = strip_emojis(str(decision.get("intent") or "").strip()) if isinstance(decision, dict) else ""
-        placeholder_intents = {
-            "concise canonical user intent",
-            "canonical user intent",
-            "user intent",
-            "n/a",
-        }
-        contract_is_grounded = (
-            isinstance(decision, dict)
-            and decision.get("agent") == agent
-            and decision.get("tools") == tool_chain
-        )
-        if (
-            not learned_intent
-            or learned_intent.casefold() in placeholder_intents
-            or not contract_is_grounded
-        ):
-            learned_intent = original_query or f"{agent}: {', '.join(tool_chain)}"
-            log.warning(
-                "Workflow distillation metadata was incomplete; using verified trace metadata "
-                "outcome_id=%s",
-                outcome_id,
-            )
-        argument_keys = sorted({key for trace in traces for key in (trace.get("args") or {}).keys()})
-        intent = learned_intent
-        now = time.time()
-        wiki_path = str(WORKFLOWS_WIKI_DIR / f"{agent}.md")
-        encoded_chain = json.dumps(tool_chain, ensure_ascii=False)
-        existing = conn.execute(
-            "SELECT id, validation_count, sample_queries FROM validated_workflows WHERE agent=? AND tool_chain=?", (agent, encoded_chain)
-        ).fetchone()
-        if existing:
-            workflow_id = existing["id"]
-            validation_count = existing["validation_count"] + 1
-            sample_queries = json.loads(existing["sample_queries"] or "[]")
-            if original_query and original_query.lower() not in (s.lower() for s in sample_queries):
-                sample_queries.append(original_query)
-            conn.execute(
-                "UPDATE validated_workflows SET validation_count=?, updated_at=?, sample_queries=? WHERE id=?",
-                (validation_count, now, json.dumps(sample_queries, ensure_ascii=False), workflow_id)
-            )
-        else:
-            sample_queries = [original_query] if original_query else []
-            cur = conn.execute(
-                "INSERT INTO validated_workflows (agent, intent, tool_chain, argument_keys, success_evidence, wiki_path, sample_queries, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (agent, intent, encoded_chain, json.dumps(argument_keys, ensure_ascii=False),
-                 "all tool traces returned success", wiki_path, json.dumps(sample_queries, ensure_ascii=False), now, now),
-            )
-            workflow_id = cur.lastrowid
-            validation_count = 1
-        conn.commit()
-        rows = conn.execute("SELECT * FROM validated_workflows WHERE agent=? ORDER BY validation_count DESC, updated_at DESC", (agent,)).fetchall()
-        conn.close()
-        WORKFLOWS_WIKI_DIR.mkdir(parents=True, exist_ok=True)
-        lines = [f"# Validated workflows: {agent}", ""]
-        for row in rows:
-            sq = json.loads(row["sample_queries"] or "[]")
-            lines.extend([
-                f"## {row['intent']}",
-                f"- Route: {row['agent']}",
-                f"- Tool chain: {', '.join(json.loads(row['tool_chain']))}",
-                f"- Argument keys: {', '.join(json.loads(row['argument_keys'])) or 'none'}",
-                f"- Sample queries: {'; '.join(sq)}" if sq else "- Sample queries: (none)",
-                f"- Success evidence: {row['success_evidence']}",
-                f"- Validations: {row['validation_count']}",
-                "",
-            ])
-        Path(wiki_path).write_text("\n".join(lines), encoding="utf-8")
-        self._sync_workflow_hub()
-        log.info(
-            "🧪 Validated workflow stored id=%s agent=%s tools=%s validations=%s "
-            "queries=%d db=stored wiki=synced path=%s",
-            workflow_id,
-            agent,
-            ','.join(tool_chain),
-            validation_count,
-            len(sample_queries),
-            wiki_path,
-        )
-        return {"agent": agent, "tool_chain": tool_chain, "argument_keys": argument_keys}
-
-    async def reflect_on_session(self, session_messages: list, outcome_id: int | None = None) -> dict:
-        """Phản tư về một phiên hội thoại; chỉ lesson chất lượng mới được lưu vào jarvis.db."""
-        if not session_messages or len(session_messages) < 2:
-            return {"success": False, "reason": "No messages or too few messages to reflect on"}
-
-        # Chat text is not evidence. Only verified execution becomes a reusable workflow;
-        # conversation improvement requires explicit user feedback and is handled separately.
-        if outcome_id:
-            workflow = await self.store_validated_workflow(outcome_id)
-            return {"success": bool(workflow), "workflow": workflow, "reason": "validated outcome required"}
-        return {"success": False, "reason": "conversation requires explicit feedback"}
 
     def get_stats(self) -> dict:
 

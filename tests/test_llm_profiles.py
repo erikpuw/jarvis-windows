@@ -108,6 +108,8 @@ def test_screen_uses_active_model_and_strips_think():
         assert seen["model"] == model, (flags, seen["model"])
         assert seen["extra_body"]["chat_template_kwargs"] == {"enable_thinking": False}
         assert out == "Có cửa sổ Chrome", out
+        # 2026-10-13: mô tả vision hiện nguyên văn (display) → không được chào/xưng "bạn" (e2e: xưng sai: bạn)
+        assert screen.NO_ADDRESS in seen["messages"][0]["content"][1]["text"]
 
 
 def test_strip_think_gemma_keeps_gt_characters():
@@ -182,7 +184,7 @@ def test_adapter_params_match_legacy_matrix(monkeypatch):
 
 
 def test_adapter_system_merge_and_think_inject(monkeypatch):
-    """Qwen/Bonsai gộp system về đầu; Gemma giữ nguyên, không chèn <|think|>
+    """Mọi model gộp system về một system turn ở đầu (Gemma 4 từ 2026-10-08); Gemma không chèn <|think|>
     (template Gemma tự bật thinking via enable_thinking=true)."""
     msgs = [{"role": "user", "content": "a"},
             {"role": "system", "content": "SYS"},
@@ -200,7 +202,8 @@ def test_adapter_system_merge_and_think_inject(monkeypatch):
         seen_think = _call_params(monkeypatch, [{"role": "user", "content": "a"}], thinking=True)
     finally:
         _restore(saved)
-    assert [m["role"] for m in seen["messages"]] == ["user", "system", "user"]
+    # Gemma 4: một system turn duy nhất ở đầu (ai.google.dev, đo 2026-10-08)
+    assert seen["messages"][0] == {"role": "system", "content": "SYS"}
     # Gemma không chèn <|think|> nữa - reasoning_format="deepseek" + enable_thinking=true xử lý
     assert not any(msg.get("content", "").startswith("<|think|>") for msg in seen_think["messages"]), \
         "Gemma should not inject <|think|>"
@@ -213,3 +216,38 @@ if __name__ == "__main__":
     test_screen_uses_active_model_and_strips_think()
     test_strip_think_gemma_keeps_gt_characters()
     print("ok")
+
+
+def test_closing_stream_early_closes_the_server_connection(monkeypatch):
+    """Log 2026-10-13 16:10: dừng đọc giữa chừng (kẹt lặp) mà không đóng kết nối thì llama-server vẫn sinh tới
+    max_tokens, chiếm slot lượt sau."""
+    import asyncio
+    from types import SimpleNamespace
+    closed = []
+
+    class _Stream:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            return SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="hết "))])
+
+        async def close(self):
+            closed.append(True)
+
+    class _Completions:
+        async def create(self, **kw):
+            return _Stream()
+
+    class _Client:
+        model = "test-model"
+        chat = SimpleNamespace(completions=_Completions())
+    monkeypatch.setattr(llm_server, "get_llm_client", lambda: _Client())
+
+    async def run():
+        gen = await llm_server._call_llm_inner([{"role": "user", "content": "x"}], stream=True, temperature=0.0)
+        async for _ in gen:
+            break
+        await gen.aclose()
+    asyncio.run(run())
+    assert closed == [True]

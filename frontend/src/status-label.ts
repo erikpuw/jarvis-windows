@@ -80,3 +80,36 @@ export function mountStatusLabel(row: HTMLElement, label: HTMLElement): void {
   }
   arm();
 }
+
+// ---- row changes place when the command bar hides/shows (#command-container loses/gains .visible) ----
+// justify-content can't be animated, so the row would jump from the left to the middle. Instead it fades out and shrinks to 85 %
+// where it was, then fades in and grows back to 100 % where it is now (the same both ways, 250 ms in total). The layout is already
+// the new one when the observer runs, so the old spot is faked with a translateX on the whole row; orb and label keep their own motion.
+const MOVE_MS = 250;
+const MOVE_SCALE = 0.85;
+
+export function mountStatusRowFade(row: HTMLElement, label: HTMLElement): void {
+  const box = row.parentElement;
+  const orb = row.querySelector<HTMLElement>("#status-orb");
+  if (!box || !orb || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  let visible = box.classList.contains("visible");
+  let anim: Animation | null = null;
+
+  new MutationObserver(() => {
+    const now = box.classList.contains("visible");
+    if (now === visible) return;
+    visible = now;
+    const rr = row.getBoundingClientRect(), o = orb.getBoundingClientRect(), l = label.getBoundingClientRect();
+    const left = o.left, right = Math.max(o.right, l.right), centre = (left + right) / 2;
+    const leftCentre = rr.left + parseFloat(getComputedStyle(row).paddingLeft) + (right - left) / 2, midCentre = rr.left + rr.width / 2;
+    const dx = visible ? midCentre - centre : leftCentre - centre; // from where the content was to where it is now
+    anim?.cancel();
+    row.style.transformOrigin = `${centre - rr.left}px 50%`;
+    anim = row.animate([
+      { offset: 0, transform: `translateX(${dx}px) scale(1)`, opacity: 1, easing: "ease-in" },
+      { offset: 0.5, transform: `translateX(${dx}px) scale(${MOVE_SCALE})`, opacity: 0 },
+      { offset: 0.5, transform: `scale(${MOVE_SCALE})`, opacity: 0, easing: "ease-out" },
+      { offset: 1, transform: "scale(1)", opacity: 1 },
+    ], { duration: MOVE_MS });
+  }).observe(box, { attributes: true, attributeFilter: ["class"] });
+}

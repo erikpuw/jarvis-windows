@@ -102,13 +102,138 @@ _MAX_RULE_BULLETS = 6
 _MAX_RULE_CHARS = 900
 
 
-def _cap_rules(text: str) -> str:
+# STYLE.md: tối đa 12 luật sửa lỗi giao tiếp tinh gọn; routing vẫn 6.
+_STYLE_MAX_BULLETS = 12
+_STYLE_MAX_CHARS = 3500  # dưới STYLE_MAX_CHARS (4000) của trình sửa tay
+_ADMIN_LABEL_RE = re.compile(r"\*\*\[MỚI\]\*\*\s*|\s*\(Từ `[^`]+`(?: trong Preferences\.md)?\)|\s*\(dựa trên `[^`]+`\)")
+
+_STYLE_PROMPT_MAX = 8
+# Luật xưng hô chỉ ở <danh_tinh> của prompt/jarvis.md; tool/agent/lệnh không phải giọng điệu (spec 2026-10-12 mục 1.4).
+# Chỉ bỏ dòng NÓI VỀ xưng hô — không bỏ dòng có chữ "tôi/ngài": luật evolution viết ngôi thứ nhất (log 2026-10-12: mất 10/11).
+_STYLE_BANNED = re.compile(r"xưng|thưa ngài|gọi người dùng|cách gọi|(?<!\w)(?:tool|agents?|tác nhân|lệnh|json)(?!\w)|@",
+                           re.IGNORECASE)
+
+
+def style_lines(text: str) -> list[str]:
+    """Dòng STYLE.md được nạp vào prompt và được ghi lại: chỉ '- …', bỏ nhãn quản trị, trùng, xưng hô, tool; ≤ 8."""
+    out, seen = [], set()
+    for line in (text or "").splitlines():
+        if not line.lstrip().startswith("- "):
+            continue
+        clean = " ".join(_ADMIN_LABEL_RE.sub("", line.strip()).split())
+        key = re.sub(r"\W+", " ", clean).strip().lower()
+        if not key or key in seen or _STYLE_BANNED.search(clean[2:]):
+            continue
+        seen.add(key)
+        out.append(clean)
+    return out[:_STYLE_PROMPT_MAX]
+
+
+def _is_off_topic_style_rule(line: str) -> bool:
+    """Kiểm tra xem luật có lạc đề khỏi phong cách giao tiếp/giọng điệu (STYLE) không.
+    STYLE chỉ quản lý cách nói năng, xưng hô, giọng điệu, thái độ, emoji, độ dài.
+    Không được chứa các quy tắc nghiệp vụ/công cụ cụ thể (như tra giá, đi ngủ, mở app).
+    """
+    low = line.lower()
+    off_topic_patterns = [
+        r"hỏi\s+về\s+giá",
+        r"giá\s+một\s+mặt\s+hàng",
+        r"khu\s+vực\s+cụ\s+thể",
+        r"đi\s+ngủ",
+        r"chế\s+độ\s+chờ",
+        r"gọi\s+(?:các\s+)?tác\s+nhân",
+        r"gọi\s+agent",
+        r"mở\s+(?:edge|terminal|app|chrome)",
+        r"thu\s+nhỏ",
+        r"phóng\s+to",
+        r"windows\s+update",
+        r"tiến\s+độ\s+công\s+việc",
+        r"cung\s+cấp\s+hình\s+ảnh",
+    ]
+    return any(re.search(p, low) for p in off_topic_patterns)
+
+
+def _deduplicate_style_bullets(bullets: list[str]) -> list[str]:
+    """Khử trùng lặp và gộp các luật phong cách giao tiếp cùng chủ đề.
+    - Xưng hô / đại từ: giữ 1 luật duy nhất.
+    - Hài hước / dí dỏm / giọng miền Nam: giữ 1 luật duy nhất.
+    - Emoji: giữ 1 luật duy nhất.
+    - Phản ứng khi người dùng không hài lòng / phàn nàn: gộp lại thành 1 luật tinh gọn.
+    - Lời chào kết thúc: giữ 1 luật duy nhất.
+    - Bỏ các luật trùng lặp ý hoặc có độ tương đồng từ ngữ cao.
+    """
+    cleaned: list[str] = []
+    has_pronoun = False
+    has_humor = False
+    has_emoji = False
+    has_salutation = False
+    has_frustration = False
+
+    for b in bullets:
+        line = b.strip()
+        if not line.startswith("- "):
+            continue
+        line_clean = _ADMIN_LABEL_RE.sub("", line).strip()
+        low = line_clean.lower()
+
+        # 1. Nhóm xưng hô
+        if "xưng 'tôi'" in low or "gọi người dùng là 'ngài'" in low or "quy tắc về xưng hô" in low:
+            if not has_pronoun:
+                cleaned.append("- Tôi luôn xưng 'tôi' và gọi người dùng là 'ngài' trong mọi tương tác.")
+                has_pronoun = True
+            continue
+
+        # 2. Nhóm hài hước miền Nam
+        if "hài hước" in low or "dí dỏm" in low or "miền nam sài gòn" in low:
+            if not has_humor:
+                cleaned.append("- Giọng văn của tôi mang phong cách hài hước và dí dỏm đặc trưng của miền Nam Sài Gòn.")
+                has_humor = True
+            continue
+
+        # 3. Nhóm emoji
+        if "emoji" in low:
+            if not has_emoji:
+                cleaned.append("- Tôi sử dụng emoji phù hợp để làm cho cuộc trò chuyện sinh động hơn.")
+                has_emoji = True
+            continue
+
+        # 4. Nhóm thái độ khi người dùng phàn nàn / không hài lòng
+        if "không hài lòng" in low or "thất vọng" in low or "xin lỗi hoặc giải thích quá dài" in low:
+            if not has_frustration:
+                cleaned.append("- Khi ngài bày tỏ sự không hài lòng, tôi tránh xin lỗi dài dòng hoặc cảm xúc quá đà, tập trung giải quyết vấn đề.")
+                has_frustration = True
+            continue
+
+        # 5. Nhóm lời chào kết thúc
+        if "lời chào kết thúc" in low or "chào kết thúc" in low:
+            if not has_salutation:
+                cleaned.append("- Chỉ sử dụng lời chào kết thúc một lần duy nhất ở cuối phản hồi khi cần.")
+                has_salutation = True
+            continue
+
+        # 6. Các luật khác: kiểm tra trùng lặp với các luật đã giữ lại
+        if any(_similar(line_clean, c) for c in cleaned):
+            continue
+
+        cleaned.append(line_clean)
+
+    return cleaned
+
+
+def _style_sources(sources: list[str], current_style: str) -> list[str]:
+    """Căn cứ cho luật STYLE: bài học nguồn + luật đang có trong STYLE.md (đã duyệt ở lần trước). Thiếu phần sau thì luật
+    cũ không liên quan bị coi là bịa và bị xóa (evolution_probe 2026-10-08: luật emoji/khen mất 3/3)."""
+    return sources + [_ADMIN_LABEL_RE.sub("", b)[2:] for b in _extract_bullets(current_style)]
+
+
+def _cap_rules(text: str, max_bullets: int = _MAX_RULE_BULLETS, max_chars: int = _MAX_RULE_CHARS) -> str:
     """Hard limit for rule files that are re-read into prompts on every call:
-    the "4-6 bullets" ask in the LLM prompt is only a request. Keeps the
-    header, drops duplicate bullets, then at most 6 bullets / 900 chars."""
+    the bullet-count ask in the LLM prompt is only a request. Keeps the header, strips admin labels
+    ([MỚI], nguồn gốc), drops duplicate bullets, then at most max_bullets / max_chars."""
     head, bullets, seen = [], [], set()
     for line in text.splitlines():
         if line.lstrip().startswith("- "):
+            line = _ADMIN_LABEL_RE.sub("", line)
             key = re.sub(r"\W+", " ", line).strip().lower()
             if key not in seen:
                 seen.add(key)
@@ -116,8 +241,8 @@ def _cap_rules(text: str) -> str:
         else:
             head.append(line)
     kept, size = [], 0
-    for b in bullets[:_MAX_RULE_BULLETS]:
-        if size + len(b) > _MAX_RULE_CHARS:
+    for b in bullets[:max_bullets]:
+        if size + len(b) > max_chars:
             break
         kept.append(b)
         size += len(b)
@@ -134,18 +259,6 @@ def _newest_entries(text: str, limit: int = _MAX_INPUT_ENTRIES) -> str:
     entry_idx = [i for i, l in enumerate(lines) if l.startswith("- [`")]
     drop = set(entry_idx[:-limit]) if len(entry_idx) > limit else set()
     return "\n".join(l for i, l in enumerate(lines) if i not in drop)
-
-
-def _backup_before_overwrite(path: Path) -> None:
-    """Sao lưu bản hiện tại sang <path>.bak trước khi Evolution ghi đè, để có
-    thể khôi phục thủ công nếu LLM đánh giá sai và loại bỏ nhầm luật tốt."""
-    if not path.exists():
-        return
-    try:
-        backup_path = path.with_suffix(path.suffix + ".bak")
-        _write_text_atomic(backup_path, path.read_text(encoding="utf-8"))
-    except Exception as e:
-        log.warning(f"🧬 Không sao lưu được {path.name} trước khi ghi đè: {e}")
 
 
 def _extract_bullets(md_text: str) -> list[str]:
@@ -172,15 +285,24 @@ def _merge_rules(new_text: str, old_text: str) -> str | None:
     """None = same bullet set as current, nothing to write. A block with under half
     the current bullets is a delta, not a rewrite: merge it in new-first so the
     existing rules are not clobbered."""
-    old_b = _extract_bullets(old_text)
-    # A reworded copy of an existing rule keeps the old wording, so it is not "new".
-    new_text = "\n".join(
-        next((o for o in old_b if _similar(l, o)), l) if l.lstrip().startswith("- ") else l
-        for l in new_text.splitlines()
-    ) + "\n"
-    if len(_extract_bullets(new_text)) * 2 < len(old_b):
-        new_text = _cap_rules(new_text + "\n" + "\n".join(old_b))
-    return None if set(_extract_bullets(new_text)) == set(old_b) else new_text
+    old_b = [_ADMIN_LABEL_RE.sub("", b) for b in _extract_bullets(old_text)]
+    new_b = [_ADMIN_LABEL_RE.sub("", b) for b in _extract_bullets(new_text)]
+
+    # Hợp nhất và khử trùng lặp có chọn lọc
+    all_bullets = new_b + [o for o in old_b if not any(_similar(o, n) for n in new_b)]
+    deduped = _deduplicate_style_bullets(all_bullets)
+
+    # Giới hạn số lượng tối đa _STYLE_MAX_BULLETS và dung lượng _STYLE_MAX_CHARS
+    kept_bullets = []
+    size = 0
+    for b in deduped[:_STYLE_MAX_BULLETS]:
+        if size + len(b) > _STYLE_MAX_CHARS:
+            break
+        kept_bullets.append(b)
+        size += len(b)
+
+    final_text = "# Self Evolution Style Rules\n" + "\n".join(kept_bullets) + "\n"
+    return None if set(kept_bullets) == set(old_b) else final_text
 
 
 # Độ phủ từ vựng tối thiểu: luật có căn cứ khi ≥ 40% số từ (đã bỏ dấu) của luật nằm trong một bài học nguồn
@@ -198,15 +320,19 @@ def _bad_rule(line: str, sources: list[str], routing: bool) -> str | None:
     lẫn routing) dùng độ phủ từ vựng của luật trong bài học nguồn, không dùng cosine embedding
     (e5-small không phân biệt được chủ đề; đo 2026-10-01)."""
     if not routing:
-        # Luật STYLE chỉ bị chặn khi chứa chính các thẻ giao thức; hỏi/gợi ý/công cụ là phong cách hợp lệ.
+        # Luật STYLE chỉ bị chặn khi chứa chính các thẻ giao thức hoặc lạc đề nghiệp vụ cụ thể
         forbidden = ["<ask_user>", "<action_run>", "<offer_protocol>"]
         line_lower = line.lower()
         for kw in forbidden:
             if kw in line_lower:
-                return f"luật STYLE vi phạm chủ đề bị cấm ({kw}): do persona, soul_rules và offer_protocol quản lý độc quyền"
+                return f"luật STYLE vi phạm chủ đề bị cấm ({kw}): do persona và soul_rules quản lý độc quyền"
+        if _is_off_topic_style_rule(line):
+            return "luật nghiệp vụ/công cụ cụ thể không thuộc phong cách giao tiếp STYLE"
     else:
-        from engine.orchestrator.registry import AGENT_REGISTRY
-        known = set(AGENT_REGISTRY) | {f"agent_{k}" for k in AGENT_REGISTRY} | {"agent_control"}
+        from engine.tools import registry
+        known = set(registry.names()) | {f"agent_{k}" for k in registry.names()} | {"agent_control"}
+
+
         if re.search(r"@control\s+`?agent_(?!control)", line):
             return "@control chỉ dành cho agent_control"
         unknown = [t for t in re.findall(r"\bagent_[a-z_]+", line) if t not in known]
@@ -342,7 +468,7 @@ async def _run_cognitive_evolution() -> dict:
 
         response = await call_llm(
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
+            temperature=0.0,  # tổng hợp luật có cấu trúc: tất định (0.3 dao động 2/3, evolution_probe 2026-10-08)
             thinking=False
         )
         content = response.choices[0].message.content.strip()
@@ -378,13 +504,14 @@ async def _run_cognitive_evolution() -> dict:
                 else:
                     routing_bullets.append(line.strip())
 
-        style_rules = _cap_rules(strip_emojis(parsed.get("style_rules", "").strip()))
-        if "# Self Evolution Style Rules" in style_rules and (style_rules := await asyncio.to_thread(_prepare_rules, style_rules, current_style, sources, False)):
+        style_rules = _cap_rules(strip_emojis(parsed.get("style_rules", "").strip()), _STYLE_MAX_BULLETS, _STYLE_MAX_CHARS)
+        if "# Self Evolution Style Rules" in style_rules and (style_rules := await asyncio.to_thread(_prepare_rules, style_rules, current_style, _style_sources(sources, current_style), False)):
+            # Cùng bộ lọc với engine/turn/prompt.py khi nạp (spec 2026-10-12 mục 1.4)
+            style_rules = "# Self Evolution Style Rules\n" + "\n".join(style_lines(style_rules)) + "\n"
             STYLE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            _backup_before_overwrite(STYLE_FILE)
             _write_text_atomic(STYLE_FILE, style_rules)
             style_written = True
-            log.info(f"🧬 Đã cập nhật style rules: {STYLE_FILE} (bản cũ lưu tại {STYLE_FILE.name}.bak)")
+            log.info(f"🧬 Đã cập nhật style rules: {STYLE_FILE}")
 
         if routing_bullets or style_written:
             final_style = style_rules if style_written else current_style

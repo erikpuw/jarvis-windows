@@ -13,6 +13,7 @@ import { apiGet } from "./api";
 import { registerLockable, isUnlocked } from "./lock";
 import { makeIcon } from "../icons";
 import { MessagesSquare, ScrollText, ShieldAlert, AudioLines, type IconNode } from "lucide";
+import { formatMarkdown } from "../markdown";
 
 type TabId = "history" | "jarvis" | "security" | "tts";
 type HistView = "all" | "sessions";
@@ -111,7 +112,7 @@ function renderHistory(history: ChatMessage[]): void {
     item.className = `history-item ${msg.role}`;
     const body = document.createElement("div");
     body.className = "history-content";
-    body.textContent = String(msg.content ?? "").trim();
+    body.innerHTML = formatMarkdown(String(msg.content ?? "").trim());
     const time = document.createElement("span");
     time.className = "history-time";
     time.textContent = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });

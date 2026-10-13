@@ -2,12 +2,11 @@
 from engine.prompts import load
 
 
-def build_learning_propose_prompt(context: str, agent_outcomes: str = "", just_learned: str = "") -> str:
+def build_learning_propose_prompt(context: str, just_learned: str = "") -> str:
     """Xây dựng prompt đề xuất bài học tự phản tư vòng 1."""
     return load(
         "learning_propose",
         context=context,
-        agent_outcomes=agent_outcomes or "(không có)",
         just_learned=just_learned or "(không có)",
     )
 
@@ -15,13 +14,6 @@ def build_learning_propose_prompt(context: str, agent_outcomes: str = "", just_l
 def build_learning_critique_prompt(proposal: str, existing_item: str = "") -> str:
     """Xây dựng prompt phản biện bài học vòng 2."""
     return load("learning_critique", proposal=proposal, existing_item=existing_item or "Không có mục nào tương tự.")
-
-
-def build_learning_workflow_prompt(user_request: str, agent: str, tools: str, result: str, traces: str) -> str:
-    """Chưng cất metadata workflow đã chạy thành công (giữ nguyên bản cũ trong learning.py)."""
-    return load(
-        "learning_workflow", user_request=user_request, agent=agent, tools=tools, result=result, traces=traces
-    ).rstrip("\n")
 
 
 def build_evolution_prompt(

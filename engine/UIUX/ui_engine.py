@@ -78,13 +78,15 @@ async def health_detailed():
     import os
     import time
     import httpx
+    from engine.server.llm_server import check_llm_server, check_embed_server, check_stream_tts_server
     
     # 1. LLM (llama.cpp) Status
-    llm_url = os.getenv("LOCAL_URL", "").strip()
+    llm_url = (os.getenv("LOCAL_URL") or "http://127.0.0.1:8080/v1").strip()
     llm_key = os.getenv("LOCAL_API_KEY", "").strip()
-    llm_status = "offline"
+    llm_online, llm_msg, llm_port = check_llm_server(force=True)
+    llm_status = "online" if llm_online else "chờ kết nối"
     llm_response_time = None
-    if llm_url:
+    if llm_online and llm_url:
         try:
             start_time = time.perf_counter()
             async with httpx.AsyncClient(timeout=2.0) as client:
@@ -97,10 +99,18 @@ async def health_detailed():
                 else:
                     llm_status = f"error_http_{resp.status_code}"
             llm_response_time = round((time.perf_counter() - start_time) * 1000, 2)
-        except Exception as e:
-            llm_status = f"offline ({type(e).__name__})"
-    else:
-        llm_status = "not_configured"
+        except Exception:
+            llm_status = "chờ kết nối"
+
+    # 1b. Embed Status (llama.cpp embed server)
+    embed_url = (os.getenv("LOCAL_EMBED_URL") or "http://127.0.0.1:8081/v1").strip()
+    embed_online, embed_msg, embed_port = check_embed_server(force=True)
+    embed_status = "online" if embed_online else "chờ kết nối"
+
+    # 1c. stream_TTS Status (port 8082)
+    tts_stream_url = (os.getenv("TTS_STREAM_URL") or "http://127.0.0.1:8082").strip()
+    stream_tts_online, stream_tts_msg, stream_tts_port = check_stream_tts_server(force=True)
+    stream_tts_status = "online" if stream_tts_online else "chờ kết nối"
 
     # 2. Redis Status
     redis_status = "offline"
@@ -121,11 +131,14 @@ async def health_detailed():
     try:
         from engine.core.rag_engine import get_rag_engine
         rag = get_rag_engine()
-        try:
-            from engine.server.llm_server import get_embed_client
-            await rag.try_self_heal(get_embed_client())
-        except Exception as heal_err:
-            log.warning(f"RAG self-heal check failed: {heal_err}")
+        if embed_online:
+            try:
+                from engine.server.llm_server import get_embed_client
+                embed_cl = get_embed_client()
+                if embed_cl:
+                    await rag.try_self_heal(embed_cl)
+            except Exception as heal_err:
+                log.warning(f"RAG self-heal check failed: {heal_err}")
         rag_enabled = rag.enabled
         rag_chunks = len(rag.chunks)
         rag_files_count = len(rag.get_indexed_files())
@@ -150,8 +163,22 @@ async def health_detailed():
         "status": "online",
         "llm": {
             "status": llm_status,
+            "port": llm_port,
+            "message": llm_msg,
             "url": llm_url,
             "response_time_ms": llm_response_time
+        },
+        "embed": {
+            "status": embed_status,
+            "port": embed_port,
+            "message": embed_msg,
+            "url": embed_url
+        },
+        "stream_tts": {
+            "status": stream_tts_status,
+            "port": stream_tts_port,
+            "message": stream_tts_msg,
+            "url": tts_stream_url
         },
         "redis": {
             "status": redis_status
@@ -211,61 +238,41 @@ async def api_rag_status():
     """Trạng thái RAG engine: danh sách file đã index, chunk count, watch folder."""
     try:
         from engine.core.rag_engine import get_rag_engine
-        from engine.core.rag_watcher import get_watch_stats
-        import os
-        from pathlib import Path
+        from engine.core.rag_watcher import get_watch_stats, watch_folder
+        from engine.server.llm_server import check_embed_server, get_embed_client
 
         rag = get_rag_engine()
-        try:
-            from engine.server.llm_server import get_embed_client
-            await rag.try_self_heal(get_embed_client())
-        except Exception as heal_err:
-            log.warning(f"RAG self-heal check failed: {heal_err}")
+        embed_online, embed_msg, embed_port = check_embed_server()
+        if embed_online:
+            try:
+                embed_cl = get_embed_client()
+                if embed_cl:
+                    await rag.try_self_heal(embed_cl)
+            except Exception as heal_err:
+                log.warning(f"RAG self-heal check failed: {heal_err}")
         indexed_files = rag.get_indexed_files()
         watch_stats = get_watch_stats()
-
-        _default_watch = str(Path(__file__).parent.parent.parent / "data" / "documents")
-        watch_folder = os.getenv("RAG_WATCH_FOLDER", _default_watch)
 
         return {
             "enabled": rag.enabled,
             "total_chunks": len(rag.chunks),
             "indexed_files": indexed_files,
-            "watch_folder": watch_folder,
+            "watch_folder": str(watch_folder()),
             "watch_db": watch_stats,
+            "embed_status": "online" if embed_online else "chờ kết nối",
+            "embed_message": embed_msg,
         }
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @router.delete("/api/rag/document")
-async def api_rag_remove_document(
-    file_path: str | None = None,
-    document_id: str | None = None,
-):
-    """Xóa tài liệu khỏi RAG index theo đường dẫn (file trong thư mục watcher)
-    hoặc theo document_id (tài liệu lưu qua chat, không có file_path thân
-    thiện với người dùng)."""
-    if not file_path and not document_id:
-        return JSONResponse(
-            {"success": False, "error": "Cần truyền file_path hoặc document_id."},
-            status_code=400,
-        )
+async def api_rag_remove_document(file_path: str):
+    """Xóa một tệp khỏi kho: bỏ chỉ mục và chuyển tệp gốc vào thùng rác của vault (cùng logic "@rag xóa")."""
     try:
-        from engine.core.rag_engine import get_rag_engine
-        rag = get_rag_engine()
-        if document_id:
-            # Tài liệu lưu qua chat không được rag_watch.db theo dõi, nên
-            # không cần (và không thể) đồng bộ mark_removed() ở đây.
-            removed = await rag.remove_by_document_id(document_id)
-        else:
-            from engine.core.rag_watcher import mark_removed
-            removed = await rag.remove_document(file_path)
-            # Keep rag_watch.db in sync with the index - otherwise _is_indexed()
-            # keeps believing this file is already indexed and a later
-            # scan_existing() (e.g. after a fixed re-upload) never re-indexes it.
-            mark_removed(str(Path(file_path).resolve()))
-        return {"success": True, "chunks_removed": removed}
+        from engine.rag.runner import remove_document
+        removed, trashed = await remove_document(str(Path(file_path).resolve()))
+        return {"success": True, "chunks_removed": removed, "trashed_to": str(trashed) if trashed else None}
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
@@ -304,7 +311,10 @@ async def api_settings_keys(body: KeyUpdate):
     allowed = {"LOCAL_API_KEY", "TTS_LOCAL_KEY", "LOCAL_URL", "TTS_LOCAL_MODEL", "USER_NAME", "HONORIFIC"}
     if body.key_name not in allowed:
         return JSONResponse({"success": False, "error": "Invalid key name"}, status_code=400)
-    server._write_env_key(body.key_name, body.key_value)
+    try:
+        server._write_env_key(body.key_name, body.key_value)
+    except ValueError as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=400)
     return {"success": True}
 
 
@@ -332,8 +342,12 @@ async def _tts_voices_call(method: str) -> dict:
     from engine.server.tts_manager import _resolve_tts_engine
     if _resolve_tts_engine() != "vieneu":
         return {"engine": "edge", "default": "", "voices": []}
+    from engine.server.llm_server import check_stream_tts_server
+    online, msg, port = check_stream_tts_server()
+    if not online:
+        return {"engine": "vieneu", "default": "", "voices": [], "status": "chờ kết nối", "message": msg}
     url = _tts_base_url() + ("/tts/voices" if method == "GET" else "/tts/voices/reload")
-    async with httpx.AsyncClient(timeout=180.0) as client:
+    async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.request(method, url)
     resp.raise_for_status()
     return resp.json()
@@ -390,13 +404,19 @@ async def api_tts_clone_voice(name: str = Form(...), file: UploadFile = File(...
 async def api_test_llm(body: KeyTest):
     import server
     from openai import AsyncOpenAI
+    from engine.server.llm_server import check_llm_server
+
+    is_online, msg, port = check_llm_server(force=True)
+    if not is_online:
+        return {"valid": False, "error": msg, "status": "chờ kết nối"}
+
     key = body.key_value or os.getenv("LOCAL_API_KEY")
     url = os.getenv("LOCAL_URL")
     if not key:
         return {"valid": False, "error": "No key provided"}
     try:
         from engine.server.llm_server import active_model_name
-        client = AsyncOpenAI(api_key=key, base_url=url)
+        client = AsyncOpenAI(api_key=key, base_url=url, max_retries=0)
         await client.chat.completions.create(model=active_model_name() or server.LOCAL_MODEL, max_tokens=10, messages=[{"role": "user", "content": "Hi"}])
         return {"valid": True}
     except Exception as e:
@@ -436,107 +456,28 @@ async def api_reset_tokens():
     return {"success": True}
 
 
-def _scan_agents() -> list[dict]:
-    """Agent cards for the HUD and the dashboard Agents page."""
-    agents_list = []
+def _scan_mentions() -> list[dict]:
+    """Cards for the dashboard Mention page: exactly what @ accepts (engine/turn/entry: @rag + every registry tool)."""
+    cards = []
     try:
-        from engine.prompts import catalog
-        agents_catalog = catalog.agents()
-        
-        # Read guidance and descriptions from prompt/agents.md
-        agents_md_path = Path(__file__).parent.parent.parent / "prompt" / "agents.md"
-        agents_guidance: dict[str, str] = {}
-        if agents_md_path.exists():
-            for line in agents_md_path.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if line.startswith("- "):
-                    parts = line[2:].split(":", 1)
-                    if len(parts) == 2:
-                        agents_guidance[parts[0].strip().lower()] = parts[1].strip()
-
-        # Examples of prompt commands for each agent
-        sample_queries: dict[str, str] = {
-            "desktop": "mở notepad",
-            "dream": "dọn dẹp bộ nhớ và chạy chu kỳ dream",
-            "email": "kiểm tra email mới nhất trong Outlook",
-            "goose": "mở giao diện Goose",
-            "history": "xem lại lịch sử trò chuyện",
-            "image": "nâng cấp độ phân giải ảnh bằng Upscayl",
-            "media": "mở nhạc lofi trên Youtube",
-            "notes": "ghi chú lại ý tưởng dự án",
-            "office": "chỉnh sửa tệp báo cáo Word",
-            "project": "kiểm tra sức khỏe dự án",
-            "rag": "tóm tắt tài liệu đính kèm",
-            "weather": "thời tiết Hà Nội hôm nay thế nào",
-            "news": "tin tức nổi bật hôm nay",
-            "market": "giá vàng SJC hôm nay",
-            "shop": "so sánh máy giặt LG và Electrolux",
-            "route": "chỉ đường từ nhà đến sân bay",
-            "places": "quán cà phê gần đây",
-            "cinema": "phim đang chiếu ở CGV",
-            "games": "game miễn phí tuần này trên Epic",
-            "lunar": "hôm nay âm lịch ngày bao nhiêu",
-            "zodiac": "tử vi cung sư tử hôm nay",
-            "web": "gợi ý món ăn hợp ngày mưa",
-            "security": "quét cổng và kiểm tra an ninh mạng",
-            "vision": "chụp màn hình hiện tại",
-            "webcam": "mở camera xem trực tiếp",
-            "win_control": "phóng to cửa sổ trình duyệt",
-        }
-
-        # Format agent key to beautiful Title Case (e.g. desktop -> Agent Desktop, win_control -> Agent Windows Control)
-        name_overrides: dict[str, str] = {
-            "desktop": "Agent Desktop",
-            "win_control": "Agent Windows Control",
-            "email": "Agent Email & Calendar",
-            "rag": "Agent Document RAG",
-            "goose": "Agent Goose",
-            "office": "Agent Office Suite",
-            "vision": "Agent Vision Screen",
-            "webcam": "Agent Webcam Live",
-            "security": "Agent Security Guard",
-            "weather": "Agent Weather",
-            "news": "Agent News",
-            "market": "Agent Market",
-            "shop": "Agent Shop",
-            "route": "Agent Route",
-            "places": "Agent Places",
-            "cinema": "Agent Cinema",
-            "games": "Agent Games",
-            "lunar": "Agent Lunar Calendar",
-            "zodiac": "Agent Zodiac",
-            "web": "Agent Web Research",
-            "project": "Agent Project Health",
-            "notes": "Agent Notes Manager",
-            "media": "Agent Media Stream",
-            "image": "Agent Image Upscaler",
-            "history": "Agent History Query",
-            "dream": "Agent Dream Cycle",
-        }
-
-        from engine.orchestrator.registry import AGENT_REGISTRY
-        for key, cat_data in agents_catalog.items():
-            # nhiều agent tra cứu dùng chung agent_search.py nên liệt kê theo danh mục, không theo file
-            module_file = AGENT_REGISTRY.get(key, {}).get("module", "").rsplit(".", 1)[-1]
-            title_name = name_overrides.get(key, f"Agent {key.replace('_', ' ').title()}")
-            desc = agents_guidance.get(key) or cat_data.get("description") or f"Tác nhân chuyên biệt xử lý {key}"
-            agents_list.append({
-                "id": key,
-                "name": title_name,
-                "file": f"{module_file}.py",
-                "description": desc,
-                "example": sample_queries.get(key, f"@{key}"),
-                "tools": [t.get("name") for t in cat_data.get("tools", [])],
-                "aliases": cat_data.get("aliases", []),
-                # what the command bar actually accepts (fast_paths.resolve_mention)
-                "mention": f"@{key}",
+        from engine.tools import registry
+        from engine.turn.entry import mention_list
+        for m in mention_list():
+            name = m["name"]
+            spec = registry.get(name)
+            usage = registry.usage(name)[len(name) + 1:] if spec else " <câu hỏi>"
+            cards.append({
+                "id": name,
+                "name": name,
+                "file": spec.fn.__module__.rsplit(".", 1)[-1] + ".py" if spec else "engine/rag",
+                "description": m["description"],
+                "example": f"@{name}{usage}",
+                "mention": f"@{name}",
             })
-        # Sort alphabetically by Agent Name
-        agents_list.sort(key=lambda a: a["name"])
     except Exception as e:
-        log.warning(f"Error building dynamic agents list: {e}")
+        log.warning(f"Error building mention list: {e}")
+    return cards
 
-    return agents_list
 
 
 def _scan_catalog_files() -> dict:
@@ -577,57 +518,69 @@ def _scan_catalog_files() -> dict:
     except Exception as e:
         log.warning(f"Error building dynamic hooks list: {e}")
 
-    # 2. Skills (scan skills/ directory)
+    # 2. Skills (scan skills/ directory recursively including skills/agents/<agent>)
     skills_list = []
     try:
         skills_dir = Path(__file__).parent.parent.parent / "skills"
         if skills_dir.exists():
-            for skill_folder in sorted(skills_dir.iterdir()):
-                if skill_folder.is_dir() and not skill_folder.name.startswith((".", "_")):
-                    name = skill_folder.name
-                    desc = ""
-                    category = "general"
-                    tags = []
-                    skill_files = list(skill_folder.glob("*.md"))
-                    if skill_files:
-                        target_file = next((f for f in skill_files if f.name.upper() == "SKILL.MD"), skill_files[0])
-                        txt = target_file.read_text(encoding="utf-8", errors="ignore")
-                        if txt.startswith("---"):
-                            fm_parts = txt.split("---", 2)
-                            if len(fm_parts) >= 3:
-                                for l in fm_parts[1].strip().splitlines():
-                                    if l.startswith("name:"):
-                                        name = l.split(":", 1)[1].strip()
-                                    elif l.startswith("description:"):
-                                        desc = l.split(":", 1)[1].strip()
-                                    elif l.startswith("category:"):
-                                        category = l.split(":", 1)[1].strip()
-                        if not desc:
-                            for l in txt.splitlines():
-                                l = l.strip()
-                                if l.startswith("# "):
-                                    name = l[2:].strip()
-                                elif l.startswith("## Mô tả") or l.startswith("## Description"):
-                                    continue
-                                elif l and not l.startswith("#") and not desc:
-                                    desc = l
-                        skills_list.append({
-                            "name": name,
-                            "folder": skill_folder.name,
-                            "description": desc or f"Kỹ năng tự động hóa {name}",
-                            "category": category,
-                            "tags": tags or [skill_folder.name],
-                            "file_path": f"skills/{skill_folder.name}/{target_file.name}",
-                        })
-                    else:
-                        skills_list.append({
-                            "name": name,
-                            "folder": skill_folder.name,
-                            "description": f"Kỹ năng {name}",
-                            "category": "general",
-                            "tags": [skill_folder.name],
-                            "file_path": f"skills/{skill_folder.name}",
-                        })
+            candidate_files = []
+            for mf in skills_dir.rglob("*.md"):
+                if not mf.name.startswith((".", "_")):
+                    candidate_files.append(mf)
+
+            # Gom theo thư mục: mỗi thư mục chỉ lấy 1 file skill chính (ưu tiên skill.md/SKILL.md)
+            folders_map = {}
+            for cf in candidate_files:
+                p = cf.parent
+                if p not in folders_map:
+                    folders_map[p] = cf
+                elif cf.name.lower() in ("skill.md", "skills.md"):
+                    folders_map[p] = cf
+
+            for skill_folder, target_file in sorted(folders_map.items(), key=lambda item: item[0].as_posix()):
+                if skill_folder == skills_dir:
+                    continue
+                name = skill_folder.name
+                rel_parts = skill_folder.relative_to(skills_dir).parts
+                category = rel_parts[0] if len(rel_parts) > 1 else "general"
+                tags = list(rel_parts)
+                desc = ""
+
+                txt = target_file.read_text(encoding="utf-8", errors="ignore").lstrip("\ufeff")
+                if txt.startswith("---"):
+                    fm_parts = txt.split("---", 2)
+                    if len(fm_parts) >= 3:
+                        for l in fm_parts[1].strip().splitlines():
+                            if l.startswith("title:"):
+                                title_val = l.split(":", 1)[1].strip()
+                                if title_val:
+                                    name = title_val
+                            elif l.startswith("name:") and name == skill_folder.name:
+                                name = l.split(":", 1)[1].strip()
+                            elif l.startswith("description:"):
+                                desc = l.split(":", 1)[1].strip()
+                            elif l.startswith("category:"):
+                                category = l.split(":", 1)[1].strip()
+                if not desc:
+                    for l in txt.splitlines():
+                        l = l.strip()
+                        if l.startswith("# "):
+                            if name == skill_folder.name:
+                                name = l[2:].strip()
+                        elif l.startswith("## Mô tả") or l.startswith("## Description"):
+                            continue
+                        elif l and not l.startswith("#") and not desc:
+                            desc = l
+
+                rel_file_path = target_file.relative_to(skills_dir.parent).as_posix()
+                skills_list.append({
+                    "name": name,
+                    "folder": skill_folder.name,
+                    "description": desc or f"Kỹ năng {name}",
+                    "category": category,
+                    "tags": tags,
+                    "file_path": rel_file_path,
+                })
         skills_list.sort(key=lambda x: x["name"])
     except Exception as e:
         log.warning(f"Error scanning skills directory: {e}")
@@ -663,47 +616,29 @@ def _scan_catalog_files() -> dict:
     except Exception as e:
         log.warning(f"Error scanning prompt directory: {e}")
 
-    # 4. Commands (scan commands/ directory)
-    commands_list = []
+    # 4. Commands (sinh từ registry)
+    commands_list = [{  # engine/server/slash_commands: /help, then /<any registry tool>
+        "name": "help", "file": "slash_commands.py", "description": "Liệt kê mọi lệnh / đang dùng được.",
+        "usage": "/help", "category": "tool", "tags": [], "file_path": "engine/server/slash_commands.py", "example": "/help",
+    }]
     try:
-        commands_dir = Path(__file__).parent.parent.parent / "commands"
-        if commands_dir.exists():
-            for cf in sorted(commands_dir.glob("*.md")):
-                content = cf.read_text(encoding="utf-8", errors="ignore")
-                name = cf.stem
-                desc = ""
-                usage = f"/{cf.stem}"
-                category = "general"
-                tags = []
-                if content.startswith("---"):
-                    parts = content.split("---", 2)
-                    if len(parts) >= 3:
-                        for l in parts[1].strip().splitlines():
-                            if l.startswith("name:"):
-                                name = l.split(":", 1)[1].strip()
-                            elif l.startswith("description:"):
-                                desc = l.split(":", 1)[1].strip()
-                            elif l.startswith("usage:"):
-                                usage = l.split(":", 1)[1].strip()
-                            elif l.startswith("category:"):
-                                category = l.split(":", 1)[1].strip()
-                if not desc:
-                    for l in content.splitlines():
-                        if l.startswith("# "):
-                            desc = l[2:].strip()
-                            break
-                commands_list.append({
-                    "name": name,
-                    "file": cf.name,
-                    "description": desc or f"Lệnh điều khiển {name}",
-                    "usage": usage or f"/{name}",
-                    "category": category,
-                    "tags": tags,
-                    "file_path": f"commands/{cf.name}",
-                })
-        commands_list.sort(key=lambda x: x["name"])
+        from engine.tools import registry
+        for name in sorted(registry.names()):
+            params = registry.params(name)
+            spec = registry.get(name)
+            mod_name = spec.fn.__module__.rsplit(".", 1)[-1] if spec and hasattr(spec, "fn") else "tool"
+            commands_list.append({
+                "name": name,
+                "file": f"{name}.py",
+                "description": registry.description(name),
+                "usage": f"/{name}{' <' + ', '.join(params) + '>' if params else ''}",
+                "category": "tool",
+                "tags": [spec.kind] if spec else [],
+                "file_path": f"engine/tools/catalog/{mod_name}.py",
+                "example": registry.usage(name),
+            })
     except Exception as e:
-        log.warning(f"Error scanning commands directory: {e}")
+        log.warning(f"Error building commands list from registry: {e}")
 
     # 5. Plugins (scan plugins/ directory)
     plugins_list = []
@@ -820,14 +755,13 @@ async def api_settings_status(apps: bool = False):
     except Exception: pass
 
     skill_count = 0
-    command_count = 0
     try:
         from engine.tools.skill_manager import get_skill_manager
-        sm = get_skill_manager()
-        skill_count = sm.get_stats()["total_skills"]
-        command_count = sm.get_stats()["total_commands"]
+        skill_count = get_skill_manager().get_stats()["total_skills"]
     except Exception:
         pass
+    from engine.tools import registry
+    command_count = len(registry.names()) + 1  # /help + /<tool> (engine/server/slash_commands)
 
     open_apps = []
     if apps:
@@ -970,8 +904,6 @@ async def api_settings_status(apps: bool = False):
     system["gpus"] = gpus
     system["npus"] = npus
 
-    agents_list = await asyncio.to_thread(_scan_agents)
-
     return {
         "intelligence_core_ok": llm_ok,
         "server_engine_ok": True,
@@ -999,8 +931,7 @@ async def api_settings_status(apps: bool = False):
         "mcp_servers": mcp_servers,
         "plugins_loaded": plugins_loaded,
         "system": system,
-        "agents": agents_list,
-        "agents_count": len(agents_list),
+        "mentions_count": len(registry.names()) + 1,  # @rag + @<tool> (engine/turn/entry)
         # read-only facts for the dashboard (switching engine/voice stays manual in .env)
         "runtime": {
             "llm_model": (env_dict.get("LOCAL_MODEL") or "").strip(),
@@ -1031,11 +962,14 @@ async def api_get_preferences():
 @router.post("/api/settings/preferences")
 async def api_save_preferences(body: PreferencesUpdate):
     import server
-    server._write_env_key("USER_NAME", body.user_name)
-    server._write_env_key("HONORIFIC", body.honorific)
+    try:
+        server._write_env_key("USER_NAME", body.user_name)
+        server._write_env_key("HONORIFIC", body.honorific)
+        server._write_env_key("CALENDAR_ACCOUNTS", body.calendar_accounts)
+    except ValueError as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=400)
     os.environ["USER_NAME"] = body.user_name  # áp dụng ngay, không cần khởi động lại
     os.environ["HONORIFIC"] = body.honorific
-    server._write_env_key("CALENDAR_ACCOUNTS", body.calendar_accounts)
     return {"success": True}
 
 
@@ -1163,10 +1097,10 @@ async def api_graphfy():
 
 @router.get("/api/settings/catalog")
 async def api_settings_catalog():
-    """Agents/hooks/skills/prompts/commands/plugins for the dashboard pages — fetched when a page opens."""
-    agents = await asyncio.to_thread(_scan_agents)
+    """Mentions/hooks/skills/prompts/commands/plugins for the dashboard pages — fetched when a page opens."""
+    mentions = await asyncio.to_thread(_scan_mentions)
     files = await asyncio.to_thread(_scan_catalog_files)
-    return {"success": True, "agents": agents, **files}
+    return {"success": True, "mentions": mentions, **files}
 
 
 @router.get("/api/media/search")
@@ -1204,7 +1138,31 @@ async def api_media_local(path: str):
         file_path = resolve_file_under(server.MEDIA_LOCAL_DIR, path)
     except (FileNotFoundError, ValueError):
         return JSONResponse(status_code=404, content={"error": "File not found"})
-    return FileResponse(str(file_path))
+    response = FileResponse(str(file_path))
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
+@router.get("/api/outputs/{token}")
+async def api_output_file(token: str, download: int = 0):
+    """Phục vụ tệp tool vừa bàn giao (ảnh upscale, tài liệu Office).
+
+    Token do ``output_delivery`` cấp khi bắn event ``output_file`` nên không có
+    cách đoán đường dẫn tuỳ ý. ``download=1`` buộc trình duyệt lưu tệp
+    (nút Tải về), mặc định xem inline (thẻ ảnh trong chat).
+    """
+    from engine.core.output_delivery import lookup_output_file
+
+    file_path = lookup_output_file(token)
+    if file_path is None or not file_path.is_file():
+        return JSONResponse(status_code=404, content={"error": "File not found"})
+    return FileResponse(
+        str(file_path),
+        filename=file_path.name if download else None,
+        content_disposition_type="attachment" if download else "inline",
+    )
 
 
 @router.get("/api/history")
@@ -1330,9 +1288,19 @@ async def api_command_bar_skills():
     """Retrieve all loaded skills, commands, and plugins for frontend autocomplete suggestion."""
     try:
         from engine.tools.skill_manager import get_skill_manager
+        from engine.tools import registry
         sm = get_skill_manager()
         skills = [s.to_dict() for s in sm.skills.values() if s.enabled]
-        commands = [c.to_dict() for c in sm.commands.values() if c.enabled]
+        commands = [
+            {
+                "name": n,
+                "description": registry.description(n),
+                "usage": ", ".join(registry.params(n)),
+                "enabled": True,
+            }
+            for n in registry.names()
+        ]
+
         
         # Load plugins dynamically
         plugins = []
@@ -1364,8 +1332,9 @@ async def api_command_bar_skills():
 
 @router.get("/api/command-bar/context")
 async def api_command_bar_context():
-    """Retrieve agents list and workspace files for frontend autocomplete suggestion."""
+    """Gợi ý @ (chế độ + tool, sinh từ registry) và tệp trong workspace cho ô nhập."""
     try:
+        from engine.turn.entry import mention_list
         project_root = Path(__file__).parent.parent.parent
         files = []
         exclude_dirs = {".git", "node_modules", ".venv", "__pycache__", "dist", "data", "logs", "media"}
@@ -1389,23 +1358,12 @@ async def api_command_bar_context():
             if len(files) >= 50:
                 break
                 
-        # Get agents and aliases from catalog (spec 2026-09-25)
-        try:
-            from engine.prompts import catalog
-            agents = []
-            for name, data in catalog.agents().items():
-                agents.append(name)
-                for a in data.get("aliases", []):
-                    agents.append(a)
-        except Exception as ae:
-            log.warning(f"Error loading agents from catalog: {ae}")
-            agents = ["desktop"]
-
         return {
             "success": True,
-            "agents": sorted(list(set(agents))),
+            "mentions": mention_list(),
             "files": files
         }
+
     except Exception as e:
         log.error(f"Error in api_command_bar_context: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
@@ -1444,20 +1402,15 @@ async def api_stt(file: UploadFile = File(...)):
 async def api_launch_goose():
     """REST endpoint khởi chạy ứng dụng Goose Desktop."""
     try:
-        from engine.agents.agent_goose import launch_goose_gui
-        success = launch_goose_gui()
+        from engine.tools.catalog.system import launch_goose
+        success = launch_goose()
         return {"success": success}
+
     except Exception as e:
         log.error(f"Error launching Goose GUI: {e}")
         return {"success": False, "error": str(e)}
 
-# -- Memory & Notes Management CRUD Endpoints --------------------------------
-class NoteUpdateBody(BaseModel):
-    id: str  # Dùng slug/string định danh cho Obsidian Note
-    title: str
-    content: str
-    tags: str = ""
-
+# -- Memory Management CRUD Endpoints -----------------------------------------
 class LearningUpdateBody(BaseModel):
     id: int
     content: str
@@ -1516,14 +1469,16 @@ async def api_memory_control_summary():
     try:
         from engine.core.learning import get_learning_engine
         from engine.core.memory import get_memory_control_counts
+        from engine.tools.gym_engine import count_all_gym_records
 
-        learning_counts, memory_counts = await asyncio.gather(
+        learning_counts, memory_counts, gym_count = await asyncio.gather(
             asyncio.to_thread(
                 get_learning_engine().get_memory_control_counts
             ),
             asyncio.to_thread(get_memory_control_counts),
+            asyncio.to_thread(count_all_gym_records),
         )
-        counts = {**learning_counts, **memory_counts}
+        counts = {**learning_counts, **memory_counts, "gym": gym_count}
         return {"success": True, "counts": counts}
     except Exception as exc:
         return JSONResponse(
@@ -1621,42 +1576,6 @@ async def api_memory_control_delete(body: MemoryControlDeleteBody):
         )
 
 
-@router.get("/api/notes/list")
-async def api_notes_list(limit: int = 100):
-    try:
-        from engine.tools.note_engine import get_note_engine
-        notes = await asyncio.to_thread(get_note_engine().list_notes, limit)
-        return {"success": True, "notes": notes}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@router.get("/api/notes/search")
-async def api_notes_search(q: str = "", limit: int = 100):
-    try:
-        from engine.tools.note_engine import get_note_engine
-        notes = await asyncio.to_thread(get_note_engine().search_notes, q, limit)
-        return {"success": True, "notes": notes}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@router.post("/api/notes/update")
-async def api_notes_update(body: NoteUpdateBody):
-    try:
-        from engine.tools.note_engine import get_note_engine
-        success = await asyncio.to_thread(get_note_engine().update_note, body.id, body.content, body.title, body.tags)
-        return {"success": success}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@router.delete("/api/notes/delete")
-async def api_notes_delete(id: str):
-    try:
-        from engine.tools.note_engine import get_note_engine
-        success = await asyncio.to_thread(get_note_engine().delete_note, id)
-        return {"success": success}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
 @router.get("/api/learnings/list")
 async def api_learnings_list(
     q: str = "", limit: int = 50, offset: int = 0
@@ -1734,10 +1653,35 @@ async def api_learnings_reembed(body: EmbedRecomputeBody):
         return {"success": False, "error": str(e)}
 
 
+@router.get("/api/gym/list")
+async def api_gym_list(q: str = "", limit: int = 50, offset: int = 0):
+    """Danh sách bản ghi Gym Memory (hồ sơ, bài tập, cân nặng, thói quen)."""
+    try:
+        from engine.tools.gym_engine import list_all_gym_records
+
+        res = await asyncio.to_thread(list_all_gym_records, q, limit, offset)
+        return res
+    except Exception as exc:
+        return JSONResponse(
+            {"success": False, "error": str(exc)}, status_code=500
+        )
 
 
+@router.delete("/api/gym/delete")
+async def api_gym_delete(id: str):
+    """Xóa một bản ghi Gym Memory theo định dạng id (vd: profile_1, workout_2, weight_3, habit_4)."""
+    try:
+        from engine.tools.gym_engine import delete_gym_memory_item
 
-# -- Learning System Sync Endpoints (validated workflows + agent outcomes) ------
+        res = await asyncio.to_thread(delete_gym_memory_item, id)
+        return {"success": bool(res)}
+    except Exception as exc:
+        return JSONResponse(
+            {"success": False, "error": str(exc)}, status_code=500
+        )
+
+
+# -- Learning System Sync Endpoints (workflows + outcomes) ------------------------
 
 @router.get("/api/workflows/list")
 async def api_workflows_list(
@@ -1773,7 +1717,7 @@ async def api_outcomes_list(
     q: str = "",
     limit: int = 50,
     offset: int = 0,
-    agent: str = "",
+    tool: str = "",
 ):
     try:
         from engine.core.learning import get_learning_engine
@@ -1782,7 +1726,7 @@ async def api_outcomes_list(
             q,
             limit,
             offset,
-            agent,
+            tool,
         )
         return {"success": True, "outcomes": page["items"], **page}
     except Exception as e:
@@ -1876,10 +1820,10 @@ async def api_conversations_update(body: ConversationUpdateBody):
 @router.delete("/api/conversations/delete")
 async def api_conversations_delete(id: int):
     try:
-        from engine.core.memory import _get_db
+        from engine.core.memory import _get_db, delete_messages_by_id
         conn = await asyncio.to_thread(_get_db)
         try:
-            conn.execute("DELETE FROM messages WHERE id=?", (id,))
+            delete_messages_by_id(conn, [id])
             conn.commit()
             return {"success": True}
         finally:

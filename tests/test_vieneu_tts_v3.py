@@ -169,14 +169,14 @@ def test_stream_cue_filter_hides_cues_split_across_tokens():
 
 
 def test_system_prompt_mentions_cues_only_for_vieneu(monkeypatch):
-    from engine.prompts.chat import build_chat_system_prompt
+    from engine.turn.prompt import system_prompt
 
     monkeypatch.setenv("EDGE_TTS_ENABLED", "false")
     monkeypatch.setenv("VIENEU_TTS_ENABLED", "true")
-    assert "<voice_cues>" in build_chat_system_prompt()
+    assert "<voice_cues>" in system_prompt([])
     monkeypatch.setenv("VIENEU_TTS_ENABLED", "false")
     monkeypatch.setenv("EDGE_TTS_ENABLED", "true")
-    assert "<voice_cues>" not in build_chat_system_prompt()
+    assert "<voice_cues>" not in system_prompt([])
 
 
 

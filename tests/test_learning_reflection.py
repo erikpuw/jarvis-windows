@@ -107,38 +107,6 @@ def test_critique_merge_replace_limited_to_context_item(engine):
     assert res is False
 
 
-def test_routing_complaint_does_not_delete_learnings():
-    import importlib
-    D = importlib.import_module("engine.router.decide")
-    assert not hasattr(learning.LearningEngine, "unlearn_last_learning")
-
-    class Fake:
-        def unlearn_last_route(self, text):
-            return False
-
-    orig = learning.get_learning_engine
-    learning.get_learning_engine = lambda: Fake()
-    try:
-        assert D._unlearn_last_route("sai rồi, tôi chỉ hỏi thôi") is False
-    finally:
-        learning.get_learning_engine = orig
-
-
-def test_propose_sees_recent_turns_and_successful_outcomes(engine, monkeypatch):
-    memory.save_message("user", "tôi tên là Erik")
-    memory.save_message("assistant", "Chào ngài Erik.")
-    memory.save_message("user", "mở notepad")
-    memory.save_message("assistant", "Đã mở Notepad.")
-    engine.record_agent_outcome("desktop", "mở notepad", "success", "ok", [])
-    engine.record_agent_outcome("desktop", "mở Ghi chú (Notepad)", "failed", "lỗi", [])
-    seen: list = []
-    _fake_llm(monkeypatch, [{"proposals": []}], seen)
-    asyncio.run(engine.process_conversation_learning("mở notepad", "Đã mở Notepad."))
-    assert "tôi tên là Erik" in seen[0]
-    assert "mở notepad" in seen[0]
-    assert "Ghi chú (Notepad)" not in seen[0]
-
-
 def test_retract_deletes_item_learned_last_run(engine, monkeypatch):
     memory.save_message("user", "tôi thích trả lời thật ngắn")
     seen: list = []
@@ -184,3 +152,47 @@ def test_retract_of_merge_restores_previous_content(engine, monkeypatch):
     _fake_llm(monkeypatch, [{"proposals": [{"kind": "retract", "target_id": old_id, "evidence": "bỏ cái hài hước đi"}]}], [])
     asyncio.run(engine.process_conversation_learning("không đúng, bỏ cái hài hước đi", "Vâng."))
     assert _ids(engine)[old_id] == "Ngài thích emoji"
+
+
+def test_duplicate_learning_overwrites_existing_instead_of_inserting_new(engine, monkeypatch):
+    """Nội dung trùng lặp/tương đồng cao tự động merge viết chồng lên ID cũ thay vì sinh ID mới."""
+    engine._store_learning("Người dùng thích nghe nhạc Sơn Tùng M-TP", "preference", "music_preference")
+    old_ids = _ids(engine)
+    old_id = next(iter(old_ids))
+
+    memory.save_message("user", "tôi thích nghe nhạc Sơn Tùng bài Making My Way")
+    _fake_llm(monkeypatch, [
+        {"proposals": [{
+            "kind": "preference",
+            "key": "fav_music_different_key",
+            "content": "Thích nghe nhạc Sơn Tùng bài Making My Way",
+            "evidence": "thích nghe nhạc Sơn Tùng bài Making My Way",
+        }]},
+        # Giả lập Critique nhầm lẫn trả về new
+        {"decision": "new", "reason": "chưa có bài này"},
+    ], [])
+
+    asyncio.run(engine.process_conversation_learning("tôi thích nghe nhạc Sơn Tùng bài Making My Way", "Vâng ạ."))
+    new_ids = _ids(engine)
+    assert len(new_ids) == 1, f"Kỳ vọng 1 bản ghi duy nhất nhưng có {len(new_ids)}: {new_ids}"
+    assert old_id in new_ids, f"ID cũ {old_id} phải được giữ nguyên"
+    assert new_ids[old_id] == "Thích nghe nhạc Sơn Tùng bài Making My Way"
+
+
+def test_duplicate_learning_skip_critique_does_not_create_new(engine, monkeypatch):
+    """Khi Critique nhận diện trùng lặp và trả về skip, hệ thống không tạo thêm dòng rác."""
+    engine._store_learning("Người dùng thích nghe nhạc Sơn Tùng M-TP", "preference", "music_preference")
+    memory.save_message("user", "nhớ là tôi thích nghe nhạc Sơn Tùng")
+    _fake_llm(monkeypatch, [
+        {"proposals": [{
+            "kind": "preference",
+            "key": "music_key_2",
+            "content": "Người dùng thích nghe nhạc Sơn Tùng",
+            "evidence": "thích nghe nhạc Sơn Tùng",
+        }]},
+        {"decision": "skip", "reason": "Đã có trong bộ nhớ"},
+    ], [])
+
+    res = asyncio.run(engine.process_conversation_learning("nhớ là tôi thích nghe nhạc Sơn Tùng", "Dạ."))
+    assert res.get("stored", 0) == 0
+    assert len(_ids(engine)) == 1

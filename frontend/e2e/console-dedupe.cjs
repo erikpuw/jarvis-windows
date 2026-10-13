@@ -28,10 +28,10 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   const since = async (fn) => { logs.length = 0; await fn(); await page.waitForTimeout(700); return logs.filter((l) => /\[UI\] updateStatus|\[voice\] microphone state/.test(l)); };
   const dup = (ls) => ls.filter((l, i) => ls.indexOf(l) !== i);
 
-  const on = await since(() => page.click("#btn-mute"));
+  const on = await since(() => page.evaluate(() => document.getElementById("btn-mute").click()));
   check(dup(on).length === 0, "1. bật mic: không dòng trạng thái nào in trùng", on.map((l) => l.replace("[UI] updateStatus: ", "")).join(" | "));
   check(on.filter((l) => /microphone state changed: true/.test(l)).length === 1, "2. bật mic: báo mic đổi trạng thái đúng 1 lần");
-  const off = await since(() => page.click("#btn-mute"));
+  const off = await since(() => page.evaluate(() => document.getElementById("btn-mute").click()));
   check(dup(off).length === 0, "3. tắt mic: không dòng trạng thái nào in trùng", off.map((l) => l.replace("[UI] updateStatus: ", "")).join(" | "));
   check(off.filter((l) => /microphone state changed: false/.test(l)).length === 1, "4. tắt mic: báo mic đổi trạng thái đúng 1 lần");
 

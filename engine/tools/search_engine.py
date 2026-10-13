@@ -4,6 +4,8 @@ import logging
 import os
 import re
 import time
+import unicodedata
+from pathlib import Path
 
 from engine.tools.browser import browser
 # Consolidated search engine for JARVIS
@@ -11,47 +13,9 @@ from engine.tools.browser import browser
 log = logging.getLogger("jarvis.search_engine")
 
 # Quy tắc định dạng cho LLM vòng 2 — bàn giao từ actions.py cho tool sở hữu
-SUMMARY_RULES: dict[str, str] = {
-    "get_market_data": (
-        "QUY TẮC ĐỊNH DẠNG BẢNG GIÁ THỊ TRƯỜNG BẮT BUỘC:\n"
-        "1. COPY NGUYÊN VĂN từng bảng Markdown dạng `| Cột 1 | Cột 2 | Cột 3 |` đã có sẵn trong kết quả công cụ (giá vàng SJC/9999, giá xăng dầu RON95/E5, tỷ giá ngoại tệ USD/Vietcombank, giá gas, giá điện sinh hoạt EVN, giá nước sinh hoạt) — TUYỆT ĐỐI KHÔNG viết lại thành gạch đầu dòng (-) hay đoạn văn.\n"
-        "2. Ví dụ mỗi mục phải giữ đúng cấu trúc:\n"
-        "   ## 🟡 Giá Vàng SJC\n"
-        "   | Sản phẩm | Mua | Bán |\n"
-        "   | :---: | :---: | :---: |\n"
-        "   | Vàng SJC (1L/10L/1KG) | ... VNĐ/lượng | ... VNĐ/lượng |\n"
-        "3. Tuyệt đối không tự ý lược bỏ hàng, cột, hoặc thay đổi các con số giá trị.\n"
-        "4. Không để dòng trống xen kẽ trong bảng Markdown."
-    ),
-    "search_news": (
-        "QUY TẮC ĐỊNH DẠNG BÀI BÁO TIN TỨC BẮT BUỘC:\n"
-        "- Tóm tắt ngắn gọn các bài báo/tin tức chính bằng các gạch đầu dòng súc tích.\n"
-        "- Bọc các liên kết bằng cú pháp Markdown `[Xem chi tiết](url)`."
-    ),
-    "get_cgv_movies": (
-        "QUY TẮC ĐỊNH DẠNG BẢNG CHIẾU PHIM BẮT BUỘC:\n"
-        "- Định dạng lịch chiếu phim xếp theo bảng cột ngang đẹp mắt. Mỗi phim chiếm một cột theo cấu trúc:\n"
-        "  | **Tên phim 1** | **Tên phim 2** | **Tên phim 3** | **Tên phim 4** |\n"
-        "  | :---: | :---: | :---: | :---: |\n"
-        "  | ![poster 1](url_poster_1) | ![poster 2](url_poster_2) | ![poster 3](url_poster_3) | ![poster 4](url_poster_4) |\n"
-        "  | *Thể loại*: ... | *Thể loại*: ... | *Thể loại*: ... | *Thể loại*: ... |\n"
-        "  | *Thời lượng*: ... | *Thời lượng*: ... | *Thời lượng*: ... | *Thời lượng*: ... |\n"
-        "  | *Khởi chiếu*: ... | *Khởi chiếu*: ... | *Khởi chiếu*: ... | *Khởi chiếu*: ... |\n"
-        "  | 🔗 [Xem chi tiết](url) | 🔗 [Xem chi tiết](url) | 🔗 [Xem chi tiết](url) | 🔗 [Xem chi tiết](url) |\n"
-        "- Tuyệt đối không để dòng trống xen kẽ trong bảng.\n"
-        "- Đặt liên kết tổng dẫn đến trang chủ CGV: 🔗 [Xem toàn bộ danh sách](url_tổng) ở bên dưới bảng."
-    ),
-    "get_epic_free_games": (
-        "QUY TẮC ĐỊNH DẠNG BẢNG GAME MIỄN PHÍ EPIC BẮT BUỘC:\n"
-        "- Giữ nguyên 100% cấu trúc 2 bảng Markdown riêng biệt: bảng 'ĐANG MIỄN PHÍ' và bảng 'SẮP MIỄN PHÍ'.\n"
-        "- Mỗi bảng có 2 cột ngang, mỗi cột là 1 game với ảnh inline + tên + thời gian.\n"
-        "- Tuyệt đối không xoá ảnh, không thay đổi cấu trúc bảng.\n"
-        "- Không để dòng trống xen kẽ trong bảng.\n"
-        "- Đặt liên kết tổng 🔗 [Xem tất cả game miễn phí](https://store.epicgames.com/vi/free-games) ở bên dưới."
-    ),
-}
-
 _SEARCH_TTL_CACHE: dict = {}
+_NEWS_RESULT_CHARS = 7800  # < RESULT_CHARS 8000 của vòng trả lời (engine/turn/loop.py)
+_VIETNAM_DATA_DATASET_CACHE: dict[str, tuple[tuple[int, int], list[dict]]] = {}
 
 # Dòng UI thường gặp khi scrape (share, social, CTA) — loại bỏ trước khi hiển thị/TTS
 _NOISE_LINE_RE = re.compile(
@@ -344,6 +308,67 @@ def get_source_label(url: str, host_override: str = "") -> str:
         return "Nguồn tin"
 
 
+_FUEL_PRICE = re.compile(r"^\d{2}[\d,.]+$")
+_FUEL_INLINE = re.compile(r"^(.*?(?:xăng|dầu|ron|do\b|e5|e10).*?)\s+(\d{2}[\d,.]+)\s+(\d{2}[\d,.]+)$", re.I)
+
+
+def _parse_fuel_rows(text: str) -> list[tuple[str, str, str]]:
+    """Dòng giá xăng dầu theo nhãn trên trang, không khớp cứng tên loại (baomoi 2026-10 đổi "95-III" → "95 Mức 3").
+    Dạng bảng: nhãn rồi 2 dòng số (vùng 1, vùng 2); dạng một dòng: "nhãn 27.700 28.250"."""
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    rows, seen = [], set()
+    for i, line in enumerate(lines):
+        m = _FUEL_INLINE.match(line)
+        if m:
+            label, p1, p2 = m.groups()
+        elif (i + 2 < len(lines) and not _FUEL_PRICE.match(line)
+              and _FUEL_PRICE.match(lines[i + 1]) and _FUEL_PRICE.match(lines[i + 2])):
+            label, p1, p2 = line, lines[i + 1], lines[i + 2]
+        else:
+            continue
+        if label not in seen:
+            seen.add(label)
+            rows.append((label, p1.replace(",", "."), p2.replace(",", ".")))
+    return rows
+
+
+_FX_CODE = re.compile(r"^[A-Z]{3}$")
+_FX_VALUE = re.compile(r"^(?:-|\d[\d.]*)$")
+# Mã hiện khi hỏi chung / tổng hợp; hỏi tên ngoại tệ cụ thể thì chỉ hiện mã đó
+_FX_MAIN = ("USD", "EUR", "JPY", "GBP", "CNY", "KRW", "AUD", "SGD")
+_FX_ALIASES = {"euro": "EUR", "yên": "JPY", "yen": "JPY", "bảng anh": "GBP", "nhân dân tệ": "CNY", "won": "KRW",
+               "baht": "THB", "đô úc": "AUD", "đô singapore": "SGD", "đô canada": "CAD", "franc": "CHF",
+               "rúp": "RUB", "ringgit": "MYR", "rupee": "INR", "đô la mỹ": "USD", "đô mỹ": "USD"}
+
+
+def _fmt_fx(value: str) -> str:
+    v = float(value)
+    return (f"{round(v):,}".replace(",", ".") if v >= 1000 else f"{v:.2f}".replace(".", ",")) + " VNĐ"
+
+
+def _parse_fx_rows(text: str) -> dict[str, tuple[str, str, str]]:
+    """Bảng tỷ giá Vietcombank (baomoi): mã, tên, mua tiền mặt, mua chuyển khoản, bán tiền mặt, bán chuyển khoản.
+    Trả {mã: (tên, mua, bán)}; mua tiền mặt "-" thì lấy mua chuyển khoản."""
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    rows = {}
+    for i, line in enumerate(lines[:-4]):
+        vals = lines[i + 2:i + 5]
+        if _FX_CODE.match(line) and line not in rows and all(_FX_VALUE.match(v) for v in vals):
+            buy = vals[0] if vals[0] != "-" else vals[1]
+            if buy != "-" and vals[2] != "-":
+                rows[line] = (lines[i + 1], _fmt_fx(buy), _fmt_fx(vals[2]))
+    return rows
+
+
+def _fx_requested(query: str, rows: dict) -> list[str]:
+    """Mã ngoại tệ người dùng nêu (mã, tên trên trang, tên ngắn); rỗng = hỏi chung."""
+    q = (query or "").lower()
+    found = {code for code, (name, _, _) in rows.items()
+             if re.search(rf"\b{code.lower()}\b", q) or name.lower() in q}
+    found |= {code for alias, code in _FX_ALIASES.items() if alias in q and code in rows}
+    return sorted(found)
+
+
 async def handle_market_query(query: str = None, **kwargs) -> str:
     """
     Intelligent market data dispatcher. 
@@ -356,7 +381,7 @@ async def handle_market_query(query: str = None, **kwargs) -> str:
     combined_text = q + " " + user_text
     
     # Danh sách các từ khóa mặc định thuộc 6 nhóm
-    core_keywords = ["vàng", "sjc", "gold", "9999", "xăng", "dầu", "oil", "fuel", "ron", "e5", "e10", "usd", "tỷ giá", "ngoại tệ", "vietcombank", "gas", "petrolimex", "giá điện", "tiền điện", "biểu giá điện", "evn", "giá nước", "tiền nước", "biểu giá nước", "nước sinh hoạt"]
+    core_keywords = ["vàng", "sjc", "gold", "9999", "xăng", "dầu", "oil", "fuel", "ron", "e5", "e10", "usd", "tỷ giá", "ngoại tệ", "vietcombank", *_FX_ALIASES, *(c.lower() for c in _FX_MAIN), "gas", "petrolimex", "giá điện", "tiền điện", "biểu giá điện", "evn", "giá nước", "tiền nước", "biểu giá nước", "nước sinh hoạt"]
     # Kiểm tra xem có yêu cầu báo cáo tổng hợp hay chứa từ khóa cốt lõi không
     is_core_request = any(k in combined_text for k in core_keywords)
     is_summary_request = not query or any(k in combined_text for k in ["tổng hợp", "thị trường", "market", "tất cả"])
@@ -398,23 +423,9 @@ async def handle_market_query(query: str = None, **kwargs) -> str:
                 const bodyText = document.body.innerText;
                 const lines = bodyText.split('\\n');
                 const fuelLines = lines.filter(l => 
-                    /E10\\sRON\\s*97-III|E10\\s*RON\\s*95-V|E10\\s*RON\\s*95-III|E5\\s*RON\\s*92-II/i.test(l)
+                    /RON|E5|E10|Dầu|DO\\s/i.test(l)
                 );
                 return fuelLines.join('\\n').substring(0, 2000) || bodyText.substring(0, 2000);
-            })()
-        """,
-        "currency": """
-            (function() {
-                const tables = document.querySelectorAll('table');
-                for (let t of tables) {
-                    const text = t.innerText || '';
-                    if (text.includes('USD') && text.includes('VND')) {
-                        return text.substring(0, 1500);
-                    }
-                }
-                const bodyText = document.body.innerText;
-                const usdMatch = bodyText.match(/USD[^\\n]{0,100}(?:Mua|Bán|Buy|Sell)[^\\n]{0,50}[\\d,.]+/i);
-                return usdMatch ? usdMatch[0] : bodyText.substring(0, 1500);
             })()
         """,
 "gas": """
@@ -468,7 +479,8 @@ async def handle_market_query(query: str = None, **kwargs) -> str:
         },
         "currency": {
             "url": "https://baomoi.com/tien-ich-ty-gia-ngoai-te-vietcombank.epi",
-            "keywords": ["usd", "tỷ giá", "ngoại tệ", "vcb", "vietcombank", "đô la"],
+            "keywords": ["usd", "tỷ giá", "ngoại tệ", "vcb", "vietcombank", "đô la", *_FX_ALIASES,
+                         *(c.lower() for c in _FX_MAIN)],
             "label": "Tỷ giá Ngoại tệ"
         },
         "gas": {
@@ -568,101 +580,32 @@ async def handle_market_query(query: str = None, **kwargs) -> str:
                 parts.append(f"| Vàng SJC (bán lẻ) | {p1} VNĐ/chỉ. | {p2} VNĐ/chỉ. |")
             else: 
                 log.warning(f"SEARCH_ENGINE: Could not parse Gold price from text: {text[:200]}...")
-                parts.append("Sản phẩm: Vàng SJC | Mua: đang cập nhật | Bán: đang cập nhật")
+                parts.append("- Vàng SJC: đang cập nhật.")
 
     # 2. Oil
     if "oil" in data_map:
-        text = data_map["oil"]
-        fuel_targets = [
-            (r"E10 RON 95-III", "Xăng E10 RON 95-III"),
-            (r"E10 RON 97-III", "Xăng E10 RON 97-III"),
-            (r"E10 RON 95-V", "Xăng E10 RON 95-V"),
-            (r"E5 RON 92-II", "Xăng E5 RON 92-II"),
-        ]
-        query_lower = query.lower()
-        
-        requested_targets = []
-        for pattern, label in fuel_targets:
-            if pattern.lower() in query_lower or " ".join(label.lower().split()[1:]) in query_lower:
-                requested_targets.append((pattern, label))
-        
-        if not requested_targets and "e10 ron 95" in query_lower:
-            requested_targets = [t for t in fuel_targets if "95" in t[1]]
-        elif not requested_targets and "e10 ron 97" in query_lower:
-            requested_targets = [t for t in fuel_targets if "97" in t[1]]
-        elif not requested_targets and "e5 ron 92" in query_lower:
-            requested_targets = [t for t in fuel_targets if "92" in t[1]]
-        elif not requested_targets and "dầu" in query_lower:
-            requested_targets = [t for t in fuel_targets if "Dầu" in t[1]]
-            
-        if not requested_targets:
-            active_targets = fuel_targets
+        rows = _parse_fuel_rows(data_map["oil"])
+        if rows:
+            parts.append("#### ⛽ Giá Xăng Dầu (Petrolimex)")
+            parts.append("| Sản phẩm | Vùng 1 | Vùng 2 |")
+            parts.append("| :---: | :---: | :---: |")
+            parts += [f"| {label} | {p1} VNĐ. | {p2} VNĐ. |" for label, p1, p2 in rows]
         else:
-            active_targets = requested_targets
-
-        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-        oil_parsed_count = 0
-        oil_table_started = False
-        for pattern, label in active_targets:
-            found = False
-            for idx, line in enumerate(lines):
-                clean_pat = pattern.replace(r"\s*", "").replace(r"\s", "").replace("-", "").lower()
-                clean_line = line.replace(" ", "").replace("-", "").lower()
-                
-                if clean_pat in clean_line or (clean_pat.replace("e10", "") in clean_line):
-                    if idx + 2 < len(lines):
-                        val1 = lines[idx + 1].strip()
-                        val2 = lines[idx + 2].strip()
-                        if re.match(r"^\d{2}[\d,.]+$", val1) and re.match(r"^\d{2}[\d,.]+$", val2):
-                            p1 = val1.replace(",", ".")
-                            p2 = val2.replace(",", ".")
-                            if not oil_table_started:
-                                parts.append("#### ⛽ Giá Xăng Dầu (Petrolimex)")
-                                parts.append("| Sản phẩm | Vùng 1 | Vùng 2 |")
-                                parts.append("| :---: | :---: | :---: |")
-                                oil_table_started = True
-                            parts.append(f"| {label} | {p1} VNĐ. | {p2} VNĐ. |")
-                            found = True
-                            oil_parsed_count += 1
-                            break
-            
-            if not found:
-                regex = rf"(?:^|[\t\n])\s*(?:Xăng|Xng)?\s*{re.escape(pattern)}[\s\-\:]+([\d,.]+)\s+([\d,.]+)"
-                m = re.search(regex, text, re.I | re.M)
-                if not m:
-                    m = re.search(rf"(?:^|[\t\n])\s*{re.escape(label)}[\s\-\:]+([\d,.]+)\s+([\d,.]+)", text, re.I | re.M)
-                if m:
-                    p1 = m.group(1).replace(",", ".")
-                    p2 = m.group(2).replace(",", ".")
-                    if not oil_table_started:
-                        parts.append("#### ⛽ Giá Xăng Dầu (Petrolimex)")
-                        parts.append("| Sản phẩm | Vùng 1 | Vùng 2 |")
-                        parts.append("| :---: | :---: | :---: |")
-                        oil_table_started = True
-                    parts.append(f"| {label} | {p1} VNĐ. | {p2} VNĐ. |")
-                    oil_parsed_count += 1
-        
-        if oil_parsed_count == 0:
-            log.warning(f"SEARCH_ENGINE: Could not parse Oil prices from text: {text[:200]}...")
-            parts.append("| Sản phẩm: Xăng dầu | Vùng 1: đang cập nhật | Vùng 2: đang cập nhật |")
+            log.warning(f"SEARCH_ENGINE: Could not parse Oil prices from text: {data_map['oil'][:200]}...")
+            parts.append("- Xăng dầu: đang cập nhật.")
 
     # 3. Currency
     if "currency" in data_map:
-        text = data_map["currency"]
-        m = re.search(r"USD[^\d]+([\d,.]+)\s+([\d,.]+)\s+([\d,.]+)", text)
-        if m:
-            def _fmt_curr(s):
-                clean = s.split(',')[0].replace(".", "")
-                val = int(clean)
-                num_str = f"{val:,}".replace(",", ".")
-                return f"{num_str} VNĐ"
-            parts.append("#### 💵 Tỷ Giá Ngoại Tệ USD (Vietcombank)")
-            parts.append("| Sản phẩm | Mua | Bán |")
+        rows = _parse_fx_rows(data_map["currency"])
+        codes = _fx_requested(q, rows) or [c for c in _FX_MAIN if c in rows]
+        if codes:
+            parts.append("#### 💵 Tỷ Giá Ngoại Tệ (Vietcombank)")
+            parts.append("| Ngoại tệ | Mua | Bán |")
             parts.append("| :---: | :---: | :---: |")
-            parts.append(f"| Ngoại tệ USD | {_fmt_curr(m.group(1))}. | {_fmt_curr(m.group(3))}. |")
+            parts += [f"| {c} ({rows[c][0]}) | {rows[c][1]}. | {rows[c][2]}. |" for c in codes]
         else:
-            log.warning(f"SEARCH_ENGINE: Could not parse Currency rates from text: {text[:200]}...")
-            parts.append("| Sản phẩm: Ngoại tệ USD | Mua: đang cập nhật | Bán: đang cập nhật")
+            log.warning(f"SEARCH_ENGINE: Could not parse Currency rates from text: {data_map['currency'][:200]}...")
+            parts.append("- Tỷ giá ngoại tệ: đang cập nhật.")
 
     # 4. Gas
     if "gas" in data_map:
@@ -686,7 +629,7 @@ async def handle_market_query(query: str = None, **kwargs) -> str:
             parts.append(f"| Gas Petrolimex (bình 12kg) | {p_list} VNĐ. | {p_promo} VNĐ. |")
         else:
             log.warning(f"SEARCH_ENGINE: Could not find Petrolimex 12kg Gas price in text: {text[:500]}...")
-            parts.append("| Sản phẩm: Gas Petrolimex (bình 12kg) | Giá: đang cập nhật |")
+            parts.append("- Gas Petrolimex (bình 12kg): đang cập nhật.")
 
     # 5. Electricity
     if "electricity" in data_map:
@@ -724,7 +667,7 @@ async def handle_market_query(query: str = None, **kwargs) -> str:
             parts.append("*Giá lấy trực tiếp mỗi lần tra cứu (biểu giá đang áp dụng phát hành hóa đơn theo Quyết định 1279/QĐ-BCT). Chưa gồm thuế GTGT (8%). Đối chiếu chính thức tại evn.com.vn.*")
         else:
             log.warning(f"SEARCH_ENGINE: Could not parse Electricity prices from text: {text[:300]}...")
-            parts.append("| Sản phẩm: Giá điện sinh hoạt | Giá: đang cập nhật |")
+            parts.append("- Giá điện sinh hoạt: đang cập nhật.")
 
     # 6. Water
     if "water" in data_map:
@@ -763,13 +706,24 @@ async def handle_market_query(query: str = None, **kwargs) -> str:
             parts.append("*Giá lấy trực tiếp mỗi lần tra cứu. Hà Nội theo Quyết định 3541/QĐ-UBND, TP.HCM theo biểu giá UBND TP.HCM. Chưa gồm thuế GTGT (5%) và phí bảo vệ môi trường (10%). Đối chiếu chính thức tại website công ty cấp nước địa phương.*")
         else:
             log.warning(f"SEARCH_ENGINE: Could not parse Water prices from text: {text[:300]}...")
-            parts.append("| Sản phẩm: Giá nước sinh hoạt | Giá: đang cập nhật |")
+            parts.append("- Giá nước sinh hoạt: đang cập nhật.")
 
     parts.append(f"Nguồn thông tin: {', '.join([sources[k]['label'] for k in to_fetch])}")
        
-    res = "\n".join(parts)
+    res = _join_md_blocks(parts)
     log.info(f"[TRACE] PROMPT_MUTATION_END: Market data context built ({len(res)} chars)")
     return res
+
+
+def _join_md_blocks(lines: list[str]) -> str:
+    """Nối dòng Markdown, mỗi khối (tiêu đề, bảng, ghi chú) cách nhau một dòng trống: dòng ngay sau bảng
+    mà không có dòng trống thì marked/GFM nuốt nó thành một hàng của bảng."""
+    out: list[str] = []
+    for line in lines:
+        if out and not (line.startswith("|") and out[-1].startswith("|")):
+            out.append("")
+        out.append(line)
+    return "\n".join(out)
 
 
 _LEAD_FILLER_RE = re.compile(
@@ -940,7 +894,8 @@ async def handle_news_search(query: str) -> str:
             visited.append({
                 "title": title,
                 "source": get_source_label(r.url, host_override=getattr(r, "source_host", "")),
-                "url": r.url,
+                # link báo gốc ngắn; link news.google.com dài 300+ ký tự, model chép hỏng (log 2026-10-12 03:29)
+                "url": (page_data.url if page_data and page_data.url else r.url),
                 "content": content,
             })
 
@@ -956,13 +911,13 @@ async def handle_news_search(query: str) -> str:
 
         # Build full result for UI — 5 bài, nội dung đã lọc
         output_parts = [f"🔍 **Kết quả tìm kiếm:** {rewritten}\n"]
-        for item in visited:
-            output_parts.append(
-                f"📰 **{item['title']}**\n"
-                f"🏷️ Nguồn: {item['source']}\n"
-                f"🔗 {item['url']}\n"
-                f"📄 {item['content']}\n"
-            )
+        heads = [f"📰 **{it['title']}**\n🏷️ Nguồn: {it['source']}\n🔗 {it['url']}\n📄 " for it in visited]
+        # vòng trả lời nhận tối đa 8.000 ký tự (engine/turn/loop.RESULT_CHARS): chia đều cho mỗi bài thay vì để
+        # bài cuối bị cắt cụt (log 2026-10-13 01:29: 3 bài = 11.487 ký tự, mất bài thứ 3)
+        per = max(200, (_NEWS_RESULT_CHARS - len(output_parts[0]) - sum(len(h) + 3 for h in heads)) // len(visited))
+        for head, item in zip(heads, visited):
+            body = item["content"]
+            output_parts.append(f"{head}{body if len(body) <= per else body[:per - 1].rstrip() + '…'}\n")
 
         full_result = "\n".join(output_parts)
         log.info(f"[TRACE] PROMPT_MUTATION_END: News search context built ({len(full_result)} chars)")
@@ -1346,7 +1301,234 @@ async def handle_cgv_movies_query(query: str = None, **kwargs) -> str:
     return "\n".join(output)
 
 
-CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config", "epic.json")
+# Bộ đệm phản hồi Epic khi API lỗi: dữ liệu chạy, không phải cấu hình (ghi đè mỗi lần gọi → để trong data/, gitignore)
+CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "cache", "epic.json")
+
+
+async def handle_vietnam_data_query(
+    query: str,
+    data_dir=None,
+) -> dict:
+    """Tra cứu đơn vị hành chính Việt Nam từ bộ dữ liệu vendored."""
+
+    def normalize(value) -> str:
+        text = str(value or "").lower().replace("đ", "d")
+        text = unicodedata.normalize("NFD", text)
+        text = "".join(char for char in text if unicodedata.category(char) != "Mn")
+        return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+    def aliases(unit: dict) -> set[str]:
+        raw_values = {
+            normalize(unit.get("Name")),
+            normalize(unit.get("FullName")),
+            normalize(unit.get("CodeName")),
+        }
+        prefixes = (
+            "thanh pho ",
+            "thi tran ",
+            "phuong ",
+            "tinh ",
+            "quan ",
+            "huyen ",
+            "xa ",
+        )
+        values = set()
+        for orig in raw_values:
+            if not orig:
+                continue
+            values.add(orig)
+            for prefix in prefixes:
+                if orig.startswith(prefix):
+                    stripped = orig[len(prefix):].strip()
+                    if stripped:
+                        values.add(stripped)
+                    break
+        return values
+
+    def load_units(units_path: Path) -> list[dict]:
+        stat = units_path.stat()
+        signature = (stat.st_mtime_ns, stat.st_size)
+        cache_key = str(units_path)
+        cached = _VIETNAM_DATA_DATASET_CACHE.get(cache_key)
+        if cached and cached[0] == signature:
+            return cached[1]
+
+        document = json.loads(units_path.read_text(encoding="utf-8"))
+        if not isinstance(document, list):
+            raise ValueError("units.json phải là một danh sách")
+
+        validated = []
+        for province in document:
+            if not isinstance(province, dict):
+                raise ValueError("Đơn vị cấp tỉnh không hợp lệ")
+            if not isinstance(province.get("Code"), str):
+                raise ValueError("Mã đơn vị cấp tỉnh không hợp lệ")
+            wards = province.get("Wards")
+            if not isinstance(wards, list):
+                raise ValueError("Danh sách phường/xã không hợp lệ")
+            for ward in wards:
+                if not isinstance(ward, dict) or not isinstance(ward.get("Code"), str):
+                    raise ValueError("Đơn vị phường/xã không hợp lệ")
+            validated.append(province)
+
+        _VIETNAM_DATA_DATASET_CACHE[cache_key] = (signature, validated)
+        return validated
+
+    def unit_view(unit: dict, province: dict | None = None) -> dict:
+        view = {
+            "type": unit.get("Type"),
+            "code": unit.get("Code"),
+            "name": unit.get("Name"),
+            "full_name": unit.get("FullName") or unit.get("Name"),
+            "code_name": unit.get("CodeName"),
+        }
+        if province is not None:
+            view["province"] = {
+                "code": province.get("Code"),
+                "name": province.get("Name"),
+                "full_name": province.get("FullName") or province.get("Name"),
+            }
+        return view
+
+    def contains_alias(normalized_query: str, unit: dict) -> bool:
+        padded_query = f" {normalized_query} "
+        return any(f" {alias} " in padded_query for alias in aliases(unit))
+
+    def safe_child(root: Path, child: Path) -> Path | None:
+        resolved = child.resolve()
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            return None
+        return resolved
+
+    root = (
+        Path(data_dir).resolve()
+        if data_dir is not None
+        else (Path(__file__).resolve().parents[2] / "data" / "vietnam_data").resolve()
+    )
+    units_path = safe_child(root, root / "units.json")
+    if units_path is None or not units_path.is_file():
+        units = []
+    else:
+        try:
+            units = await asyncio.to_thread(load_units, units_path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            log.warning("Không thể tải dữ liệu hành chính từ %s", units_path)
+            units = []
+
+    normalized_query = normalize(query)
+    all_units: list[tuple[dict, dict]] = []
+    for province in units:
+        all_units.append((province, province))
+        all_units.extend((ward, province) for ward in province["Wards"])
+
+    code_match = re.search(
+        r"\bma(?: don vi| tinh| thanh pho| phuong| xa)?\s*(\d{1,5})\b",
+        normalized_query,
+    )
+    if code_match is None and re.fullmatch(r"\d{1,5}", normalized_query):
+        code_match = re.match(r"(\d{1,5})", normalized_query)
+    code = code_match.group(1) if code_match else None
+
+    matched_pair = None
+    candidates: list[dict] = []
+    if code:
+        matched_pair = next(
+            ((unit, province) for unit, province in all_units if unit["Code"] == code),
+            None,
+        )
+    else:
+        province_matches = [
+            (province, province)
+            for province in units
+            if contains_alias(normalized_query, province)
+        ]
+        ward_matches = [
+            (ward, province)
+            for province in units
+            for ward in province["Wards"]
+            if contains_alias(normalized_query, ward)
+        ]
+        
+        # Nếu query khớp exact với một alias của ward hoặc province, ưu tiên exact match
+        exact_ward_matches = [
+            (ward, province) for ward, province in ward_matches
+            if any(alias == normalized_query for alias in aliases(ward))
+        ]
+        exact_province_matches = [
+            (province, province) for province, _ in province_matches
+            if any(alias == normalized_query for alias in aliases(province))
+        ]
+        
+        if len(exact_province_matches) == 1 and not exact_ward_matches:
+            matched_pair = exact_province_matches[0]
+        elif len(exact_ward_matches) == 1:
+            matched_pair = exact_ward_matches[0]
+        else:
+            bool(ward_matches)
+            if ward_matches and len(province_matches) == 1:
+                province_context = province_matches[0][0]
+                ward_matches = [
+                    pair for pair in ward_matches if pair[1] is province_context
+                ]
+            if len(ward_matches) == 1:
+                matched_pair = ward_matches[0]
+            elif len(ward_matches) > 1:
+                candidates = [
+                    unit_view(ward, province) for ward, province in ward_matches
+                ]
+            elif len(province_matches) == 1:
+                matched_pair = province_matches[0]
+            elif len(province_matches) > 1:
+                candidates = [
+                    unit_view(province) for province, _ in province_matches
+                ]
+
+    if candidates:
+        display = (
+            f"Tìm thấy {len(candidates)} đơn vị trùng tên: "
+            + "; ".join(
+                (
+                    f"{item['full_name']} - "
+                    f"{item.get('province', {}).get('full_name', '')}"
+                ).strip(" -")
+                for item in candidates
+            )
+            + ". Vui lòng nêu rõ tỉnh/thành phố."
+        )
+    elif matched_pair is None:
+        display = "Không tìm thấy đơn vị hành chính phù hợp trong dữ liệu hiện có."
+    else:
+        unit, province = matched_pair
+        list_requested = any(
+            phrase in normalized_query
+            for phrase in ("liet ke", "danh sach", "cac phuong xa")
+        )
+        if unit is province and list_requested:
+            ward_names = [
+                ward.get("FullName") or ward.get("Name")
+                for ward in province["Wards"]
+            ]
+            display = (
+                f"{province.get('FullName') or province.get('Name')} "
+                f"(mã {province['Code']}) có {len(ward_names)} phường/xã: "
+                + ", ".join(ward_names)
+                + "."
+            )
+        elif unit is province:
+            display = (
+                f"{province.get('FullName') or province.get('Name')} "
+                f"có mã đơn vị {province['Code']}."
+            )
+        else:
+            display = (
+                f"{unit.get('FullName') or unit.get('Name')} "
+                f"(mã {unit['Code']}) thuộc "
+                f"{province.get('FullName') or province.get('Name')}."
+            )
+
+    return display
 
 
 async def handle_epic_free_games_query(query: str = None, **kwargs) -> str:
@@ -1363,6 +1545,7 @@ async def handle_epic_free_games_query(query: str = None, **kwargs) -> str:
             resp = await client.get(url)
             resp.raise_for_status()
             data = resp.json()
+            os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
             with open(CACHE_PATH, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False)
     except Exception as e:

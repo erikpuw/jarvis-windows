@@ -1,65 +1,48 @@
 :root {
   --accent-blue: rgba(14, 165, 233, 1);
-  --accent-blue-faded: rgba(14, 165, 233, 0.05);
   --accent-cyan: #00d4ff;
-  --accent-cyan-rgb: 0, 212, 255;
-  --accent-orange: #ffaa00;
-  --accent-red: #ef4444;
-  --accent-green: #4ade80;
-  --bg-deep: #050508;
-  --bg-panel: rgba(8, 10, 18, 0.72);
-  --bg-panel-strong: rgba(8, 10, 18, 0.92);
-  --bg-chip: rgba(0, 212, 255, 0.06);
-  --bg-overlay: rgba(0, 0, 0, 0.5);
-  --border-faint: rgba(14, 165, 233, 0.08);
-  --border-soft: rgba(0, 212, 255, 0.12);
-  --border-bright: rgba(0, 212, 255, 0.3);
-  --border-glass: rgba(255, 255, 255, 0.05);
-  --text-strong: #ffffff;
-  --text-default: rgba(255, 255, 255, 0.78);
-  --text-soft: rgba(255, 255, 255, 0.5);
   --text-muted: rgba(255, 255, 255, 0.3);
-  --text-accent: rgba(0, 212, 255, 0.85);
   --chat-gap: 10px;
-  --bubble-padding: 8px 16px;
   --bubble-radius: 18px;
+  --bubble-font-size: 13.5px;
   --container-width: 800px;
   --container-bottom: 18px;
-  --cmd-padding: 6px 4px;
+  --cmd-padding: 4px 4px;
   --cmd-bg: rgba(8, 8, 12, 0.4);
-  --chat-to-status-gap: 10px;
-  --radius-chip: 8px;
-  --radius-panel: 12px;
-  --radius-card: 16px;
-  --radius-modal: 20px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-  --t-fast: 180ms;
-  --t-base: 300ms;
-  --t-slow: 500ms;
-  --glow-cyan-soft: 0 0 20px rgba(0, 212, 255, 0.12);
-  --glow-cyan-strong: 0 0 28px rgba(0, 212, 255, 0.32);
-  --shadow-panel: 0 0 40px rgba(0, 0, 0, 0.4), inset 0 0 20px rgba(14, 165, 233, 0.02);
-  --z-orb: 0;
-  --z-hud: 10;
-  --z-label: 5;
-  --z-controls: 20;
-  --z-modal: 90;
-  --z-overlay: 100;
+  /* Type scale (PC). Phone values: the max-width 768px :root block. Clock digits stay literal. */
+  --fs-label: 11px;   /* uppercase tags, hints, badges */
+  --fs-small: 12px;   /* secondary text, meta */
+  --fs-ui: 13px;      /* buttons, list rows, panel text */
+  --fs-body: 14px;    /* main reading text */
+  --fs-input: 16px;   /* inputs, emphasis */
+  --fs-title: 18px;   /* card / page titles */
+  --fs-heading: 20px; /* page headings */
+  /* Root layers, bottom → top. One value per layer; z-index elsewhere is local to its parent. */
+  --z-orb: 10;        /* #orb-canvas */
+  --z-label: 20;      /* #jarvis-label */
+  --z-chat: 30;       /* #command-container */
+  --z-clock: 40;      /* #jarvis-clock */
+  --z-controls: 50;   /* #controls */
+  --z-cam: 60;        /* #webcam-hud */
+  --z-media: 70;      /* .media-player */
+  --z-island: 80;     /* .island (#error-text), Dynamic Island */
+  --z-lightbox: 90;   /* #image-lightbox */
+  --z-settings: 100;  /* #settings-container */
 }
 
 #jarvis-label {
   position: fixed;
-  bottom: 64px;
+  bottom: 2px;
   left: 50%;
   transform: translateX(-50%);
   color: rgba(123, 211, 252, 0.2);
-  font-size: 12px;
+  font-size: var(--fs-small);
   letter-spacing: 4px;
   text-transform: uppercase;
   font-weight: 400;
   pointer-events: none;
-  z-index: 5;
+  z-index: var(--z-label);
 }
 
 /* 
@@ -78,7 +61,10 @@ html,
 body {
   width: 100%;
   height: 100%;
-  height: 100svh;
+  /* what is shown now, not the small viewport (100svh): in the iPhone home-screen app the small viewport is the screen minus
+     the status bar, and WebKit keeps the layout viewport inside the document, so everything fixed to the bottom stopped a
+     status bar short of the screen's bottom. In a Safari tab (it never scrolls) both are the same. */
+  height: 100dvh;
   overflow: hidden;
   background: #050508;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -95,33 +81,97 @@ body {
   pointer-events: none;
 }
 
+/* Six round buttons behind one main button (src/controls-menu.ts). Closed: only the main button shows. Open: the six
+   fan out together on two arcs round it (3 on each arc, to the left and below the corner). */
 #controls {
   position: fixed;
   top: calc(16px + env(safe-area-inset-top, 0px));
   right: calc(16px + env(safe-area-inset-right, 0px));
-  display: flex;
-  gap: 4px;
-  z-index: 3;
+  width: 36px;
+  height: 36px;
+  z-index: var(--z-controls);
+}
+
+/* Ẩn hoàn toàn cụm controls khi Cài đặt mở hoặc khi có class .hidden để tránh xung đột toạ độ góc trên phải */
+#settings-container.open ~ #controls,
+body:has(#settings-container.open) #controls,
+#controls.hidden {
+  display: none !important;
+  pointer-events: none !important;
 }
 
 #controls button {
-  width: 36px;
-  height: 36px;
-  border: 1px solid rgba(14, 165, 233, 0.15);
-  border-radius: 8px;
-  background: rgba(14, 165, 233, 0.05);
-  color: rgba(14, 165, 233, 0.4);
+  position: absolute;
+  right: 3px;
+  top: 3px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(14, 165, 233, 0.2);
+  border-radius: 50%;
+  background: rgba(14, 165, 233, 0.08);
+  color: rgba(14, 165, 233, 0.5);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
+  /* closed: tucked behind the main button, not clickable, not focusable */
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(0, 0) scale(0.5);
+  transition: transform 0.3s cubic-bezier(0.34, 1.4, 0.64, 1), opacity 0.2s ease, visibility 0s 0.3s, background 0.2s, color 0.2s, border-color 0.2s;
 }
 
-#controls button:hover {
-  background: rgba(14, 165, 233, 0.12);
+#controls.open button {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate(var(--dx), var(--dy));
+  transition: transform 0.3s cubic-bezier(0.34, 1.4, 0.64, 1), opacity 0.2s ease, visibility 0s, background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+/* a 42px touch target round the 30px circle */
+#controls button::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+}
+
+#controls #btn-controls {
+  right: 0;
+  top: 0;
+  width: 36px;
+  height: 36px;
+  z-index: 2;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+  background: rgba(14, 165, 233, 0.14);
   color: rgba(14, 165, 233, 0.7);
-  border-color: rgba(14, 165, 233, 0.3);
+}
+
+/* offsets from the main button: inner arc radius 44 at 0°/45°/90°, outer arc radius 78 at 15°/45°/75° (down … left) */
+#btn-settings { --dx: 0px; --dy: 44px; }
+#btn-orb-toggle { --dx: -31px; --dy: 31px; }
+#btn-cmd-bar { --dx: -44px; --dy: 0px; }
+#btn-tts-toggle { --dx: -20px; --dy: 75px; }
+#btn-mute { --dx: -55px; --dy: 55px; }
+#btn-webcam-toggle { --dx: -75px; --dy: 20px; }
+
+#controls button:hover {
+  background: rgba(14, 165, 233, 0.14);
+  color: rgba(14, 165, 233, 0.8);
+  border-color: rgba(14, 165, 233, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #controls button,
+  #controls.open button {
+    transition: none;
+  }
 }
 
 #controls button.muted {
@@ -129,55 +179,8 @@ body {
   border-color: rgba(239, 68, 68, 0.2);
 }
 
-#menu-dropdown {
-  position: fixed;
-  top: calc(58px + env(safe-area-inset-top, 0px));
-  right: calc(16px + env(safe-area-inset-right, 0px));
-  background: rgba(10, 10, 15, 0.95);
-  border: 1px solid rgba(14, 165, 233, 0.15);
-  border-radius: 8px;
-  padding: 4px;
-  z-index: 20;
-}
-
-#menu-dropdown button {
-  display: block;
-  width: 100%;
-  padding: 8px 16px;
-  border: none;
-  background: none;
-  color: rgba(14, 165, 233, 0.5);
-  font-size: 12px;
-  letter-spacing: 1px;
-  text-align: left;
-  cursor: pointer;
-  border-radius: 4px;
-  transition: all 0.15s;
-}
-
-#menu-dropdown button:hover {
-  background: rgba(14, 165, 233, 0.1);
-  color: rgba(14, 165, 233, 0.8);
-}
-
-#error-text {
-  position: fixed;
-  top: 40px;
-  left: 50%;
-  transform: translateX(-50%);
-  color: rgba(239, 68, 68, 0.7);
-  font-size: 13px;
-  letter-spacing: 1px;
-  font-weight: 300;
-  transition: opacity 0.5s ease;
-  pointer-events: none;
-  z-index: 10;
-  opacity: 0;
-}
-
-
-
-/* System Flow Dynamic Icons styling */
+/* System Flow Dynamic Icons styling. The classes are built in icons.ts setStatusIcon (`${prefix}-status-icon`,
+   `${prefix}-ring|completed|failed|pending`), so a text search for them finds no user: they are not dead. */
 .flow-status-icon {
   width: 10px;
   height: 10px;
@@ -229,76 +232,6 @@ body {
   }
 }
 
-.flow-step-id {
-  font-size: 9px;
-  font-weight: 600;
-  font-family: 'SF Mono', 'Cascadia Code', monospace;
-  color: rgba(255, 255, 255, 0.3);
-  min-width: 18px;
-  text-align: right;
-  margin-right: 6px;
-  flex-shrink: 0;
-}
-
-.flow-step-label {
-  white-space: normal;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-  min-width: 0;
-}
-
-.flow-step-row {
-  min-height: 18px;
-  padding: 3px 0;
-}
-
-#system-flow-content {
-  max-height: 10;
-  overflow-y: auto;
-  flex-shrink: 0;
-}
-
-
-.status-dot.mini {
-  width: 4px;
-  height: 4px;
-}
-
-.app-list-container::-webkit-scrollbar {
-  width: 2px;
-}
-
-.app-list-container::-webkit-scrollbar-thumb {
-  background: rgba(14, 165, 233, 0.2);
-  border-radius: 2px;
-}
-
-.app-item {
-  animation: slide-in-right 0.3s ease forwards;
-}
-
-@keyframes slide-in-right {
-  from {
-    opacity: 0;
-    transform: translateX(10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.app-name {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 140px;
-}
-
 .highlight {
   color: #4ade80 !important;
   font-weight: 600;
@@ -311,7 +244,7 @@ body {
   left: 50%;
   transform: translateX(-50%);
   width: min(var(--container-width), calc(100vw - 28px));
-  z-index: 50;
+  z-index: var(--z-chat);
   display: flex;
   flex-direction: column;
   gap: var(--chat-gap);
@@ -341,7 +274,9 @@ body {
   gap: 6px;
   /* Giảm gap giữa các bong bóng chat */
   overflow-y: auto;
-  max-height: 70vh;
+  max-height: calc(100dvh - 180px);
+  max-height: calc(100vh - 180px);
+  overscroll-behavior: contain; /* its scroll never runs on into the page (viewport-reset.ts lockPageDrag) */
   padding: 8px 10px;
   /* Thắt chặt padding ngoài */
   pointer-events: auto;
@@ -384,14 +319,13 @@ body {
   padding: 6px 12px;
   /* Thắt chặt padding trong bong bóng chat */
   border-radius: var(--bubble-radius);
-  font-size: 13px;
-  line-height: 1.35;
-  /* Giảm line-height để text sát nhau hơn */
+  font-size: var(--bubble-font-size, 13.5px);
+  line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
   max-width: 88%;
-  background: rgba(0, 0, 0, 0.4);
-  /* Dark glass effect */
+  background: rgba(0, 0, 0, 0.7);
+  /* Dark glass effect (80% black opacity) */
   animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: all;
   /* Keep bubbles interactive */
@@ -406,11 +340,253 @@ body {
 /* Khử khoảng cách margin dư thừa của các đoạn văn bên trong bong bóng chat */
 .chat-bubble p {
   margin: 0 0 4px 0 !important;
-  line-height: 1.35;
+  line-height: 1.45;
 }
 
 .chat-bubble p:last-child {
   margin-bottom: 0 !important;
+}
+
+/* Markdown typography & styling inside chat bubbles */
+.chat-bubble .bubble-text,
+.chat-bubble .bubble-prose {
+  white-space: normal;
+  word-break: break-word;
+  color: inherit;
+  font-size: var(--bubble-font-size, 13.5px);
+  line-height: 1.5;
+}
+
+.chat-bubble .bubble-prose h1,
+.chat-bubble .bubble-prose h2,
+.chat-bubble .bubble-prose h3,
+.chat-bubble .bubble-prose h4 {
+  color: var(--accent-blue, #0ea5e9);
+  margin: 6px 0 3px 0;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.chat-bubble .bubble-prose h1 { font-size: calc(var(--bubble-font-size, 13.5px) * 1.15); }
+.chat-bubble .bubble-prose h2 { font-size: calc(var(--bubble-font-size, 13.5px) * 1.08); }
+.chat-bubble .bubble-prose h3 { font-size: var(--bubble-font-size, 13.5px); text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.9; }
+
+.chat-bubble .bubble-prose p {
+  margin: 0 0 6px 0 !important;
+  line-height: 1.5;
+}
+.chat-bubble .bubble-prose p:last-child {
+  margin-bottom: 0 !important;
+}
+
+.chat-bubble .bubble-prose ul,
+.chat-bubble .bubble-prose ol {
+  margin: 4px 0 6px 18px;
+  padding: 0;
+}
+.chat-bubble .bubble-prose li {
+  margin-bottom: 3px;
+  line-height: 1.45;
+}
+
+.chat-bubble .bubble-prose strong {
+  color: #ffffff;
+  font-weight: 600;
+}
+.chat-bubble .bubble-prose em {
+  opacity: 0.9;
+  font-style: italic;
+}
+
+/* Code blocks inside chat bubbles */
+.chat-bubble .sd-code-block {
+  background: rgba(10, 15, 25, 0.9);
+  border: 1px solid rgba(14, 165, 233, 0.25);
+  border-radius: 6px;
+  margin: 8px 0;
+  overflow: hidden;
+  max-width: 100%;
+}
+.chat-bubble .sd-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(14, 165, 233, 0.08);
+  padding: 4px 10px;
+  font-size: var(--fs-label);
+  color: #38bdf8;
+  border-bottom: 1px solid rgba(14, 165, 233, 0.15);
+  font-family: monospace;
+}
+.chat-bubble .sd-code-lang {
+  font-weight: 600;
+  text-transform: lowercase;
+}
+.chat-bubble .sd-copy-btn {
+  background: rgba(14, 165, 233, 0.1);
+  border: 1px solid rgba(14, 165, 233, 0.3);
+  color: #94a3b8;
+  font-size: var(--fs-label);
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.chat-bubble .sd-copy-btn:hover {
+  color: #ffffff;
+  background: rgba(14, 165, 233, 0.25);
+  border-color: #38bdf8;
+}
+.chat-bubble .sd-code-block pre {
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: pre;
+  font-family: monospace;
+  font-size: calc(var(--bubble-font-size, 13.5px) * 0.92);
+  line-height: 1.45;
+}
+.chat-bubble .sd-code-block code {
+  font-family: monospace;
+  font-size: calc(var(--bubble-font-size, 13.5px) * 0.92);
+  color: #e2e8f0;
+  background: transparent;
+}
+.chat-bubble .sd-inline-code {
+  background: rgba(14, 165, 233, 0.12);
+  border: 1px solid rgba(14, 165, 233, 0.25);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+  color: #38bdf8;
+}
+
+/* Tables inside chat bubbles */
+.chat-bubble .sd-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 8px 0;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+  display: block;
+}
+
+.chat-bubble .sd-table-wrap::-webkit-scrollbar {
+  height: 4px;
+}
+
+.chat-bubble .sd-table-wrap::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 2px;
+}
+
+.chat-bubble .sd-table-wrap::-webkit-scrollbar-thumb {
+  background: rgba(14, 165, 233, 0.35);
+  border-radius: 2px;
+}
+
+.chat-bubble .sd-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: calc(var(--bubble-font-size, 13.5px) * 0.92);
+  color: #e2e8f0;
+}
+
+.chat-bubble .sd-table th,
+.chat-bubble .sd-table td {
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* Các cột văn bản mô tả / tên sản phẩm dài: cho phép wrap nhưng giữ độ rộng tối thiểu 140px để không bị co cụm */
+.chat-bubble .sd-table td:not([align="center"]):not([align="right"]):not([style*="text-align: center"]):not([style*="text-align: right"]) {
+  white-space: normal;
+  min-width: 140px;
+  max-width: 280px;
+}
+
+.chat-bubble .sd-table th[align="center"],
+.chat-bubble .sd-table td[align="center"],
+.chat-bubble .sd-table th[style*="text-align: center"],
+.chat-bubble .sd-table td[style*="text-align: center"],
+.chat-bubble .sd-table th[style*="text-align:center"],
+.chat-bubble .sd-table td[style*="text-align:center"] {
+  text-align: center !important;
+}
+
+.chat-bubble .sd-table th[align="right"],
+.chat-bubble .sd-table td[align="right"],
+.chat-bubble .sd-table th[style*="text-align: right"],
+.chat-bubble .sd-table td[style*="text-align: right"],
+.chat-bubble .sd-table th[style*="text-align:right"],
+.chat-bubble .sd-table td[style*="text-align:right"] {
+  text-align: right !important;
+}
+
+.chat-bubble .sd-table th[align="left"],
+.chat-bubble .sd-table td[align="left"] {
+  text-align: left !important;
+}
+
+.chat-bubble .sd-table th {
+  background: rgba(14, 165, 233, 0.18);
+  color: #ffffff;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.chat-bubble .sd-table td img {
+  max-width: 120px;
+  max-height: 180px;
+  object-fit: contain;
+  border-radius: 6px;
+  margin: 4px auto;
+  display: block;
+}
+
+/* Images & Lightbox zoom in chat bubbles */
+.chat-bubble img.bubble-img,
+.chat-bubble img {
+  max-width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  border-radius: 8px;
+  margin: 6px 0;
+  display: block;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  cursor: zoom-in;
+}
+
+.chat-bubble .bubble-prose a {
+  color: #0ea5e9;
+  text-decoration: none;
+  font-weight: 500;
+  border-bottom: 1px dashed #0ea5e9;
+  transition: all 0.2s;
+}
+.chat-bubble .bubble-prose a:hover {
+  color: #38bdf8;
+  border-bottom-color: #38bdf8;
+}
+
+.chat-bubble .bubble-prose blockquote {
+  margin: 6px 0;
+  padding: 4px 10px;
+  border-left: 3px solid #0ea5e9;
+  background: rgba(14, 165, 233, 0.06);
+  color: #94a3b8;
+  border-radius: 0 4px 4px 0;
+}
+.chat-bubble .sd-hr {
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 10px 0;
 }
 
 .chat-bubble:first-child {
@@ -440,215 +616,20 @@ body {
 
 .chat-bubble.assistant {
   align-self: flex-start;
-  background: rgba(8, 8, 12, 0.45);
+  background: rgba(0, 0, 0, 0.7);
   border: 1px solid rgba(14, 165, 233, 0.15);
   color: rgba(14, 165, 233, 0.95);
   border-bottom-left-radius: 4px;
-  min-height: 32px;
+  min-height: calc(var(--bubble-font-size, 13.5px) * 1.5 + 14px); /* one line of text: the same height as the loader bubble (no jump) */
   min-width: 48px;
   padding: 6px 12px;
   box-sizing: border-box;
 }
 
-/* System Flow Chat Bubble styling */
-.chat-bubble.system-flow {
-  align-self: flex-start;
-  background: rgba(6, 8, 14, 0.45);
-  border: 1px solid rgba(14, 165, 233, 0.15);
-  color: rgba(255, 255, 255, 0.85);
-  border-bottom-left-radius: 4px;
-  width: 240px !important;
-  /* the agent cards under it have the same width */
-  max-width: 90% !important;
-  box-sizing: border-box;
-  padding: 8px 12px !important;
-  margin-bottom: 0;
-  /* #chat-history gap already spaces bubbles */
-  border-radius: 12px;
-  font-family: inherit;
-  font-size: 12px;
-  line-height: 1.35;
-  white-space: normal !important;
-}
-
-/* timeline: one dot per step on a vertical rail */
-.chat-bubble.system-flow .flow-content-inline {
-  margin: 4px 0 0 4px;
-  padding-left: 14px;
-  border-left: 1px solid rgba(148, 163, 184, 0.32);
-}
-
-.chat-bubble.system-flow .flow-step-row {
-  position: relative;
-}
-
-.chat-bubble.system-flow .flow-step-row::before {
-  content: "";
-  position: absolute;
-  left: -18.5px;
-  top: 6px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #1e293b;
-  border: 1px solid #334155;
-}
-
-.chat-bubble.system-flow .flow-step-row[data-status="completed"]::before {
-  background: #22c55e;
-  border-color: #22c55e;
-}
-
-.chat-bubble.system-flow .flow-step-row[data-status="failed"]::before {
-  background: #ef4444;
-  border-color: #ef4444;
-}
-
-.chat-bubble.system-flow .flow-step-row[data-status="active"]::before {
-  background: #38bdf8;
-  border-color: #38bdf8;
-  animation: flow-dot 1.4s ease-in-out infinite;
-}
-
-@keyframes flow-dot {
-
-  0%,
-  100% {
-    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
-  }
-
-  50% {
-    box-shadow: 0 0 0 5px rgba(56, 189, 248, 0);
-  }
-}
-
-.chat-bubble.system-flow .flow-step-row[data-status="pending"] .flow-step-label {
-  color: rgba(148, 163, 184, 0.7);
-}
-
-.chat-bubble.system-flow .flow-step-row[data-status="active"] .flow-step-label {
-  color: #e2f3ff;
-}
-
-.chat-bubble.system-flow .flow-step-detail:not(:empty) {
-  margin-left: 6px;
-  color: rgba(148, 163, 184, 0.75);
-  font-size: 11px;
-}
-
-.chat-bubble.system-flow .flow-step-detail:not(:empty)::before {
-  content: "· ";
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chat-bubble.system-flow .flow-step-row[data-status="active"]::before {
-    animation: none;
-  }
-}
-
-.chat-bubble.system-flow .flow-step-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding: 1px 0;
-  gap: 6px;
-  line-height: 1.3;
-}
-
-.chat-bubble.system-flow .flow-step-label {
-  flex: 1;
-  color: rgba(203, 213, 225, 0.9);
-  white-space: nowrap;
-}
-
-/* ── Accordion header (single-line summary) ── */
-.chat-bubble.system-flow .flow-accordion-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  padding: 1px 0;
-  user-select: none;
-}
-
-.chat-bubble.system-flow .flow-accordion-header:hover .flow-summary-label {
-  color: rgba(255, 255, 255, 0.95);
-}
-
-.chat-bubble.system-flow .flow-accordion-summary {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.chat-bubble.system-flow .flow-summary-label {
-  color: #e2f3ff;
-  white-space: nowrap;
-  font-size: 12.5px;
-  font-weight: 500;
-  transition: color 0.2s;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-
-.chat-bubble.system-flow .flow-accordion-summary {
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-}
-
-.chat-bubble.system-flow .flow-step-count {
-  font-size: 11px;
-  color: #7dd3fc;
-  background: rgba(14, 165, 233, 0.12);
-  border-radius: 999px;
-  padding: 1px 7px;
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-  margin-left: auto;
-}
-
-/* Chevron xoay khi expanded */
-.chat-bubble.system-flow .flow-chevron {
-  color: rgba(14, 165, 233, 0.5);
-  transition: transform 0.25s ease;
-  margin-left: 2px;
-}
-
-.chat-bubble.system-flow.flow-expanded .flow-chevron {
-  transform: rotate(180deg);
-}
-
-/* ── Accordion body (ẩn/hiện bằng max-height) ── */
-.chat-bubble.system-flow .flow-accordion-body {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.2s ease,
-    padding-top 0.2s ease;
-  opacity: 0;
-  padding-top: 0;
-}
-
-.chat-bubble.system-flow.flow-expanded .flow-accordion-body {
-  max-height: 400px;
-  opacity: 1;
-  border-top: 1px solid rgba(14, 165, 233, 0.1);
-  padding-top: 3px;
-  margin-top: 3px;
-}
-
-/* Khi expanded, giữ nguyên chiều rộng cố định */
-.chat-bubble.system-flow.flow-expanded {
-  width: 240px !important;
-  max-width: 90% !important;
-}
-
 .chat-bubble.user {
   align-self: flex-end;
-  background: rgba(15, 15, 20, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   color: rgba(255, 255, 255, 0.95);
   border-bottom-right-radius: 4px;
 }
@@ -687,7 +668,7 @@ body {
   /* Align elements to the bottom when textarea grows */
   gap: 12px;
   background: var(--cmd-bg);
-  border: 1px solid rgba(14, 165, 233, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 10px;
   padding: var(--cmd-padding);
   transition: all 0.3s ease;
@@ -727,7 +708,7 @@ body {
 }
 
 #file-pinned-name {
-  font-size: 11px;
+  font-size: var(--fs-label);
   color: rgba(255, 255, 255, 0.9);
   white-space: nowrap;
   overflow: hidden;
@@ -739,7 +720,7 @@ body {
   background: none;
   border: none;
   color: rgba(255, 255, 255, 0.4);
-  font-size: 12px;
+  font-size: var(--fs-small);
   cursor: pointer;
   padding: 0;
   display: flex;
@@ -753,15 +734,14 @@ body {
 
 @media (hover: hover) {
   #command-bar-inner:hover {
-    background: rgba(14, 165, 233, 0.12);
-    border-color: rgba(14, 165, 233, 0.45);
-    box-shadow: 0 0 25px rgba(14, 165, 233, 0.18), inset 0 0 10px rgba(14, 165, 233, 0.05);
+    border-color: rgba(255, 255, 255, 0.22);
+    box-shadow: none;
   }
 }
 
 #status-text,
 .status-ghost {
-  font-size: 12px;
+  font-size: var(--fs-small);
   letter-spacing: 0.3px;
   font-weight: 500;
   transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
@@ -831,13 +811,9 @@ body {
   }
 }
 
-#cmd-last-msg {
-  display: none;
-}
-
 #command-bar-inner:focus-within {
-  border-color: rgba(14, 165, 233, 0.5);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 15px rgba(14, 165, 233, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: none;
 }
 
 #command-input {
@@ -846,12 +822,12 @@ body {
   border: none;
   outline: none;
   color: white;
-  font-size: 16px;
+  font-size: var(--fs-input);
   font-family: inherit;
   resize: none;
   /* Prevent manual resizing */
-  height: 24px;
-  /* Initial height */
+  height: calc(1.35em + 4px);
+  /* Initial height: one line (adjustInputHeight() keeps it in step with the text scale) */
   max-height: 140px;
   /* Limit maximum vertical height */
   overflow-y: auto;
@@ -907,250 +883,6 @@ body {
   transform: scale(1.1);
 }
 
-#agent-activity-hud {
-  position: fixed;
-  bottom: 80px;
-  right: 24px;
-  width: 280px;
-  z-index: 50;
-  background: linear-gradient(165deg, rgba(8, 12, 24, 0.94) 0%, rgba(4, 6, 12, 0.92) 100%);
-  border: 1px solid rgba(0, 212, 255, 0.2);
-  border-radius: 12px;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 212, 255, 0.05);
-  overflow: hidden;
-  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  opacity: 1;
-  transform: translateY(0);
-}
-
-#agent-activity-hud.hidden {
-  opacity: 0;
-  transform: translateY(20px);
-  pointer-events: none;
-}
-
-/* Scan-line overlay */
-#agent-activity-hud::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(to bottom, transparent 0%, rgba(0, 212, 255, 0.02) 50%, transparent 50.1%);
-  background-size: 100% 4px;
-  pointer-events: none;
-  opacity: 0.4;
-}
-
-.aah-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-bottom: 1px solid rgba(0, 212, 255, 0.1);
-  background: rgba(0, 212, 255, 0.03);
-}
-
-.aah-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.15);
-  flex-shrink: 0;
-  transition: all 0.3s ease;
-}
-
-.aah-indicator.active {
-  background: #22c55e;
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
-  animation: aah-pulse 1.5s ease-in-out infinite;
-}
-
-.aah-indicator.error {
-  background: #ef4444;
-  box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
-}
-
-.aah-indicator.success {
-  background: #00d4ff;
-  box-shadow: 0 0 8px rgba(0, 212, 255, 0.6);
-}
-
-@keyframes aah-pulse {
-
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.4;
-  }
-}
-
-.aah-agent-name {
-  flex: 1;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: rgba(0, 212, 255, 0.8);
-}
-
-.aah-close {
-  width: 20px;
-  height: 20px;
-  border: none;
-  background: none;
-  color: rgba(255, 255, 255, 0.3);
-  font-size: 14px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.2s;
-}
-
-.aah-close:hover {
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.aah-body {
-  padding: 8px 12px;
-}
-
-.aah-steps {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 6px;
-}
-
-.aah-step {
-  flex: 1;
-  height: 3px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.08);
-  transition: background 0.3s ease;
-}
-
-.aah-step.done {
-  background: rgba(0, 212, 255, 0.6);
-}
-
-.aah-step.active {
-  background: rgba(0, 212, 255, 0.9);
-  box-shadow: 0 0 6px rgba(0, 212, 255, 0.4);
-  animation: aah-step-pulse 1s ease-in-out infinite;
-}
-
-.aah-step.error {
-  background: rgba(239, 68, 68, 0.6);
-}
-
-@keyframes aah-step-pulse {
-
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.5;
-  }
-}
-
-.aah-detail {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
-  line-height: 1.4;
-  min-height: 16px;
-  font-family: 'Consolas', 'Monaco', monospace;
-  word-break: break-word;
-}
-
-.aah-errors {
-  margin-top: 4px;
-  font-size: 10px;
-  color: rgba(239, 68, 68, 0.7);
-  font-family: 'Consolas', 'Monaco', monospace;
-  max-height: 60px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(239, 68, 68, 0.3) transparent;
-}
-
-.aah-errors:empty {
-  display: none;
-}
-
-.aah-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.25);
-  letter-spacing: 1px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Agent-specific accent colors */
-#agent-activity-hud[data-agent="coder"] {
-  border-color: rgba(139, 92, 246, 0.3);
-}
-
-#agent-activity-hud[data-agent="coder"] .aah-agent-name {
-  color: rgba(139, 92, 246, 0.9);
-}
-
-#agent-activity-hud[data-agent="coder"] .aah-step.done,
-#agent-activity-hud[data-agent="coder"] .aah-step.active {
-  background: rgba(139, 92, 246, 0.7);
-}
-
-#agent-activity-hud[data-agent="coder"] .aah-indicator.active {
-  background: #8b5cf6;
-  box-shadow: 0 0 8px rgba(139, 92, 246, 0.6);
-}
-
-#agent-activity-hud[data-agent="data"] {
-  border-color: rgba(34, 197, 94, 0.3);
-}
-
-#agent-activity-hud[data-agent="data"] .aah-agent-name {
-  color: rgba(34, 197, 94, 0.9);
-}
-
-#agent-activity-hud[data-agent="data"] .aah-step.done,
-#agent-activity-hud[data-agent="data"] .aah-step.active {
-  background: rgba(34, 197, 94, 0.7);
-}
-
-#agent-activity-hud[data-agent="data"] .aah-indicator.active {
-  background: #22c55e;
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
-}
-
-#agent-activity-hud[data-agent="evolver"] {
-  border-color: rgba(245, 158, 11, 0.3);
-}
-
-#agent-activity-hud[data-agent="evolver"] .aah-agent-name {
-  color: rgba(245, 158, 11, 0.9);
-}
-
-#agent-activity-hud[data-agent="evolver"] .aah-step.done,
-#agent-activity-hud[data-agent="evolver"] .aah-step.active {
-  background: rgba(245, 158, 11, 0.7);
-}
-
-#agent-activity-hud[data-agent="evolver"] .aah-indicator.active {
-  background: #f59e0b;
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
-}
-
 /* ---------------------------------------------------------------------------
    Responsive Design
    --------------------------------------------------------------------------- */
@@ -1163,63 +895,38 @@ body {
 */
 
 @media (max-width: 768px) {
-  #system-flow-monitor {
-    display: none !important;
-  }
-
-  .hud-group {
-    gap: 8px;
-    transform: none;
-  }
-
-  .hud-label {
-    font-size: 9px;
-    letter-spacing: 1px;
-  }
-
-  .hud-row {
-    font-size: 11px;
-    gap: 8px;
-  }
 
   #chat-history {
-    height: 360px;
     gap: 6px;
     padding: 6px;
+    max-height: calc(100dvh - 150px);
+    max-height: calc(100vh - 150px);
+  }
+
+  /* ── Mobile Typography & Chat Bubbles ── */
+  :root {
+    --bubble-font-size: 15px;
+    --fs-small: 13px;
+    --fs-ui: 14px;
+    --fs-body: 15px;
   }
 
   .chat-bubble {
     max-width: 92%;
-    font-size: 13px;
+    font-size: var(--bubble-font-size, 15px);
     padding: 8px 14px;
   }
 
-  /* System-flow bubble: cố định kích thước trên mobile */
-  .chat-bubble.system-flow {
-    width: 240px !important;
-    max-width: 92% !important;
-  }
-
-  .chat-bubble.system-flow.flow-expanded {
-    width: 240px !important;
-    max-width: 92% !important;
-  }
-
-  .chat-bubble.system-flow .flow-summary-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .chat-bubble .bubble-text,
+  .chat-bubble .bubble-prose,
+  .chat-bubble p {
+    font-size: var(--bubble-font-size, 15px);
+    line-height: 1.5;
   }
 
   #controls {
     top: calc(12px + env(safe-area-inset-top, 0px));
     right: calc(12px + env(safe-area-inset-right, 0px));
-    gap: 4px;
-  }
-
-  /* 8 × 40px + 7 × 4px = 348px — fits a 375px screen; 44px would not. */
-  #controls button {
-    width: 40px;
-    height: 40px;
   }
 
   /* 40px touch target around the 14px icon; negative margin keeps the layout unchanged. */
@@ -1229,55 +936,36 @@ body {
     margin: -13px;
   }
 
-  #menu-dropdown {
-    top: calc(56px + env(safe-area-inset-top, 0px));
-    right: calc(12px + env(safe-area-inset-right, 0px));
-  }
-
   #jarvis-label {
-    font-size: 12px;
+    font-size: var(--fs-small);
     bottom: 2px;
   }
 
   #command-bar-inner {
-    padding: 6px 4px;
+    padding: 4px 4px;
     border-radius: 12px;
   }
 
   #command-input {
-    font-size: 16px;
+    font-size: var(--fs-input);
   }
 
 }
 
 /* Extra small devices */
 @media (max-width: 380px) {
-
   #command-container {
     bottom: 16px;
     width: calc(100vw - 16px);
   }
 
   #chat-history {
-    height: 180px;
     gap: 4px;
     padding: 4px;
   }
 
   .chat-bubble {
     padding: 7px 12px;
-    font-size: 12.5px;
-  }
-
-  .chat-bubble.system-flow {
-    width: 100% !important;
-    max-width: 94% !important;
-  }
-
-  .chat-bubble.system-flow .flow-summary-label {
-    max-width: none;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 }
 
@@ -1295,7 +983,7 @@ body {
   height: 300px;
   background: rgba(10, 10, 15, 0.5);
   border: 1px solid rgba(0, 212, 255, 0.2);
-  z-index: 55;
+  z-index: var(--z-cam);
   transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.8s ease;
   /* Không dùng transition: all để tránh giật khi kéo resize */
   overflow: hidden;
@@ -1346,7 +1034,7 @@ body {
   position: absolute;
   top: 12px;
   left: 12px;
-  font-size: 10px;
+  font-size: var(--fs-label);
   letter-spacing: 2px;
   color: rgba(0, 212, 255, 0.6);
   text-transform: uppercase;
@@ -1361,7 +1049,7 @@ body {
   border: 1px solid rgba(0, 212, 255, 0.3);
   border-radius: 4px;
   color: rgba(0, 212, 255, 0.8);
-  font-size: 10px;
+  font-size: var(--fs-label);
   font-family: inherit;
   padding: 4px 8px;
   outline: none;
@@ -1393,7 +1081,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 9px;
+  font-size: var(--fs-label);
   letter-spacing: 1.5px;
   color: rgba(0, 212, 255, 0.8);
   z-index: 5;
@@ -1431,7 +1119,6 @@ body {
   }
 }
 
-
 #controls button.active {
   background: rgba(14, 165, 233, 0.12);
   border-color: rgba(14, 165, 233, 0.35);
@@ -1439,91 +1126,9 @@ body {
   box-shadow: 0 0 12px rgba(0, 212, 255, 0.15);
 }
 
-/* ==========================================================================
-   AGENT HUB & CLI TERMINAL
-   ========================================================================== */
-
-/* ==========================================================================
-   AGENT MONITOR PANEL (UNIFIED)
-   ========================================================================== */
-
-/* ==========================================================================
-   MINI-MAP & FULL-SCREEN DUAL MODE
-   ========================================================================== */
-
-#map-panel {
-  position: fixed;
-  z-index: 1;
-  /* Above orb (0), below HUD (5+) */
-  display: flex;
-  flex-direction: column;
-  transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  overflow: hidden;
-  background: #000;
-}
-
 /* MINI MODE (Default when open) */
-#map-panel.mini-mode {
-  left: 20px;
-  bottom: 20px;
-  width: 480px;
-  height: 320px;
-  border-radius: 24px;
-  border: none;
-  background: transparent;
-  /* Full transparency for the container */
-  box-shadow: none;
-  transform-origin: bottom left;
-  /* 4-side linear fade mask for a cleaner tactical look */
-  mask-image:
-    linear-gradient(to right, transparent, black 10%, black 90%, transparent),
-    linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
-  mask-composite: intersect;
-  -webkit-mask-image:
-    linear-gradient(to right, transparent, black 10%, black 90%, transparent),
-    linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
-  -webkit-mask-composite: source-in;
-  z-index: 55;
-}
-
-#map-panel.mini-mode #map-container {
-  mix-blend-mode: screen;
-  /* Only show bright lines on dark background */
-  filter: brightness(1.8) contrast(1.2) saturate(0.5);
-  /* Enhance neon lines */
-  opacity: 0.8;
-}
 
 /* FULL MODE */
-#map-panel.full-screen {
-  left: 0;
-  top: 0;
-  width: 100vw;
-  height: 100vh;
-  border-radius: 0;
-  border: none;
-  transform-origin: bottom left;
-  mask-image: none !important;
-  -webkit-mask-image: none !important;
-  mask-composite: auto !important;
-  -webkit-mask-composite: source-over !important;
-  background: #000;
-  z-index: 4;
-}
-
-#map-panel.full-screen #map-container {
-  mix-blend-mode: normal !important;
-  filter: none !important;
-  opacity: 1 !important;
-}
-
-#map-panel.hidden {
-  display: none;
-}
-
-#map-panel {
-  animation: panel-in-scale 0.45s cubic-bezier(0.16, 1, 0.3, 1);
-}
 
 @keyframes panel-in-scale {
   from {
@@ -1532,342 +1137,15 @@ body {
   }
 }
 
-.map-body {
-  flex: 1;
-  position: relative;
-  width: 100%;
-  height: 100%;
-}
-
-#map-container {
-  width: 100%;
-  height: 100%;
-}
-
 /* Controls - Left Aligned */
-.map-controls-left {
-  position: absolute;
-  left: 15px;
-  top: 15px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  z-index: 10;
-}
-
-.map-controls-left button {
-  width: 38px;
-  height: 38px;
-  background: rgba(10, 10, 15, 0.6);
-  border: 1px solid rgba(0, 212, 255, 0.2);
-  border-radius: 8px;
-  color: #00d4ff;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 8px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.map-controls-left button:hover {
-  background: rgba(0, 212, 255, 0.15);
-  border-color: #00d4ff;
-  box-shadow: 0 0 15px rgba(0, 212, 255, 0.3);
-}
-
-.map-controls-left button.active {
-  background: #00d4ff;
-  color: #000;
-}
 
 /* Search Bottom */
-.map-search-bottom {
-  position: absolute;
-  left: 50%;
-  bottom: 12px;
-  transform: translateX(-50%);
-  width: 340px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(0, 212, 255, 0.15);
-  border-radius: 6px;
-  padding: 0 10px;
-  z-index: 10;
-  transition: all 0.3s ease;
-}
-
-#map-panel.full-screen .map-search-bottom {
-  top: 20px;
-  bottom: auto;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 450px;
-  height: 38px;
-  background: rgba(10, 10, 15, 0.8);
-  border-radius: 10px;
-  border-color: rgba(0, 212, 255, 0.3);
-}
-
-.map-search-bottom:focus-within {
-  border-color: #00d4ff;
-  box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
-}
-
-#map-search-input {
-  background: transparent;
-  border: none;
-  outline: none;
-  color: #fff;
-  font-size: 11px;
-  flex: 1;
-}
-
-#btn-map-search-go {
-  background: none;
-  border: none;
-  color: #00d4ff;
-  cursor: pointer;
-  padding: 3px;
-}
 
 /* Coordinates HUD */
-.map-coord-hud {
-  position: absolute;
-  right: 15px;
-  top: 15px;
-  background: rgba(0, 0, 0, 0.5);
-  padding: 4px 4px;
-  border-radius: 6px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 9px;
-  color: #00d4ff;
-  border: 1px solid rgba(0, 212, 255, 0.15);
-  pointer-events: none;
-  z-index: 10;
-  display: flex;
-  gap: 4px;
-}
 
 /* Exit Button (Hidden in Mini Mode usually) */
-.map-exit-btn {
-  position: absolute;
-  right: 15px;
-  top: 15px;
-  width: 32px;
-  height: 32px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  border-radius: 6px;
-  color: #ef4444;
-  font-size: 20px;
-  cursor: pointer;
-  display: none;
-  /* Only show in full screen */
-  align-items: center;
-  justify-content: center;
-  z-index: 20;
-}
-
-#map-panel.full-screen .map-exit-btn {
-  display: flex;
-}
-
-#map-panel.full-screen .map-coord-hud {
-  top: auto;
-  bottom: 20px;
-  left: 20px;
-  right: auto;
-  background: rgba(10, 10, 15, 0.8);
-  border-color: rgba(0, 212, 255, 0.3);
-  padding: 6px 12px;
-  font-size: 10px;
-}
-
-/* MapLibre Popup Overwrite (Fix white text on white background) */
-.maplibregl-popup-content {
-  background: rgba(10, 10, 15, 0.95) !important;
-  border: 1px solid rgba(0, 212, 255, 0.4) !important;
-  border-radius: 8px !important;
-  padding: 12px !important;
-  box-shadow: 0 0 20px rgba(0, 212, 255, 0.2) !important;
-  color: #fff !important;
-}
-
-.maplibregl-popup-anchor-top .maplibregl-popup-tip {
-  border-bottom-color: rgba(0, 212, 255, 0.4) !important;
-}
-
-.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
-  border-top-color: rgba(0, 212, 255, 0.4) !important;
-}
-
-.maplibregl-popup-anchor-left .maplibregl-popup-tip {
-  border-right-color: rgba(0, 212, 255, 0.4) !important;
-}
-
-.maplibregl-popup-anchor-right .maplibregl-popup-tip {
-  border-left-color: rgba(0, 212, 255, 0.4) !important;
-}
-
-.maplibregl-popup-close-button {
-  color: rgba(0, 212, 255, 0.6) !important;
-  font-size: 14px !important;
-  padding: 4px 8px !important;
-}
-
-.maplibregl-popup-close-button:hover {
-  color: #ef4444 !important;
-  background: transparent !important;
-}
 
 /* Custom Dialog to Save Pin - Cyberpunk design */
-#map-prompt-modal {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 280px;
-  background: rgba(10, 10, 15, 0.96);
-  border: 1px solid rgba(0, 212, 255, 0.4);
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 0 30px rgba(0, 212, 255, 0.3), 0 20px 50px rgba(0, 0, 0, 0.8);
-  z-index: 150;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  transition: all 0.3s ease;
-}
-
-#map-prompt-modal.hidden {
-  display: none !important;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.map-prompt-title {
-  font-size: 11px;
-  font-weight: bold;
-  letter-spacing: 2px;
-  color: #00d4ff;
-  text-shadow: 0 0 10px rgba(0, 212, 255, 0.4);
-  text-transform: uppercase;
-  text-align: center;
-}
-
-#map-prompt-input {
-  width: 100%;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(0, 212, 255, 0.2);
-  border-radius: 6px;
-  color: #fff;
-  font-size: 12px;
-  padding: 8px 12px;
-  outline: none;
-  transition: all 0.2s;
-}
-
-#map-prompt-input:focus {
-  border-color: #00d4ff;
-  box-shadow: 0 0 10px rgba(0, 212, 255, 0.2);
-}
-
-.map-prompt-buttons {
-  display: flex;
-  gap: 8px;
-}
-
-.map-prompt-buttons button {
-  flex: 1;
-  padding: 8px;
-  font-size: 10px;
-  font-weight: bold;
-  letter-spacing: 1px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.6);
-}
-
-#btn-map-prompt-cancel:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #ef4444;
-}
-
-#btn-map-prompt-save {
-  background: rgba(0, 212, 255, 0.12);
-  border-color: rgba(0, 212, 255, 0.4);
-  color: #00d4ff;
-}
-
-#btn-map-prompt-save:hover {
-  background: rgba(0, 212, 255, 0.25);
-  color: #fff;
-  box-shadow: 0 0 15px rgba(0, 212, 255, 0.3);
-}
-
-/* MapLibre Attribution Overwrite */
-.maplibregl-ctrl-attrib {
-  display: none !important;
-}
-
-@media (max-width: 768px) {
-  #map-panel.full-screen {
-    z-index: 100;
-  }
-
-  .map-controls-left {
-    left: 8px;
-    top: 66px;
-    gap: 5px;
-  }
-
-  .map-controls-left button {
-    width: 32px;
-    height: 32px;
-  }
-
-  #map-panel.full-screen .map-coord-hud {
-    bottom: 16px;
-    left: 10px;
-    right: auto;
-    font-size: 8px;
-    padding: 3px 8px;
-  }
-
-  .map-search-bottom {
-    top: 16px;
-    left: 50%;
-    bottom: auto;
-    transform: translateX(-50%);
-    width: 200px;
-    height: 30px;
-  }
-
-  #map-panel.full-screen .map-search-bottom {
-    top: 16px;
-    left: 50%;
-    bottom: auto;
-    transform: translateX(-50%);
-    width: 200px;
-    height: 30px;
-    font-size: 12px;
-  }
-
-  #map-panel.full-screen .map-exit-btn {
-    top: 12px;
-    right: 12px;
-  }
-}
-
 
 /* --- Media Player (Tự động scale theo tỷ lệ phim & responsive) --- */
 .media-player {
@@ -1881,7 +1159,7 @@ body {
   height: auto;
   background: rgba(8, 10, 18, 0.95);
   border: 1px solid rgba(0, 212, 255, 0.35);
-  z-index: 100;
+  z-index: var(--z-media);
   overflow: hidden;
   border-radius: 12px;
   box-shadow: 0 0 35px rgba(0, 212, 255, 0.25),
@@ -1935,7 +1213,7 @@ body {
   background: rgba(0, 0, 0, 0.6);
   border: 1px solid rgba(0, 212, 255, 0.25);
   color: rgba(0, 212, 255, 0.7);
-  font-size: 13px;
+  font-size: var(--fs-ui);
   cursor: pointer;
   z-index: 10;
   padding: 2px 8px;
@@ -1949,16 +1227,6 @@ body {
   border-color: rgba(0, 212, 255, 0.7);
   background: rgba(0, 212, 255, 0.15);
   box-shadow: 0 0 10px rgba(0, 212, 255, 0.4);
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
 }
 
 @media (max-width: 768px) {
@@ -1983,7 +1251,7 @@ body {
 }
 
 .interactive-card-title {
-  font-size: 11px;
+  font-size: var(--fs-label);
   letter-spacing: 0.3px;
   color: rgba(0, 212, 255, 0.9);
   font-weight: 600;
@@ -2019,7 +1287,7 @@ body {
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: rgba(255, 255, 255, 0.85);
 }
 
@@ -2077,7 +1345,7 @@ body {
   padding: 7px 16px;
   border-radius: 8px;
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: var(--fs-small);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
@@ -2120,7 +1388,7 @@ body {
 }
 
 .interactive-card-desc {
-  font-size: 13px;
+  font-size: var(--fs-ui);
   line-height: 1.5;
   color: rgba(255, 255, 255, 0.88);
   white-space: pre-wrap;
@@ -2187,7 +1455,7 @@ body {
 
 .suggest-tab {
   padding: 4px 10px;
-  font-size: 11px;
+  font-size: var(--fs-label);
   border-radius: 6px;
   color: rgba(255, 255, 255, 0.6);
   cursor: pointer;
@@ -2212,7 +1480,7 @@ body {
 .suggest-empty {
   padding: 16px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: rgba(255, 255, 255, 0.4);
   font-style: italic;
 }
@@ -2238,20 +1506,20 @@ body {
 }
 
 .suggest-item-icon {
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: rgba(0, 212, 255, 0.6);
   width: 14px;
   text-align: center;
 }
 
 .suggest-item-name {
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: #fff;
   font-weight: 500;
 }
 
 .suggest-item-desc {
-  font-size: 11px;
+  font-size: var(--fs-label);
   color: rgba(255, 255, 255, 0.4);
   max-width: 260px;
   white-space: nowrap;
@@ -2271,281 +1539,6 @@ body {
   text-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
 }
 
-/* ───────────────────────────────────────────────────────────────────────────
-   System Flow Monitor HUD (Bottom-Left)
-   ─────────────────────────────────────────────────────────────────────────── */
-
-#system-flow-monitor {
-  position: fixed;
-  left: 24px;
-  bottom: 24px;
-  width: 460px;
-  height: 150px;
-  z-index: 8;
-  /* Dưới lớp bong bóng chat (z-index: 15) */
-  display: flex;
-  flex-direction: column;
-  background: linear-gradient(135deg, rgba(6, 8, 14, 0.5) 0%, rgba(6, 8, 14, 0.3) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
-  border-left: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
-  padding: 12px;
-  box-shadow:
-    0 10px 30px rgba(0, 0, 0, 0.4),
-    inset 0 1px 1px rgba(255, 255, 255, 0.05);
-  transform: perspective(800px) rotateY(6deg) translateZ(0);
-  transform-style: preserve-3d;
-  transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1),
-    opacity 0.4s cubic-bezier(0.25, 0.8, 0.25, 1),
-    box-shadow 0.4s cubic-bezier(0.25, 0.8, 0.25, 1),
-    border-color 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
-  will-change: transform, opacity;
-  pointer-events: auto;
-}
-
-
-
-/* Hover state: Thẻ xoay nhẹ và sáng rực rỡ */
-#system-flow-monitor:hover {
-  transform: perspective(800px) rotateY(0deg) translateZ(6px) scale(1.02);
-  border-color: rgba(14, 165, 233, 0.35);
-  box-shadow:
-    0 15px 35px rgba(0, 0, 0, 0.5),
-    0 0 15px rgba(14, 165, 233, 0.25),
-    inset 0 1px 2px rgba(255, 255, 255, 0.15);
-}
-
-
-
-.flow-monitor-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  color: rgba(14, 165, 233, 0.8);
-  font-weight: 700;
-  border-bottom: 1px solid rgba(14, 165, 233, 0.15);
-  padding-bottom: 5px;
-  margin-bottom: 8px;
-}
-
-
-
-.flow-monitor-pulse {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #0ea5e9;
-  box-shadow: 0 0 6px #0ea5e9;
-  animation: hud-led-active 1.5s infinite ease-in-out;
-}
-
-#system-flow-monitor-content {
-  flex: 1;
-  max-height: none;
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-
-#system-flow-monitor-content::-webkit-scrollbar {
-  display: none;
-}
-
-/* ── Map Coordinates HUD & Popup Dark Theme ── */
-.map-coord-hud {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(10, 10, 15, 0.85);
-  border: 1px solid rgba(0, 212, 255, 0.25);
-  padding: 4px 8px;
-  border-radius: 6px;
-  color: #00d4ff;
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 10px;
-  font-weight: bold;
-  z-index: 10;
-  pointer-events: none;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-  display: inline-flex !important;
-  width: auto !important;
-  max-width: 200px !important;
-  height: auto !important;
-  bottom: auto !important;
-  justify-content: center;
-  align-items: center;
-}
-
-#map-panel.full-screen .map-coord-hud {
-  top: 68px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 11px;
-  padding: 6px 12px;
-  width: auto !important;
-  max-width: 220px !important;
-  height: auto !important;
-  bottom: auto !important;
-}
-
-.maplibregl-popup-content {
-  background: rgba(10, 10, 15, 0.96) !important;
-  color: #ffffff !important;
-  border: 1px solid rgba(0, 212, 255, 0.35) !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), 0 0 15px rgba(0, 212, 255, 0.1) !important;
-  border-radius: 10px !important;
-  padding: 14px 18px !important;
-}
-
-.maplibregl-popup-content div,
-.maplibregl-popup-content span,
-.maplibregl-popup-content p {
-  color: #ffffff !important;
-}
-
-.maplibregl-popup-close-button {
-  color: rgba(255, 255, 255, 0.5) !important;
-  padding: 4px 8px !important;
-  font-size: 14px !important;
-}
-
-.maplibregl-popup-anchor-top .maplibregl-popup-tip {
-  border-bottom-color: rgba(10, 10, 15, 0.96) !important;
-}
-
-.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
-  border-top-color: rgba(10, 10, 15, 0.96) !important;
-}
-
-.maplibregl-popup-anchor-left .maplibregl-popup-tip {
-  border-right-color: rgba(10, 10, 15, 0.96) !important;
-}
-
-.maplibregl-popup-anchor-right .maplibregl-popup-tip {
-  border-left-color: rgba(10, 10, 15, 0.96) !important;
-}
-
-/* ── Webcam HUD Full-View (Background Layer) ── */
-#webcam-hud.full-view {
-  width: 100% !important;
-  height: 100% !important;
-  max-width: none !important;
-  max-height: none !important;
-  top: 0 !important;
-  left: 0 !important;
-  z-index: 1 !important;
-  /* Ngay trên Orb (z-index 0) nhưng dưới tất cả UI khác (z-index 5+) */
-  resize: none !important;
-  /* Tắt resize kéo giãn khi full view */
-  border: none !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  background: #000 !important;
-}
-
-#webcam-hud.full-view #webcam-video {
-  opacity: 0.55;
-  /* Giảm độ mờ một chút để làm hình nền động tinh tế */
-  filter: saturate(0.7) brightness(0.9) contrast(1.1);
-}
-
-.hud-cam-fullscreen-btn {
-  position: absolute;
-  bottom: 10px;
-  left: 12px;
-  background: rgba(10, 10, 15, 0.85);
-  border: 1px solid rgba(0, 212, 255, 0.3);
-  color: rgba(0, 212, 255, 0.8);
-  border-radius: 4px;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 15;
-  transition: all 0.2s ease;
-  box-shadow: 0 0 10px rgba(0, 212, 255, 0.1);
-}
-
-.hud-cam-fullscreen-btn svg {
-  transition: transform 0.2s ease;
-}
-
-.hud-cam-fullscreen-btn:hover {
-  background: rgba(0, 212, 255, 0.15);
-  border-color: rgba(0, 212, 255, 0.6);
-  color: #fff;
-  box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
-}
-
-.hud-cam-fullscreen-btn.active {
-  background: #00d4ff !important;
-  border-color: #00d4ff !important;
-  color: #000 !important;
-}
-
-.hud-cam-fullscreen-btn.active svg {
-  transform: scale(0.9) rotate(180deg);
-}
-
-/* --- Screenshot Loading Animation --- */
-.chat-bubble.assistant.screenshot-loading {
-  background: rgba(14, 165, 233, 0.05) !important;
-  border: 1px dashed rgba(14, 165, 233, 0.3) !important;
-  min-width: 180px;
-  padding: 10px 18px;
-  display: inline-flex;
-  align-items: center;
-}
-
-.screenshot-loading-container {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.screenshot-loading-icon {
-  color: var(--accent-blue);
-  animation: screenshot-pulse 1.5s infinite ease-in-out;
-  display: flex;
-  align-items: center;
-}
-
-.screenshot-loading-text {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.75);
-  font-family: 'Inter', sans-serif;
-  letter-spacing: 0.5px;
-}
-
-@keyframes screenshot-pulse {
-  0% {
-    transform: scale(0.9);
-    opacity: 0.5;
-    filter: drop-shadow(0 0 2px rgba(14, 165, 233, 0.2));
-  }
-
-  50% {
-    transform: scale(1.15);
-    opacity: 1;
-    color: var(--accent-cyan);
-    filter: drop-shadow(0 0 8px rgba(0, 212, 255, 0.8));
-  }
-
-  100% {
-    transform: scale(0.9);
-    opacity: 0.5;
-    filter: drop-shadow(0 0 2px rgba(14, 165, 233, 0.2));
-  }
-}
-
 /* --- Image Lightbox Modal --- */
 #image-lightbox {
   position: fixed;
@@ -2553,11 +1546,12 @@ body {
   left: 0;
   width: 100vw;
   height: 100vh;
+  height: 100dvh; /* the visible area, whether the browser's toolbar is shown or not (100vh runs under it on Safari) */
   background: rgba(8, 10, 18, 0.95);
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 2000;
+  z-index: var(--z-lightbox);
   opacity: 0;
   transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: zoom-out;
@@ -2589,106 +1583,116 @@ body {
   box-shadow: 0 0 18px rgba(0, 212, 255, 0.25) !important;
 }
 
-/* ── Interactive Agent Tracker Card ── */
-.interactive-card.tracker-card {
-  padding: 2px 0;
-  background: transparent !important;
-  border: none !important;
-  border-radius: 0;
-  margin-top: 4px;
-  box-shadow: none !important;
-  transition: all 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
+/* ── Output File Card (ảnh upscale / tài liệu Word-Excel-PPT-PDF) ── */
+.interactive-card.file-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
 }
 
-.tracker-body {
+.file-row {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-/* agent header: lucide icon tile + name / task, status glyph on the right
-   (the surrounding chat bubble already draws the frame) */
-.interactive-card.tracker-card:has(.tracker-agent-icon) {
-  width: 100%;
-  /* fixed: the bubble has a fixed width, whatever the task text says */
-  margin: 0;
-  padding: 0;
-}
-
-/* hug the card: the bubble's own padding is sized for chat text; the width is the flow bubble's, so the frames line up */
-.chat-bubble:has(> .interactive-card.tracker-card .tracker-agent-icon) {
-  padding: 5px 10px !important;
-  width: 240px !important;
-  max-width: 90% !important;
-  box-sizing: border-box;
-}
-
-.tracker-agent-icon {
+.file-icon {
   flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
-  display: grid;
-  place-items: center;
-  color: #7dd3fc;
-  background: rgba(14, 165, 233, 0.12);
+  width: 34px;
+  height: 41px;
+  display: block;
+  line-height: 0;
 }
 
-.tracker-texts {
+.file-meta {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.tracker-name {
-  font-size: 12.5px;
+.file-name {
+  font-size: var(--fs-small);
   font-weight: 500;
   color: #e2f3ff;
   line-height: 1.25;
-}
-
-.tracker-texts .tracker-label {
-  color: rgba(148, 163, 184, 0.95);
-  line-height: 1.25;
-  /* one line, cut with "…": the task can be a whole multi-line brief; the full text is the tooltip (title) */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.tracker-icon-container {
+.file-caption {
+  font-size: var(--fs-label);
+  color: rgba(148, 163, 184, 0.95);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-download {
   flex-shrink: 0;
-  width: 14px;
-  height: 14px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-}
-
-.tracker-status-icon {
-  width: 100%;
-  height: 100%;
-  display: flex;
-}
-
-.tracker-ring {
-  color: var(--accent-blue, #0ea5e9);
-  animation: spin 1.2s linear infinite;
-}
-
-.tracker-completed {
-  color: #4ade80;
-}
-
-.tracker-failed {
-  color: #ef4444;
-}
-
-.tracker-label {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.85);
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: var(--fs-small);
+  font-weight: 600;
   font-family: inherit;
-  line-height: 1.4;
-  letter-spacing: 0.2px;
+  color: #06121f;
+  background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+  text-decoration: none;
+  cursor: pointer;
+  transition: filter 0.2s, transform 0.1s;
+}
+
+.file-download:hover {
+  filter: brightness(1.12);
+}
+
+.file-download:active {
+  transform: translateY(1px);
+}
+
+/* ── Khung xem trước ảnh thuần túy (chỉ ảnh) ── */
+.image-result-preview {
+  display: block;
+  width: 100%;
+  max-height: min(70vh, 720px);
+  object-fit: contain;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  font-size: var(--fs-input);
+  font-family: inherit;
+  color: #38bdf8;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  filter: brightness(1.2);
+}
+
+/* Nút ⬇ gắn cuối bong bóng phản hồi: icon trần cùng dòng chữ. */
+.bubble-text .icon-btn {
+  display: inline;
+  font-size: var(--fs-input);
+  margin-left: 8px;
+  vertical-align: baseline;
 }
 
 @keyframes spin {
@@ -2704,6 +1708,9 @@ body {
 /* Trạng thái tin nhắn chờ - Hiển thị icon loading trước câu chat và giữ nguyên nền glass */
 .chat-bubble.user.pending {
   opacity: 0.8;
+  /* the text sits in a block (.bubble-prose > p): a flex row keeps the spinner in front of it, not on a line of its own */
+  display: flex;
+  align-items: center;
 }
 
 .chat-bubble.user.pending::before {
@@ -2712,6 +1719,7 @@ body {
   width: 10px !important;
   height: 10px !important;
   margin-right: 8px !important;
+  flex-shrink: 0;
   border: 2px solid rgba(14, 165, 233, 0.2) !important;
   border-top-color: var(--accent-blue, #0ea5e9) !important;
   border-radius: 50% !important;
@@ -2750,7 +1758,7 @@ body {
 }
 
 .interactive-input-description {
-  font-size: 12px;
+  font-size: var(--fs-small);
   color: rgba(255, 255, 255, 0.75);
   line-height: 1.4;
 }
@@ -2765,7 +1773,7 @@ body {
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.22);
   color: rgba(255, 255, 255, 0.9);
-  font: 12px/1.4 monospace;
+  font: var(--fs-small)/1.4 monospace;
 }
 
 .interactive-text-input:focus {
@@ -2777,7 +1785,7 @@ body {
 #jarvis-bot {
   position: absolute;
   right: 4px;
-  bottom: calc(100% - 12px);
+  bottom: calc(100% - 9.6px);
   /* sits on the bar's top edge; the send button (z-index 12) stays on top of it */
   z-index: 11;
   /* above #chat-history (10) so it stays clickable, below #cmd-send-wrap */
@@ -2805,14 +1813,14 @@ body {
 
 /* Flip clock (src/clock.ts), HTC Sense style without the card: one digit per
    slot, a dark split line across the middle; centred under the top button row,
-   above the orb only — everything else (HUD, chat, map, settings) covers it. */
+   above the orb, the JARVIS label and the chat; the buttons, the island, webcam, media and settings cover it. */
 #jarvis-clock {
   --fc-h: 64px;
   position: fixed;
   top: calc(84px + env(safe-area-inset-top, 0px));
   left: 50%;
   transform: translateX(-50%);
-  z-index: 1;
+  z-index: var(--z-clock);
   display: flex;
   gap: 2px;
   pointer-events: none;
@@ -2976,7 +1984,6 @@ body {
   }
 }
 
-
 /* ── Command hub, phase 1 ─────────────────────────────────────────────── */
 
 /* status row: orb + label, in the flow between the chat and the bar so nothing overlaps it */
@@ -3005,21 +2012,6 @@ body {
   display: block;
 }
 
-#command-bar-inner .cmd-aura-canvas {
-  position: absolute;
-  inset: -4px;
-  width: calc(100% + 8px);
-  height: calc(100% + 8px);
-  pointer-events: none;
-  border-radius: inherit;
-  z-index: 1;
-}
-
-#btn-slash:hover,
-#btn-mention:hover {
-  color: rgba(14, 165, 233, 0.9);
-}
-
 /* send: paper-plane icon centred in a liquid-metal ring (src/metal-ring.ts) */
 #cmd-send-wrap {
   position: relative;
@@ -3043,7 +2035,32 @@ body {
   mask: radial-gradient(circle closest-side, transparent 80%, #000 84%);
 }
 
-#cmd-send-wrap canvas {
+/* halo round the send button (src/metal-halo.ts paints it, ported from metal-fx): this wrapper only fades it.
+   A 3 s beat: starts dark (the next spot is painted then), 1 s fading in, 1 s lit, 1 s fading out. Opacity only. */
+#cmd-send-wrap .metal-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  animation: metal-glow-fade 3s infinite;
+}
+
+#cmd-send-wrap .metal-glow.paused {
+  animation-play-state: paused;
+}
+
+@keyframes metal-glow-fade {
+  0%, 1% { opacity: 0; animation-timing-function: ease-in-out; }
+  33.3% { opacity: 1; }
+  66.7% { opacity: 1; animation-timing-function: ease-in-out; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #cmd-send-wrap .metal-glow { animation: none; opacity: 1; }
+}
+
+#cmd-send-wrap .metal-ring canvas {
   display: block;
   width: 100%;
   height: 100%;
@@ -3108,4 +2125,393 @@ body {
   #status-row.quiet #status-text {
     transition: none;
   }
+}
+
+/* ── Notification island (src/notify-island.ts) ─────────────────────────────────────────────────────────
+   Sileo-style (sileo.aaryan.design), built like Sileo: two SVG rects (pill, card body) in one fixed-size SVG under a light
+   goo filter, moved by JS each frame (notify-island.ts, island-shape.ts); charcoal at 90%. The same on a computer and a phone.
+   Folding is the movement backwards. Leaving: the pill narrows towards its centre and everything in it (icon, text, count) is
+   wiped out and fades along with it (0.3 s, content 0.25 s), gone when narrowed; nothing slides away.
+   Above the clock, chat, media player (100) and webcam (55); below Settings (1000), which cover it. Sizes come from JS in px
+   (--island-open-w); the rects and the pill button's width are moved by JS on the same frames; the content is out of the
+   flow and only fades, so opening does no layout work per frame. */
+.island {
+  /* Sileo's spring (bounce 0.25, 600 ms) as a CSS easing */
+  --island-spring: linear(0, 0.002 0.6%, 0.007 1.2%, 0.015 1.8%, 0.026 2.4%, 0.041 3.1%, 0.06 3.8%, 0.108 5.3%, 0.157 6.6%, 0.214 8%, 0.467 13.7%, 0.577 16.3%, 0.631 17.7%, 0.682 19.1%, 0.73 20.5%, 0.771 21.8%, 0.808 23.1%, 0.844 24.5%, 0.874 25.8%, 0.903 27.2%, 0.928 28.6%, 0.952 30.1%, 0.972 31.6%, 0.988 33.1%, 1.01 35.7%, 1.025 38.5%, 1.034 41.6%, 1.038 45%, 1.035 50.1%, 1.012 64.2%, 1.003 73%, 0.999 83.7%, 1);
+  position: fixed;
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  translate: -50% 0;
+  z-index: var(--z-island);
+  width: var(--island-open-w, 360px);
+  max-width: calc(100vw - 24px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none; /* only the pill and the card take touches, not the empty strip beside the pill */
+  color: #ffffff;
+  font-size: var(--fs-ui);
+  line-height: 1.35;
+  transition: opacity 0.25s ease, visibility 0s;
+}
+
+.island[data-state="hidden"] {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.25s ease, visibility 0s 0.25s;
+}
+
+/* Khi Settings mở: ẩn đảo động ngay lập tức (không delay) để không bị lộ qua topbar trong suốt */
+.island[data-covered="1"],
+body:has(#settings-container.open) .island,
+#settings-container.open ~ .island {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transition: none !important;
+}
+
+/* leaving: the pill narrows to nothing (JS); the pill button clips its content to its own narrowing width
+   and fades, so icon and text go along with the pill; the island fades during the last part of the narrowing, no sliver left */
+.island[data-state="leaving"] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease 0.05s;
+}
+
+/* the content fades as the pill narrows (its width, set by JS, clips it 0.25 s against the outline's 0.3 s, and it is faded out by 0.18 s) */
+.island[data-state="leaving"] .island-pill {
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.island[data-enter="1"] .island-pill {
+  opacity: 0;
+}
+
+/* the shapes, as Sileo: the goo filter on the box holding the SVG, its own GPU layer.
+   Dark charcoal (#161a24) with 0.9 opacity: visibly defined against the page background, dark enough for crisp white text */
+.island-canvas {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  filter: url(#island-goo);
+  transform: translateZ(0);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.island-svg {
+  display: block;
+  overflow: visible;
+}
+
+.island-svg rect {
+  fill: #161a24;
+}
+
+/* the button is exactly as wide as the pill rect and clips its centred content: text is revealed/wiped with the pill */
+.island-pill {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 0; /* set on every frame by notify-island.ts, in step with the outline */
+  height: 34px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.3s ease;
+}
+
+.island-pill-content {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: calc(100vw - 112px); /* clear of the control button on the right (and as much on the left) */
+  padding: 0 16px; /* Hai dau 16px can bang doi xung tuyet doi */
+}
+
+.island-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+}
+
+.island-icon .flow-status-icon {
+  margin-left: 0; /* the glyph sits in its own slot of the pill: no gap on its left */
+}
+
+.island-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.island-count {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: rgba(14, 165, 233, 0.16);
+  color: #7dd3fc;
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.island-count:empty {
+  display: none;
+}
+
+/* the content sits over the card body, out of the flow: it only fades (the text arrives once the body has started to drop, and
+   goes first on folding) */
+.island-panel {
+  position: absolute;
+  top: 34px;
+  left: 0;
+  right: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.island[data-state="open"] .island-panel {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.36s ease 0.18s;
+}
+
+.island-panel-inner {
+  padding-top: 6px;
+}
+
+/* the title settles a little lower and smaller while the card is open (Sileo) */
+.island-pill-content {
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.island[data-state="open"] .island-pill-content {
+  transform: translateY(3px) scale(0.9);
+  transition: transform 0.6s var(--island-spring);
+}
+
+/* timeline: Chakra Timeline.Indicator + Timeline.Connector, morphicon dots */
+.island-steps {
+  margin: 4px 16px 4px 20px;
+  padding: 0;
+  background: none; /* Bo duong line tam bo cu */
+  max-height: min(46vh, 320px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.island:not(.has-steps) .island-steps {
+  display: none;
+}
+
+.island-step {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  min-height: 24px;
+  gap: 10px;
+}
+
+.island-step-indicator {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 0 0 16px;
+  width: 16px;
+  align-self: stretch;
+}
+
+/* TimelineDot: one small circle per event centered on the line */
+.timeline-dot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  flex: 0 0 15px;
+  margin-top: 1px;
+  box-sizing: border-box;
+  background: rgba(30, 41, 59, 0.85);
+  border: 1.5px solid rgba(148, 163, 184, 0.35);
+  color: #fff;
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+              background 0.3s ease,
+              border-color 0.3s ease,
+              box-shadow 0.3s ease;
+  z-index: 1;
+}
+
+.timeline-dot-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* In-progress timeline item: rotating loader ring khong phinh to tho de khong bi cat */
+.island-step[data-status="active"] .timeline-dot {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1.5px solid rgba(56, 189, 248, 0.25);
+  border-top-color: #38bdf8;
+  color: #38bdf8;
+  box-shadow: none;
+  animation: timeline-spin 0.85s linear infinite;
+}
+
+.island-step[data-status="active"] .timeline-dot-inner {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: none;
+}
+
+/* Finished events: solid dot holding checkmark icon */
+.island-step[data-status="completed"] .timeline-dot {
+  background: #10b981;
+  border-color: #10b981;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.35);
+  animation: morphicon-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Failed events: solid red dot holding cross icon */
+.island-step[data-status="failed"] .timeline-dot {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.35);
+  animation: morphicon-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* TimelineConnector: thin vertical line segment owned by each item */
+.timeline-connector {
+  flex: 1 1 auto;
+  width: 1.5px;
+  min-height: 8px;
+  background: rgba(148, 163, 184, 0.2);
+  margin: 2px 0;
+  border-radius: 1px;
+  transition: background 0.3s ease;
+}
+
+.island-step[data-status="completed"] .timeline-connector {
+  background: rgba(16, 185, 129, 0.35);
+}
+
+/* OMITTED after the last event: khong ve line thua o item cuoi cung */
+.island-step:last-child .timeline-connector {
+  display: none;
+}
+
+/* Step content */
+.island-step-content {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 5px;
+  min-width: 0;
+}
+
+/* Item cuoi cung thu day gon gang, khong de khoang trong thua */
+.island-step:last-child .island-step-content {
+  padding-bottom: 0;
+}
+
+.island-step-text {
+  font-size: var(--fs-small);
+  line-height: 16px;
+  font-weight: 500;
+  color: rgba(241, 245, 249, 0.9);
+  transition: color 0.25s ease, font-weight 0.25s ease;
+}
+
+/* In-progress: text noi bat vua phai */
+.island-step[data-status="active"] .island-step-text {
+  color: #ffffff;
+  font-weight: 600;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.35);
+}
+
+.island-step[data-status="pending"] .island-step-text {
+  color: rgba(148, 163, 184, 0.65);
+}
+
+.island-step[data-status="failed"] .island-step-text {
+  color: #fca5a5;
+}
+
+.island-step-detail:not(:empty) {
+  font-size: var(--fs-label);
+  color: rgba(148, 163, 184, 0.7);
+}
+
+.island-step-detail:not(:empty)::before {
+  content: "· ";
+  opacity: 0.6;
+}
+
+.island-error {
+  margin: 0 14px 12px;
+  color: #fecaca;
+  overflow-wrap: anywhere;
+  max-height: min(40vh, 240px);
+  overflow-y: auto;
+}
+
+.island-error:empty {
+  display: none;
+}
+
+/* Spinner quay quanh vien dot, kich thuoc co dinh khong tho */
+@keyframes timeline-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes morphicon-pop {
+  0% {
+    transform: scale(0.7);
+  }
+  60% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .island, .island-panel, .island-pill, .island-pill-content { transition: none !important; }
+  .timeline-dot, .timeline-connector, .timeline-dot-inner { transition: none !important; animation: none !important; }
 }

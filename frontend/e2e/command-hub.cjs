@@ -38,7 +38,7 @@ async function open(browser, opts = {}) {
   // 2. trạng thái JARVIS → trạng thái orb + nhãn tiếng Việt
   const st = async (state) => { send({ type: "status", state }); await page.waitForTimeout(250); return page.evaluate(() => [document.getElementById("status-orb").dataset.orb, document.getElementById("status-text").textContent]); };
   // mic starts muted; "listening" comes from turning the mic on, not from a ws message
-  await page.click("#btn-mute");
+  await page.evaluate(() => document.getElementById("btn-mute").click());
   await page.waitForTimeout(250);
   const [lo, lt] = await page.evaluate(() => [document.getElementById("status-orb").dataset.orb, document.getElementById("status-text").textContent]);
   check(lo === "listening" && lt === "Đang nghe…", '2. mở mic → orb listening, nhãn "Đang nghe…"', `${lo} / ${lt}`);
@@ -48,7 +48,7 @@ async function open(browser, opts = {}) {
     const [o, t] = await st(jarvis);
     check(o === orbState && t === label, `2. ${jarvis} → orb ${orbState}, nhãn "${label}"`, `${o} / ${t}`);
   }
-  await page.click("#btn-mute"); // tắt mic lại → idle không chuyển thành listening
+  await page.evaluate(() => document.getElementById("btn-mute").click()); // tắt mic lại → idle không chuyển thành listening
   const [io, it] = await st("idle");
   check(io === "working" && it === "Sẵn sàng", "2e. idle → orb working (chậm), nhãn 'Sẵn sàng'", `${io} / ${it}`);
   const slow = await page.$eval("#status-orb", (e) => e.dataset.speed);
@@ -137,7 +137,7 @@ async function open(browser, opts = {}) {
     const px = await page.$eval("#cmd-send-wrap canvas", (c) => { const g = c.getContext("webgl2") || c.getContext("webgl"); return !!g || c.width > 0; });
     check(px, "5d. canvas shader tồn tại");
   }
-  await page.click("#btn-mute"); // trả lại
+  await page.evaluate(() => document.getElementById("btn-mute").click()); // trả lại
 
   // 6. giảm chuyển động → aura và orb đứng yên
   const rm = await open(browser, { reducedMotion: "reduce" });

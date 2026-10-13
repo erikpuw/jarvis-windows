@@ -47,11 +47,12 @@ const shown = (page) => page.$$eval("#jarvis-clock .fc", (cards) => { const d = 
   const g = await page.evaluate(() => {
     const c = document.getElementById("jarvis-clock"), cs = getComputedStyle(c), r = c.getBoundingClientRect();
     const ctl = document.getElementById("controls").getBoundingClientRect();
-    return { cx: r.left + r.width / 2, top: r.top, ctlBottom: ctl.bottom, z: cs.zIndex, pe: cs.pointerEvents, font: getComputedStyle(c.querySelector(".fc")).fontFamily, weight: getComputedStyle(c.querySelector(".fc")).fontWeight, half: (() => { const h = getComputedStyle(c.querySelector(".fc-top")); return [h.backgroundColor, h.borderTopWidth, h.borderLeftWidth]; })(), split: getComputedStyle(c.querySelector(".fc"), "::after").height };
+    const zOf = (id) => +getComputedStyle(document.getElementById(id)).zIndex;
+    return { cx: r.left + r.width / 2, top: r.top, ctlBottom: ctl.bottom, z: +cs.zIndex, zOrb: zOf("orb-canvas"), zCtl: zOf("controls"), pe: cs.pointerEvents, font: getComputedStyle(c.querySelector(".fc")).fontFamily, weight: getComputedStyle(c.querySelector(".fc")).fontWeight, half: (() => { const h = getComputedStyle(c.querySelector(".fc-top")); return [h.backgroundColor, h.borderTopWidth, h.borderLeftWidth]; })(), split: getComputedStyle(c.querySelector(".fc"), "::after").height };
   });
   check(Math.abs(g.cx - 640) <= 2, "4a. giữa màn hình theo chiều ngang", String(g.cx));
   check(g.top >= g.ctlBottom && g.top <= g.ctlBottom + 40, "4b. ngay dưới hàng nút", JSON.stringify(g));
-  check(g.z === "1" && g.pe === "none", "4c. chỉ trên orb, không chặn click", `${g.z}/${g.pe}`);
+  check(g.z > g.zOrb && g.z < g.zCtl && g.pe === "none", "4c. chỉ trên orb (dưới hàng nút), không chặn click", `${g.zOrb} < ${g.z} < ${g.zCtl} / ${g.pe}`);
   check(g.font.includes("Oswald") && g.weight === "300", "5a. font Oswald Light", `${g.font} ${g.weight}`);
   check(g.half[0] === "rgba(0, 0, 0, 0)" && g.half[1] === "0px" && g.half[2] === "0px", "5c. không khung (không nền, không viền)", g.half.join(" "));
   check(parseFloat(g.split) >= 1, "5d. còn đường cắt ngang", g.split);

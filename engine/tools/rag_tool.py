@@ -18,45 +18,6 @@ SUPPORTED_DOCUMENTS = {
 }
 
 
-async def classify_persistence_intent(query: str, *, llm_call=None) -> bool:
-    """Cho phép lưu lâu dài chỉ khi LLM trả đúng schema JSON."""
-    if llm_call is None:
-        from engine.server.llm_server import call_llm as llm_call
-
-    try:
-        response = await llm_call(
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Phân loại duy nhất việc người dùng có yêu cầu lưu tài liệu "
-                        "vào kho kiến thức lâu dài hay không. Trả về đúng một JSON "
-                        "object có duy nhất khóa persist kiểu boolean. Không giải thích."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": query,
-                },
-            ],
-            stream=False,
-            thinking=False,
-            temperature=0.0,
-            max_tokens=32,
-            response_format={"type": "json_object"},
-        )
-        if not response or not getattr(response, "choices", None):
-            return False
-        content = response.choices[0].message.content
-        data = json.loads(content)
-        if type(data) is not dict or set(data) != {"persist"}:
-            return False
-        return data["persist"] if type(data["persist"]) is bool else False
-    except Exception as exc:
-        log.warning("Không phân loại được yêu cầu lưu RAG: %s", exc)
-        return False
-
-
 async def prepare_attachment(attachment_context, ingestor):
     if attachment_context.extension == ".pdf":
         return await ingestor.ingest(
@@ -157,24 +118,16 @@ async def handle_rag_query(*, query: str, attachment_context) -> dict:
 
     store = RAGDocumentStore()
     ingestor = RAGPDFIngestor(store)
-    persist_requested = await classify_persistence_intent(query)
     rag = RAGEngine(dim=768, persistent=False)
     rag.set_client(get_llm_client())
     rag.set_embed_client(embed_client)
     prepared = None
-    persistent_rag = None
     discard_staging = False
-    reused_persistent = False
     try:
-        prepared = store.find_persistent(
-            attachment_context.resolved_path
+        prepared = await prepare_attachment(
+            attachment_context,
+            ingestor,
         )
-        reused_persistent = prepared is not None
-        if prepared is None:
-            prepared = await prepare_attachment(
-                attachment_context,
-                ingestor,
-            )
         chunks, indexed = await index_and_retrieve_prepared(
             rag,
             prepared,
@@ -235,37 +188,11 @@ async def handle_rag_query(*, query: str, attachment_context) -> dict:
         if not response or not getattr(response, "choices", None):
             raise RuntimeError("LLM tổng hợp RAG không trả về nội dung")
         text = response.choices[0].message.content.strip()
-        persisted = False
-        if persist_requested:
-            persistent_prepared = (
-                prepared
-                if reused_persistent
-                else store.promote(prepared)
-            )
-            persistent_rag = RAGEngine(dim=768, persistent=True)
-            persistent_rag.set_client(get_llm_client())
-            persistent_rag.set_embed_client(embed_client)
-            persistent_paths, persistent_methods = prepared_page_metadata(
-                persistent_prepared
-            )
-            persistent_indexed = await persistent_rag.index_prepared_pages(
-                document_id=persistent_prepared.document_id,
-                source_filename=persistent_prepared.source_filename,
-                page_paths=persistent_paths,
-                page_methods=persistent_methods,
-            )
-            if not persistent_indexed.get("success"):
-                raise RuntimeError(
-                    "Không thể lưu chỉ mục RAG lâu dài: "
-                    f"{persistent_indexed.get('error', 'lỗi không xác định')}"
-                )
-            persisted = True
         discard_staging = True
         return {
             "status": "success",
             "final_response": True,
             "text": text,
-            "persisted": persisted,
             "sources": [
                 {
                     "filename": attachment_context.filename,
@@ -288,16 +215,8 @@ async def handle_rag_query(*, query: str, attachment_context) -> dict:
             "text": f"Agent RAG gặp lỗi khi xử lý tài liệu: {exc}",
         }
     finally:
-        if (
-            discard_staging
-            and prepared is not None
-            and not reused_persistent
-        ):
+        if discard_staging and prepared is not None:
             store.discard_staging(prepared)
         rag.chunks.clear()
         rag.vector_index = None
         rag.bm25_index = None
-        if persistent_rag is not None:
-            persistent_rag.chunks.clear()
-            persistent_rag.vector_index = None
-            persistent_rag.bm25_index = None

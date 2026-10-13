@@ -82,6 +82,11 @@ def test_status_is_light_and_leaks_no_secret(tmp_path):
                   "hooks_list", "plugins_list", "mcp_config"):
         assert heavy not in status, f"{heavy} must be served by /api/settings/catalog, not every status poll"
     assert len(dumped) < 30_000, f"status payload too large: {len(dumped)} bytes"
+    # the Mention list lives in the catalog; the poll only carries the counts
+    from engine.tools import registry
+    assert "agents" not in status
+    assert status["mentions_count"] == len(registry.names()) + 1  # + @rag
+    assert status["command_count"] == len(registry.names()) + 1  # + /help
 
 
 def test_status_mcp_servers_keeps_hud_contract(tmp_path):
@@ -112,7 +117,7 @@ def test_mcp_servers_endpoint_uses_real_status_without_secrets(tmp_path):
 def test_catalog_serves_the_heavy_lists():
     result = asyncio.run(ui_engine.api_settings_catalog())
     assert result["success"] is True
-    for key in ("agents", "hooks", "skills", "prompts", "commands", "plugins"):
+    for key in ("mentions", "hooks", "skills", "prompts", "commands", "plugins"):
         assert isinstance(result[key], list), key
     # repo ships hooks/ and commands/ — both must actually be scanned (the old
     # code only imported `re` inside the NPU probe, so a failed probe emptied them)
@@ -127,10 +132,11 @@ def test_redact_args_masks_secrets_only():
     assert r(None) == []
 
 
-def test_catalog_agents_carry_real_mention():
+def test_catalog_mentions_carry_real_mention():
     result = asyncio.run(ui_engine.api_settings_catalog())
-    desktop = next(a for a in result["agents"] if a["id"] == "desktop")
-    assert desktop["mention"] == "@desktop"
+    weather = next(a for a in result["mentions"] if a["id"] == "weather")
+    assert weather["mention"] == "@weather"
+
 
 
 def test_prompt_save_only_overwrites_existing_prompt_files(tmp_path, monkeypatch):

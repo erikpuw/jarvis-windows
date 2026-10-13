@@ -26,7 +26,6 @@ import json
 import logging
 import logging.handlers
 import time
-import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
@@ -42,7 +41,7 @@ from engine.core.memory import (
     SemanticMemoryEngine,
 )
 from engine.main.greeting_engine import send_greeting
-from engine.core.session_context import set_session
+from engine.core.session_context import resolve_ws_session, resume_history, set_session
 from engine.server.ws_sessions import ActiveSessions
 
 LOG_DIR = Path(__file__).parent / "logs"
@@ -174,17 +173,18 @@ async def generate_response_stream(
     last_response: str = "",
     conversation_history: list[dict] | None = None,
     flow_tracker=None,
-    flow_agents=None,
     attachment_context=None,
 ) -> str:
-    """Một lượt hội thoại: router quyết định rồi xử lý (engine/router)."""
-    from engine.router import TurnContext, handle_turn
+    """Một lượt hội thoại (engine/turn)."""
+    from engine.turn.context import TurnContext
+    from engine.turn.entry import handle_turn
     ctx = TurnContext(
         ws=ws, send_json=safe_ws_send_json, client=client,
         conversation_history=conversation_history or [],
-        flow_tracker=flow_tracker, flow_agents=flow_agents,
+        flow_tracker=flow_tracker,
         attachment_context=attachment_context, background_tasks=_background_tasks,
     )
+    ws.last_turn = {"steps": [], "final_say": ""}
     return await handle_turn(text, ctx)
 
 
@@ -244,62 +244,109 @@ async def _watch_vieneu_warmup(started: float, timeout: float = 240.0) -> None:
                 data = (await client.get("http://127.0.0.1:8082/tts/health")).json()
             if data.get("engine") != "vieneu":
                 return
+            if data.get("ready"):
+                if not announced:
+                    log.info("[vieneu] stream_tts đã sẵn sàng trên port 8082")
+                else:
+                    log.info("[vieneu] warm-up done: TTS sẵn sàng sau %.1fs kể từ khi khởi động stream_tts",
+                             time.monotonic() - started)
+                return
             if not announced:
                 log.info("[vieneu] warm-up started: model đang nạp ở nền (stream_tts, port 8082)")
                 announced = True
-            if data.get("ready"):
-                log.info("[vieneu] warm-up done: TTS sẵn sàng sau %.1fs kể từ khi khởi động stream_tts",
-                         time.monotonic() - started)
-                return
         except Exception:
             pass
         await asyncio.sleep(1.0)
     log.warning("[vieneu] warm-up chưa xong sau %.0fs; xem logs/stream_tts.log", timeout)
 
 
-async def _free_stale_stream_tts_port(port: int) -> None:
-    """Force-kill whatever is already LISTENING on `port`, if anything.
-
-    Guards against the known orphaned-process issue: a prior crash can leave
-    an old stream_tts still bound to this port, so the freshly spawned one
-    fails to bind in silence while the stale instance keeps serving traffic.
-    Since this port has exactly one intended owner (our own stream_tts),
-    killing whatever holds it is safe.
-    """
-    import subprocess as _subprocess
-
+async def _is_stream_tts_healthy(port: int = 8082) -> bool:
+    """Kiểm tra xem stream_tts đã sẵn sàng phục vụ trên cổng chỉ định chưa."""
     try:
-        result = await asyncio.to_thread(
-            _subprocess.run,
-            ["netstat", "-ano"],
-            capture_output=True, text=True, timeout=5,
+        async with httpx.AsyncClient(timeout=1.0) as client:
+            resp = await client.get(f"http://127.0.0.1:{port}/tts/health")
+            return resp.status_code == 200
+    except Exception:
+        return False
+
+
+async def _free_stale_stream_tts_port(port: int) -> None:
+    """Force-kill whatever is already LISTENING on `port`, if anything."""
+    from engine.core.process_tree import free_port
+    killed = await asyncio.to_thread(free_port, port)
+    if killed:
+        log.warning(
+            "Port %s was occupied by stale PID(s) %s — force-killed before starting fresh instance",
+            port, killed,
         )
-    except Exception as e:
-        log.debug(f"Could not inspect port {port} occupancy: {e}")
+        await asyncio.sleep(0.5)
+
+
+async def _start_or_attach_stream_tts() -> None:
+    """Tự động kết nối tới stream_tts (port 8082) nếu đã chạy độc lập (qua run_vieneu.py),
+    hoặc khởi động tiến trình con nếu chưa chạy và AUTO_START_STREAM_TTS=true."""
+    global _stream_tts_proc, _stream_tts_log
+
+    port = 8082
+    # 1. Kiểm tra xem port 8082 đã có stream_tts chạy sẵn chưa (ví dụ từ run_vieneu.py)
+    if await _is_stream_tts_healthy(port):
+        log.info(
+            "stream_tts (VieNeu) is already running independently on port %s (e.g. via run_vieneu.py). "
+            "Reusing existing instance without restarting.",
+            port,
+        )
+        warm_task = asyncio.create_task(_watch_vieneu_warmup(time.monotonic()))
+        _background_tasks.add(warm_task)
+        warm_task.add_done_callback(_background_tasks.discard)
         return
 
-    stale_pids = set()
-    for line in result.stdout.splitlines():
-        parts = line.split()
-        if len(parts) >= 5 and parts[0].upper() == "TCP" and parts[-1].upper() == "LISTENING":
-            local_addr = parts[1]
-            if local_addr.endswith(f":{port}"):
-                try:
-                    stale_pids.add(int(parts[-2]))
-                except ValueError:
-                    continue
-
-    if not stale_pids:
+    # 2. Nếu chưa chạy, kiểm tra xem có cho phép auto-start tiến trình con không
+    auto_start = os.getenv("AUTO_START_STREAM_TTS", "true").strip().lower() in {"1", "true", "yes", "on"}
+    if not auto_start:
+        log.info(
+            "stream_tts is not running on port %s and AUTO_START_STREAM_TTS is disabled. "
+            "Run 'python run_vieneu.py' in a separate terminal to enable VieNeu TTS.",
+            port,
+        )
         return
 
-    log.warning(
-        "Port %s already held by PID(s) %s (likely an orphaned process from a previous crash) — "
-        "force-killing before starting a fresh stream_tts instance",
-        port, sorted(stale_pids),
-    )
-    from engine.core.process_tree import force_kill_pids
-    force_kill_pids(stale_pids)
-    await asyncio.sleep(0.5)
+    # 3. Tự khởi động tiến trình con stream_tts
+    try:
+        python_exe = sys.executable or "python"
+        await _free_stale_stream_tts_port(port)
+        log.info("Starting stream_tts port %s process...", port)
+        _stream_tts_log_path = Path(__file__).parent / "logs" / "stream_tts.log"
+        _stream_tts_log_path.parent.mkdir(parents=True, exist_ok=True)
+        _stream_tts_log = open(_stream_tts_log_path, "ab")
+        _stream_tts_started = time.monotonic()
+        _stream_tts_proc = await asyncio.create_subprocess_exec(
+            python_exe, "-m", "engine.server.stream_tts",
+            env=_stream_tts_env(),
+            stdout=_stream_tts_log,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        log.info(f"stream_tts process started with PID {_stream_tts_proc.pid}")
+
+        healthy = False
+        for _ in range(10):
+            await asyncio.sleep(0.5)
+            if await _is_stream_tts_healthy(port):
+                healthy = True
+                break
+        if healthy:
+            log.info("stream_tts health check OK on port %s", port)
+            warm_task = asyncio.create_task(_watch_vieneu_warmup(_stream_tts_started))
+            _background_tasks.add(warm_task)
+            warm_task.add_done_callback(_background_tasks.discard)
+        else:
+            log.warning(
+                "stream_tts process spawned (PID %s) but /tts/health did not respond within 5s — "
+                "port %s may still be occupied by a stale process; TTS requests may hit a wrong/stale instance.",
+                _stream_tts_proc.pid,
+                port,
+            )
+    except Exception as tts_ex:
+        log.warning(f"Failed to auto-start stream_tts on port {port}: {tts_ex}")
 
 # Webcam synchronization globals
 _latest_webcam_image: Optional[str] = None
@@ -442,8 +489,7 @@ async def lifespan(application: FastAPI):
         from engine.tools.skill_manager import get_skill_manager
         skill_mgr = get_skill_manager()
         skill_mgr.scan_skills()
-        skill_mgr.scan_commands()
-        log.info(f"Skills: {len(skill_mgr.skills)}, Commands: {len(skill_mgr.commands)}")
+        log.info(f"Skills: {len(skill_mgr.skills)}")
 
         # RAG is initialized lazily by agent_rag when an attachment needs it.
         if embed_client is not None:
@@ -492,54 +538,12 @@ async def lifespan(application: FastAPI):
     except Exception as e:
         log.warning(f"Redis init failed: {e}")
 
-    # Tự động khởi chạy cổng phụ stream_tts trên port 8082
+    # Tự động kết nối hoặc khởi chạy stream_tts (port 8082)
     try:
-        python_exe = sys.executable or "python"
-        await _free_stale_stream_tts_port(8082)
-        log.info("Starting stream_tts port 8082 process...")
-        # Its output went to DEVNULL, so every failure on port 8082 (the empty
-        # streams behind the constant "falling back" lines) was invisible.
-        # Truncated on each start so it stays bounded.
-        _stream_tts_log_path = Path(__file__).parent / "logs" / "stream_tts.log"
-        _stream_tts_log_path.parent.mkdir(parents=True, exist_ok=True)
-        _stream_tts_log = open(_stream_tts_log_path, "wb")
-        _stream_tts_started = time.monotonic()
-        _stream_tts_proc = await asyncio.create_subprocess_exec(
-            python_exe, "-m", "engine.server.stream_tts",
-            env=_stream_tts_env(),
-            stdout=_stream_tts_log,
-            stderr=asyncio.subprocess.STDOUT,
-        )
-        log.info(f"stream_tts process started with PID {_stream_tts_proc.pid}")
-
-        # Trước đây server chỉ log "đã khởi động" ngay sau khi spawn — nếu port
-        # 8082 vẫn còn bị 1 tiến trình mồ côi cũ chiếm giữ, tiến trình mới có
-        # thể bind lỗi trong im lặng trong khi bản cũ (có thể chạy code cũ) vẫn
-        # âm thầm phục vụ toàn bộ traffic TTS. Xác nhận thật sự bằng health-check.
-        healthy = False
-        for _ in range(10):
-            await asyncio.sleep(0.5)
-            try:
-                async with httpx.AsyncClient(timeout=1.0) as client:
-                    resp = await client.get("http://127.0.0.1:8082/tts/health")
-                    if resp.status_code == 200:
-                        healthy = True
-                        break
-            except Exception:
-                continue
-        if healthy:
-            log.info("stream_tts health check OK on port 8082")
-            warm_task = asyncio.create_task(_watch_vieneu_warmup(_stream_tts_started))
-            _background_tasks.add(warm_task)
-            warm_task.add_done_callback(_background_tasks.discard)
-        else:
-            log.warning(
-                "stream_tts process spawned (PID %s) but /tts/health did not respond within 5s — "
-                "port 8082 may still be occupied by a stale process; TTS requests may hit a wrong/stale instance.",
-                _stream_tts_proc.pid,
-            )
+        await _start_or_attach_stream_tts()
     except Exception as tts_ex:
-        log.warning(f"Failed to auto-start stream_tts on port 8082: {tts_ex}")
+        log.warning(f"Failed to initialize stream_tts: {tts_ex}")
+
 
     # Khởi chạy Security Connection Monitor ngầm để theo dõi các IP lạ kết nối vào socket
     try:
@@ -562,8 +566,16 @@ async def lifespan(application: FastAPI):
     except Exception as sh_err:
         log.warning(f"Failed to start self-healing watcher loop: {sh_err}")
 
+    # Tệp wiki gym chỉ được ghi khi có hoạt động mới: tạo lại cho mọi hồ sơ (thiếu/bị xoá) lúc khởi động
+    try:
+        from engine.tools.gym_engine import sync_all_profiles_to_wiki
+        count = await asyncio.to_thread(sync_all_profiles_to_wiki)
+        log.info("Gym wiki synced for %d profile(s)", count)
+    except Exception as gym_err:
+        log.warning(f"Failed to sync gym wiki: {gym_err}")
+
     # Khởi chạy Dream Cycle background watcher — tự động tóm tắt/dọn dẹp hội thoại,
-    # agent_outcomes và Obsidian Wiki cũ khi hệ thống idle vào khung giờ yên tĩnh
+    # outcomes và Obsidian Wiki cũ khi hệ thống idle vào khung giờ yên tĩnh
     try:
         from engine.core.dream import start_dream_watcher
         start_dream_watcher()
@@ -603,36 +615,16 @@ async def lifespan(application: FastAPI):
                 "Telegram is disabled because TELEGRAM_ALLOWED_CHAT_IDS is empty or invalid"
             )
 
-    # Tìm việc mỗi sáng (engine/jobs, spec 2026-09-27-job-search mục 11)
-    try:
-        from engine.jobs import scheduler as jobs_scheduler
-
-        async def _jobs_notify(text: str) -> None:
-            if _active_ws_session is not None:
-                await safe_ws_send_json(_active_ws_session, {"type": "text_chunk", "text": text})
-                await safe_ws_send_json(_active_ws_session, {"type": "stream_end"})
-            if _telegram_bot is not None:
-                await _telegram_bot.broadcast(text)
-
-        jobs_task = jobs_scheduler.start(_jobs_notify)
-        _background_tasks.add(jobs_task)
-        jobs_task.add_done_callback(_background_tasks.discard)
-        log.info("💼 Jobs scheduler started")
-    except Exception as jobs_err:
-        log.warning(f"Failed to start jobs scheduler: {jobs_err}")
-
-    # RAG tự index tệp thả vào thư mục theo dõi (RAG_WATCH_FOLDER, mặc định data/documents)
+    # RAG tự index tệp thả vào thư mục theo dõi (RAG_WATCH_FOLDER, mặc định data/wiki/Documents)
     try:
         from engine.core.rag_engine import get_rag_engine
-        from engine.core.rag_watcher import get_rag_watcher
+        from engine.core.rag_watcher import get_rag_watcher, watch_folder
         from engine.server.llm_server import get_embed_client
 
         _rag_embed = get_embed_client()
         if _rag_embed is not None:
             get_rag_engine().set_embed_client(_rag_embed)
-            _watch_dir = Path(os.getenv("RAG_WATCH_FOLDER") or "data/documents")
-            if not _watch_dir.is_absolute():
-                _watch_dir = Path(__file__).parent / _watch_dir
+            _watch_dir = watch_folder()
             _rag_watcher = get_rag_watcher(str(_watch_dir))
             _rag_watcher.start(asyncio.get_running_loop())
             for _rag_coro in (_rag_watcher.process_queue(), _rag_watcher.scan_existing()):
@@ -835,19 +827,18 @@ async def voice_handler(ws: WebSocket):
     dispatcher = WebSocketEventDispatcher(ws)
     await dispatcher.start()
     ws._event_dispatcher = dispatcher
-    # Mỗi kết nối là một phiên chat riêng: tab khác không bị đóng, hội thoại không trộn.
-    ws.session_id = f"web-{uuid.uuid4().hex[:8]}"
+    # Mỗi trang (tab) là một phiên chat riêng: tab khác không bị đóng, hội thoại không trộn. Trang gửi ID của nó
+    # (?session=) nên socket nối lại (iPhone thoát app rồi vào lại) vẫn là phiên cũ, lịch sử không bị tách.
+    ws.session_id = resolve_ws_session(ws.query_params.get("session"))
     set_session(ws.session_id)
     _ws_sessions.add(ws)
     _active_ws_session = ws
 
     _active_voice_connections += 1
-    history: list[dict] = []
+    history: list[dict] = await asyncio.to_thread(resume_history, ws.session_id)
 
     from engine.main.flow_tracker import FlowTracker
-    from engine.main.flow_agents import FlowAgents
     ft = FlowTracker(ws, safe_ws_send_json)
-    fa = FlowAgents(ws, safe_ws_send_json)
 
     # Audio collision prevention — track when user last spoke
     voice_state = {"last_user_time": 0.0}
@@ -935,9 +926,6 @@ async def voice_handler(ws: WebSocket):
             msg = await message_queue.get()
             if msg is None:  # Connection closed
                 break
-            # Anything an agent records after this belongs to this turn.
-            turn_started_at = time.time()
-
             if msg.get("type") == "toggle_tts":
                 enabled = msg.get("enabled", True)
                 ws.user_tts_disabled = not enabled
@@ -960,39 +948,6 @@ async def voice_handler(ws: WebSocket):
                 _latest_webcam_image = img_data
                 if _webcam_image_event:
                     _webcam_image_event.set()
-                continue
-
-            if msg.get("type") == "save_pin":
-                label = msg.get("label", "Ghi chú")
-                lat = float(msg.get("lat", 0))
-                lng = float(msg.get("lng", 0))
-                from engine.core.memory import save_pin_to_db, get_pins_from_db
-                await asyncio.to_thread(save_pin_to_db, label, lat, lng)
-                # Phát lại danh sách pin mới cho client
-                current_pins = await asyncio.to_thread(get_pins_from_db)
-                await safe_ws_send_json(ws, {"type": "pins", "pins": current_pins})
-                continue
-
-            if msg.get("type") == "delete_pin":
-                lat = float(msg.get("lat", 0))
-                lng = float(msg.get("lng", 0))
-                from engine.core.memory import delete_pin_from_db, get_pins_from_db
-                await asyncio.to_thread(delete_pin_from_db, lat, lng)
-                # Phát lại danh sách pin mới
-                current_pins = await asyncio.to_thread(get_pins_from_db)
-                await safe_ws_send_json(ws, {"type": "pins", "pins": current_pins})
-                continue
-
-            if msg.get("type") == "get_pins":
-                from engine.core.memory import get_pins_from_db
-                current_pins = await asyncio.to_thread(get_pins_from_db)
-                await safe_ws_send_json(ws, {"type": "pins", "pins": current_pins})
-                continue
-
-            if msg.get("type") == "geolocation":
-                lat = msg.get("lat")
-                lng = msg.get("lng")
-                log.info(f"Client reported geolocation: {lat}, {lng}")
                 continue
 
             if msg.get("type") == "interactive_response":
@@ -1096,7 +1051,6 @@ async def voice_handler(ws: WebSocket):
 
             # Reset flow tracker cho phiên mới + báo frontend clear steps
             ft.reset()
-            fa.reset()
             await safe_ws_send_json(ws, {"type": "stream_start"})
             await ft.track(f"Nhận: {user_text[:24]}{'...' if len(user_text) > 24 else ''}", "completed")
 
@@ -1143,12 +1097,6 @@ async def voice_handler(ws: WebSocket):
 
             try:
                 if not openai_client:
-                    # This branch replies without running handle_turn, so it never
-                    # resets ws.pending_ask_user (normally done in dispatch/chat_stream) —
-                    # left alone, a stale value from an earlier turn would ride along
-                    # into the assistant save below (M4).
-                    ws.pending_ask_user = ""
-                    ws.pending_action_run = ""
                     response_text = "API key not configured."
                 else:
                     from engine.core.learning import get_learning_engine
@@ -1167,7 +1115,6 @@ async def voice_handler(ws: WebSocket):
                                 last_response=last_jarvis_response,
                                 conversation_history=history,
                                 flow_tracker=ft,
-                                flow_agents=fa,
                                 attachment_context=attachment_context,
                             )
                         finally:
@@ -1180,19 +1127,18 @@ async def voice_handler(ws: WebSocket):
                 if ws.cancel_requested:
                     log.info("Discarding database/history updates because response was cancelled")
                     await ft.fail_all_active()
-                    await fa.fail_all_active()
                     continue
 
                 # Update history (giữ nguyên user_text gốc để không làm bẩn hiển thị của người dùng)
                 history.append({"role": "user", "content": user_text})
-                history.append({"role": "assistant", "content": response_text})
+                history.append({"role": "assistant", "content": response_text, **getattr(ws, "last_turn", {})})
 
                 # Lưu tin nhắn Assistant đồng bộ trực tiếp vào database
                 try:
                     from engine.core.memory import save_message
                     persistence_started = time.monotonic()
                     await asyncio.to_thread(
-                        save_message, "assistant", response_text, "", getattr(ws, "pending_ask_user", ""), getattr(ws, "pending_action_run", "")
+                        save_message, "assistant", response_text, ""
                     )
                     log.info(
                         "Web response persistence: assistant_message elapsed=%.3fs",
@@ -1200,12 +1146,6 @@ async def voice_handler(ws: WebSocket):
                     )
                 except Exception as db_err:
                     log.warning(f"Failed to save assistant message: {db_err}")
-
-                # Only an outcome recorded during THIS turn counts. The session
-                # keeps its last outcome forever, which made every later turn
-                # re-validate an old workflow and skip conversation learning.
-                from engine.core.learning import outcome_for_turn
-                turn_outcome_id, turn_outcome_status = outcome_for_turn(ws, turn_started_at)
 
                 # Lưu nhật ký hoạt động hàng ngày vào Obsidian Wiki
                 try:
@@ -1215,7 +1155,6 @@ async def voice_handler(ws: WebSocket):
                         save_daily_digest,
                         user_text,
                         response_text,
-                        outcome_id=turn_outcome_id,
                     )
                     log.info(
                         "Web response persistence: daily_digest elapsed=%.3fs",
@@ -1230,15 +1169,12 @@ async def voice_handler(ws: WebSocket):
                     get_learning_engine().schedule_conversation_learning(
                         user_text,
                         response_text,
-                        outcome_id=turn_outcome_id,
-                        outcome_status=turn_outcome_status,
                     )
                     log.info("Conversation learning queued for idle processing session=%s", ws.session_id)
                 except Exception as le_task_err:
                     log.warning(f"Failed to queue conversation learning: {le_task_err}")
 
-                await ft.track("Hoàn thành", "completed")
-                await fa.complete_all_active()
+                # "Hoàn thành" do engine.turn gửi trước khi chờ TTS
                 # Tell client to go idle after audio finishes
                 await safe_ws_send_json(ws, {"type": "status", "state": "idle"})
                 
@@ -1248,7 +1184,6 @@ async def voice_handler(ws: WebSocket):
             except Exception as e:
                 log.error(f"Error: {e}", exc_info=True)
                 await ft.fail_all_active()
-                await fa.fail_all_active()
                 await ft.track(f"Lỗi: {e}", "failed")
                 fallback = "Something went wrong, sir."
 
@@ -1319,6 +1254,9 @@ def _read_env() -> tuple[list[str], dict[str, str]]:
 
 def _write_env_key(key: str, value: str) -> None:
     """Update a single key in .env, preserving comments and order."""
+    if "\n" in value or "\r" in value:
+        # Một xuống dòng sẽ chèn thêm khoá (vd. JARVIS_SECURITY_LOCAL_ONLY=false) vào .env.
+        raise ValueError(f"{key}: giá trị không được chứa xuống dòng")
     lines, _ = _read_env()
     found = False
     new_lines = []

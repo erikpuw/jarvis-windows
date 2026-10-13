@@ -61,7 +61,7 @@ def _variants(full: str) -> dict:
 
 
 async def main_async():
-    from engine.prompts.chat import build_chat_messages, build_chat_system_prompt
+    from engine.prompts.chat import build_chat_system_prompt
     from engine.server.llm_server import call_llm
     full = build_chat_system_prompt()
     if "--full" in sys.argv:
@@ -79,10 +79,11 @@ async def main_async():
         counts = {"claim": 0, "leak": 0, "offer": 0}
         print("=" * 100 + f"\n{name}", flush=True)
         for p in PROMPTS * RUNS:
-            # load_dynamic_context đã bị gỡ ở v9.9.5: dùng bố cục 5 khối của production
-            # (history rỗng, không đụng DB), chỉ thay system prompt bằng biến thể đang đo.
-            msgs = build_chat_messages(p, conversation_history=[], route="general")
-            msgs[0] = {"role": "system", "content": system}
+            dyn = load_dynamic_context(p, route="general")
+            msgs = [{"role": "system", "content": system}]
+            if dyn:
+                msgs.append({"role": "system", "content": dyn})
+            msgs.append({"role": "user", "content": p})
             # Production chat (server.py generate_response_stream) passes no temperature: same here.
             resp = await call_llm(messages=msgs, stream=False, thinking=False)
             reply = " ".join((resp.choices[0].message.content or "").split())

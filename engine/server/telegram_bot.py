@@ -11,8 +11,13 @@ import contextvars
 import functools
 import json
 import logging
+import mimetypes
+import os
 import re
 import secrets
+import socket
+import ssl
+import tempfile
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -31,6 +36,11 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_TEXT_LIMIT = 4096
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+# Giới hạn tải tệp lên của Bot API: ảnh 10MB, tệp thường 50MB (khác với
+# MAX_UPLOAD_BYTES vốn là trần tải xuống của người dùng gửi lên).
+TELEGRAM_PHOTO_MAX_BYTES = 10 * 1024 * 1024
+TELEGRAM_DOCUMENT_MAX_BYTES = 50 * 1024 * 1024
+OUTPUT_CAPTION_LIMIT = 1024
 UPLOAD_DIR = Path(__file__).resolve().parents[2] / "data" / "uploads"
 RESTART_NOTICE_PATH = Path(__file__).resolve().parents[2] / "data" / "telegram_restart_notice.json"
 RESTART_NOTICE_MAX_AGE_SECONDS = 10 * 60
@@ -57,6 +67,29 @@ def is_transient_polling_timeout(error: BaseException) -> bool:
     return isinstance(error, _TRANSIENT_CONNECTION_ERRORS) or (
         isinstance(error, URLError) and isinstance(error.reason, _TRANSIENT_CONNECTION_ERRORS)
     )
+
+
+def is_network_offline_error(error: BaseException) -> bool:
+    """Kiểm tra xem lỗi có phải do mất mạng Internet, rớt điện hoặc DNS không phân giải được."""
+    if isinstance(error, (socket.gaierror, socket.herror)):
+        return True
+    if isinstance(error, URLError):
+        reason = error.reason
+        if isinstance(reason, (socket.gaierror, socket.herror, ssl.SSLError)):
+            return True
+        if isinstance(reason, OSError):
+            if getattr(reason, "errno", None) in (11001, 10051, 10060, 10065, -2, -3):
+                return True
+        reason_str = str(reason).lower()
+        if (
+            "getaddrinfo failed" in reason_str
+            or "network is unreachable" in reason_str
+            or "temporary failure in name resolution" in reason_str
+            or "name or service not known" in reason_str
+            or "certificate verify failed" in reason_str
+        ):
+            return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -113,35 +146,25 @@ def parse_allowed_chat_ids(value: str) -> set[int]:
     return chat_ids
 
 
-def load_registered_agents() -> list[tuple[str, str]]:
-    """Read direct-agent names and descriptions from catalog (spec 2026-09-25)."""
-    try:
-        from engine.prompts import catalog
-        return [(name, data["description"]) for name, data in catalog.agents().items()]
-    except Exception as exc:
-        logger.warning("Could not read registered agents: %s", exc)
-        return []
-
-
-def build_telegram_command_menu(commands: list[Any]) -> list[dict[str, str]]:
-    """Convert enabled commands scanned from commands/ to Telegram menu entries."""
+def build_telegram_command_menu(commands: list[Any] | None = None) -> list[dict[str, str]]:
+    """Convert enabled tools from registry to Telegram menu entries."""
+    from engine.tools import registry
     menu = [
         {"command": "start", "description": "Kết nối Jarvis"},
         {"command": "help", "description": "Trợ giúp và danh sách lệnh"},
-        {"command": "agents", "description": "Danh sách agent (@agent)"},
         {"command": "restart", "description": "Khởi động lại Jarvis"},
     ]
     seen = {item["command"] for item in menu}
-    for command in commands:
-        name = getattr(command, "name", "")
-        if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9_]{1,32}", name) or name in seen:
+    for name in sorted(registry.names()):
+        if name in seen or not re.fullmatch(r"[a-z0-9_]{1,32}", name):
             continue
-        description = " ".join(str(getattr(command, "description", "")).split())[:256] or name
+        description = " ".join(registry.description(name).split())[:256] or name
         menu.append({"command": name, "description": description})
         seen.add(name)
         if len(menu) == 100:
             break
     return menu
+
 
 
 def split_telegram_text(text: str, limit: int = TELEGRAM_TEXT_LIMIT) -> list[str]:
@@ -264,12 +287,14 @@ class TelegramSession:
     tts_disabled = True
     cancel_requested = False
     media_active = False
+    forced_command: dict | None = None
+    pending_slash_command: str | None = None
+
 
     def __init__(self, bot: "TelegramBot", chat_id: int, observer_ws: Any = None) -> None:
         self._bot = bot
         self._chat_id = chat_id
         self._observer_ws = observer_ws
-        self._tracker_message_ids: dict[str, int] = {}
         self.message_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
     async def send_json(self, data: dict[str, Any]) -> None:
@@ -288,25 +313,11 @@ class TelegramSession:
             and data["card"].get("type") == "select"
         ):
             await self._bot._send_selection(self._chat_id, data["card"])
-        elif (
-            event_type == "interactive"
-            and isinstance(data.get("card"), dict)
-            and data["card"].get("type") == "tracker"
-        ):
-            card = data["card"]
-            card_id = card.get("id")
-            if not isinstance(card_id, str) or not card_id:
-                return
-            message_id = self._tracker_message_ids.get(card_id)
-            if message_id is None and card.get("status") != "active":
-                return
-            message_id = await self._bot._send_agent_tracker(self._chat_id, card, message_id)
-            if card.get("status") in {"completed", "failed"}:
-                self._tracker_message_ids.pop(card_id, None)
-            elif isinstance(message_id, int):
-                self._tracker_message_ids[card_id] = message_id
         elif event_type == "screenshot_processed":
-            await self._bot._send_screenshot(self._chat_id)
+            filename = data.get("filename") if isinstance(data, dict) else None
+            await self._bot._send_screenshot(self._chat_id, filename=filename)
+        elif event_type == "output_file":
+            await self._bot._send_output_file(self._chat_id, data)
 
 
 class TelegramBot:
@@ -326,17 +337,55 @@ class TelegramBot:
         self._histories: dict[int, list[dict[str, str]]] = defaultdict(list)
         self._pending_callbacks: dict[str, tuple[int, str, float, str, list[str]]] = {}
         self._pending_attachments: dict[int, str] = {}
-        self._pending_commands: dict[int, str] = {}
+        self._sessions: dict[int, TelegramSession] = {}
+        # Tải bản gốc upscale: (tên tệp, token output_file) chờ gắn nút ⬇ vào
+        # tin phản hồi cuối cùng của lượt, thay vì gửi rời gây trùng lặp.
+        self._pending_downloads: dict[int, tuple[str, str]] = {}
         self._message_tasks: set[asyncio.Task] = set()
-        self._menu_commands = build_telegram_command_menu([])
+        self._menu_commands = build_telegram_command_menu()
         self._bot_info: dict[str, Any] = {}
         self._bot_username: str = ""
+        self._is_offline: bool = False
         # Dedicated pool. Every blocking Telegram call used to go through
         # asyncio.to_thread, i.e. the one default executor shared by the whole
         # process — and getUpdates long-polls for 25-40s continuously, so it
         # squatted a slot permanently and starved the voice hot path, which
         # needs several to_thread slots per turn.
         self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="telegram")
+
+    def _get_session(self, chat_id: int) -> TelegramSession:
+        if chat_id not in self._sessions:
+            observer_ws = getattr(self._server, "_active_ws_session", None)
+            self._sessions[chat_id] = TelegramSession(self, chat_id, observer_ws)
+        return self._sessions[chat_id]
+
+
+    def _check_connectivity(self) -> bool:
+        """Kiểm tra nhanh kết nối tới Telegram API qua socket chuẩn."""
+        try:
+            with socket.create_connection(("api.telegram.org", 443), timeout=5):
+                return True
+        except OSError:
+            return False
+
+    async def _handle_network_offline(self, exc: BaseException) -> None:
+        """Tạm dừng polling khi mất mạng hoặc mất điện để tránh spam log."""
+        if not self._is_offline:
+            self._is_offline = True
+            logger.warning(
+                "Mất kết nối Internet/Telegram (%s); tạm dừng polling và chờ khôi phục mạng...",
+                exc,
+            )
+        while not self._stop_event.is_set():
+            try:
+                await asyncio.wait_for(self._stop_event.wait(), timeout=15)
+                break
+            except TimeoutError:
+                pass
+            if await self._to_thread(self._check_connectivity):
+                self._is_offline = False
+                logger.info("Đã khôi phục kết nối mạng; tiếp tục Telegram polling.")
+                break
 
     async def _to_thread(self, fn, *args, **kwargs):
         loop = asyncio.get_running_loop()
@@ -392,14 +441,6 @@ class TelegramBot:
         self._clear_restart_notice()
         return True
 
-    async def broadcast(self, text: str) -> None:
-        """Gửi chủ động tới mọi chat được phép (engine/jobs báo kết quả tìm việc mỗi sáng)."""
-        for chat_id in sorted(self._allowed_chat_ids):
-            try:
-                await self._send_text(chat_id, text)
-            except (OSError, URLError, ValueError):
-                logger.warning("Telegram broadcast failed for chat %s", chat_id, exc_info=True)
-
     async def stop(self) -> None:
         self._stop_event.set()
         for task in tuple(self._message_tasks):
@@ -425,14 +466,20 @@ class TelegramBot:
                     self._bot_username,
                     bot_info.get("id"),
                 )
-        except (OSError, URLError, ValueError):
-            logger.warning("Could not fetch Telegram bot info via getMe", exc_info=True)
+        except (OSError, URLError, ValueError) as exc:
+            if is_network_offline_error(exc):
+                logger.warning("Không thể lấy thông tin bot Telegram do mất mạng: %s", exc)
+            else:
+                logger.warning("Could not fetch Telegram bot info via getMe", exc_info=True)
 
         try:
             await self._request("deleteWebhook", {"drop_pending_updates": True})
             logger.info("Telegram polling initialized; stale updates discarded")
-        except (OSError, URLError, ValueError):
-            logger.warning("Telegram webhook cleanup failed; retrying polling", exc_info=True)
+        except (OSError, URLError, ValueError) as exc:
+            if is_network_offline_error(exc):
+                logger.warning("Không thể dọn dẹp webhook Telegram do mất mạng: %s", exc)
+            else:
+                logger.warning("Telegram webhook cleanup failed; retrying polling", exc_info=True)
 
         await self._register_commands()
 
@@ -448,6 +495,9 @@ class TelegramBot:
                 )
                 if updates:
                     logger.info("Telegram polling received %d update(s)", len(updates))
+                if self._is_offline:
+                    self._is_offline = False
+                    logger.info("Đã khôi phục kết nối mạng; tiếp tục Telegram polling.")
                 for update in updates:
                     update_id = update.get("update_id")
                     if isinstance(update_id, int):
@@ -465,26 +515,35 @@ class TelegramBot:
             except asyncio.CancelledError:
                 raise
             except (OSError, URLError, ValueError, KeyError) as exc:
-                if is_transient_polling_timeout(exc):
+                if is_network_offline_error(exc):
+                    await self._handle_network_offline(exc)
+                elif is_transient_polling_timeout(exc):
                     logger.info(
                         "Telegram polling interrupted (%s %s); retrying", type(exc).__name__, exc
                     )
+                    try:
+                        await asyncio.wait_for(self._stop_event.wait(), timeout=3)
+                    except TimeoutError:
+                        pass
                 else:
                     logger.warning("Telegram polling request failed; retrying", exc_info=True)
-                try:
-                    await asyncio.wait_for(self._stop_event.wait(), timeout=3)
-                except TimeoutError:
-                    pass
-            except Exception:
+                    try:
+                        await asyncio.wait_for(self._stop_event.wait(), timeout=3)
+                    except TimeoutError:
+                        pass
+            except Exception as exc:
                 # Bất kỳ lỗi nào ngoài các loại cụ thể ở trên (vd. HTTPException,
                 # phản hồi Telegram dị dạng) trước đây sẽ thoát hẳn khỏi vòng lặp
                 # và tắt polling vĩnh viễn — không có gì tự khởi động lại. Bắt
                 # rộng ở đây để bot luôn tự thử lại thay vì im lặng ngừng phản hồi.
-                logger.warning("Unexpected error in Telegram polling loop; retrying", exc_info=True)
-                try:
-                    await asyncio.wait_for(self._stop_event.wait(), timeout=3)
-                except TimeoutError:
-                    pass
+                if is_network_offline_error(exc):
+                    await self._handle_network_offline(exc)
+                else:
+                    logger.warning("Unexpected error in Telegram polling loop; retrying", exc_info=True)
+                    try:
+                        await asyncio.wait_for(self._stop_event.wait(), timeout=3)
+                    except TimeoutError:
+                        pass
 
     async def _request(self, method: str, payload: dict[str, Any]) -> Any:
         body = await self._to_thread(self._post, method, payload)
@@ -505,15 +564,15 @@ class TelegramBot:
     async def _register_commands(self) -> None:
         """Register the bot command menu with Telegram (setMyCommands)."""
         try:
-            from engine.tools.skill_manager import get_skill_manager
-
-            manager = get_skill_manager()
-            manager.scan_commands(recursive=True)
-            self._menu_commands = build_telegram_command_menu(manager.list_commands())
+            self._menu_commands = build_telegram_command_menu()
             await self._request("setMyCommands", {"commands": self._menu_commands})
             logger.info("Telegram bot commands registered (%d)", len(self._menu_commands))
-        except (OSError, URLError, ValueError):
-            logger.warning("Could not register Telegram bot commands", exc_info=True)
+
+        except (OSError, URLError, ValueError) as exc:
+            if is_network_offline_error(exc):
+                logger.warning("Không thể đăng ký menu lệnh Telegram do mất mạng: %s", exc)
+            else:
+                logger.warning("Could not register Telegram bot commands", exc_info=True)
 
     def _extract_sender_info(self, message: dict[str, Any]) -> dict[str, str]:
         sender = message.get("from") if isinstance(message.get("from"), dict) else {}
@@ -649,11 +708,34 @@ class TelegramBot:
                 await self._send_text(chat_id, "Hiện bot chỉ nhận tin nhắn văn bản.")
                 return
 
-            if clean_text.lower().startswith("/"):
-                if await self._handle_command(chat_id, clean_text):
-                    return
+            session = self._get_session(chat_id)
 
-            await self._handle_text(chat_id, clean_text, sender_info=sender_info)
+            if clean_text.lower().startswith("/start"):
+                await self._send_text(chat_id, "Jarvis đã kết nối. Bạn có thể nhắn tin tại đây. Gõ `/help` để xem danh sách lệnh.")
+                return
+
+            if clean_text.lower().startswith("/restart"):
+                request_restart = getattr(self._server, "request_restart", None)
+                if not self.queue_restart_notice(chat_id):
+                    await self._send_text(chat_id, "Jarvis chua the luu yeu cau khoi dong lai.")
+                    return
+                if not callable(request_restart) or not request_restart():
+                    self._clear_restart_notice()
+                    await self._send_text(chat_id, "Jarvis chua the khoi dong lai luc nay.")
+                    return
+                await self._send_text(chat_id, "Jarvis đang khởi động lại.")
+                return
+
+            async def _send(payload: dict) -> None:
+                if payload.get("type") == "text_chunk" and payload.get("text"):
+                    await self._send_text(chat_id, payload["text"])
+
+            from engine.server.slash_commands import handle_slash_message
+            routed_text = await handle_slash_message(session, clean_text, _send)
+            if routed_text is None:
+                return
+
+            await self._handle_text(chat_id, routed_text, sender_info=sender_info, session=session)
         except Exception:
             # Trước đây một exception ngoài phạm vi except hẹp của các hàm con
             # (vd. _handle_upload/_handle_text) sẽ biến mất dưới dạng unretrieved
@@ -667,119 +749,6 @@ class TelegramBot:
                 except Exception:
                     pass
 
-    @staticmethod
-    def _load_command(command_name: str) -> Any:
-        """Resolve a hot-loadable command definition from commands/."""
-        from engine.server.slash_commands import load_command
-        return load_command(command_name)
-
-    @staticmethod
-    def _command_spec(command: Any) -> dict:
-        """Parse a command's `usage` frontmatter into a param-name -> hint dict."""
-        from engine.server.slash_commands import command_spec
-        return command_spec(command)
-
-    @staticmethod
-    def _build_command_prompt(command_name: str, spec: dict) -> str:
-        """Ask the user to supply the command's required parameter(s)."""
-        from engine.server.slash_commands import build_command_prompt
-        return build_command_prompt(command_name, spec)
-
-    @staticmethod
-    def _resolve_pending_command(command_name: str, spec: dict, value: str) -> str:
-        """Turn the user's reply into a directive the pipeline can execute."""
-        from engine.server.slash_commands import resolve_command_directive
-        return resolve_command_directive(command_name, spec, value)
-
-    async def _dispatch_bare_command(self, chat_id: int, command_name: str) -> bool:
-        """Handle a menu command tapped without arguments.
-
-        Commands with required params ask for the value and remember the
-        pending command; commands without params execute immediately.
-        """
-        command = self._load_command(command_name)
-        if command is None:
-            lines = [
-                f"💡 *Lệnh /{command_name}:*\n",
-                f"Không tìm thấy lệnh `/{command_name}` trong hệ thống.",
-            ]
-            await self._send_text(chat_id, "\n".join(lines))
-            return True
-        spec = self._command_spec(command)
-        if spec:
-            self._pending_commands[chat_id] = command_name
-            await self._send_text(chat_id, self._build_command_prompt(command_name, spec))
-            return True
-        await self._handle_text(chat_id, f"Thực hiện lệnh {command_name}")
-        return True
-
-    async def _handle_command(self, chat_id: int, text: str) -> bool:
-        """Handle a Telegram slash command. Returns True if handled."""
-        self._pending_commands.pop(chat_id, None)
-        parts = text.split(maxsplit=1)
-        cmd = parts[0].lower()
-        args = parts[1] if len(parts) > 1 else ""
-
-        if cmd in ("/start",):
-            await self._send_text(chat_id, "Jarvis đã kết nối. Bạn có thể nhắn tin tại đây.")
-            return True
-
-        if cmd in ("/restart",):
-            request_restart = getattr(self._server, "request_restart", None)
-            if not self.queue_restart_notice(chat_id):
-                await self._send_text(chat_id, "Jarvis chua the luu yeu cau khoi dong lai.")
-                return True
-            if not callable(request_restart) or not request_restart():
-                self._clear_restart_notice()
-                await self._send_text(chat_id, "Jarvis chua the khoi dong lai luc nay.")
-                return True
-            await self._send_text(chat_id, "Jarvis đang khởi động lại.")
-            return True
-
-        if cmd in ("/help", "/commands", "/start"):
-            lines = ["*Jarvis Telegram Bot*\n"]
-            lines.append("Dùng */lệnh* từ menu hoặc gõ trực tiếp câu hỏi.")
-            lines.append("")
-            lines.append("*Danh sách lệnh:*")
-            for c in self._menu_commands:
-                if c["command"] in ("help", "agents"):
-                    continue
-                lines.append(f"/{c['command']} — {c['description']}")
-            lines.append("")
-            lines.append("/agents — Xem danh sách agent đặc biệt")
-            lines.append("/help — Trợ giúp này")
-            lines.append("")
-            lines.append("Hoặc chat tự nhiên — Jarvis sẽ tự hiểu.")
-            await self._send_text(chat_id, "\n".join(lines))
-            return True
-
-        if cmd in ("/agents", "/agent"):
-            agents = load_registered_agents()
-            lines = ["*Danh sách agent (@agent):*\n"]
-            lines.append("Gõ *@tên_agent* ở đầu câu hỏi để gọi trực tiếp.\n")
-            for name, desc in agents:
-                lines.append(f"@{name} — {desc}")
-            lines.append("")
-            lines.append("Ví dụ: *@search* phim đang chiếu")
-            await self._send_text(chat_id, "\n".join(lines))
-            return True
-
-        if not args.strip():
-            return await self._dispatch_bare_command(chat_id, cmd.lstrip("/"))
-
-        # Command invoked with inline arguments (e.g. "/open_app task manager"):
-        # resolve the params deterministically and forward the directive to the
-        # pipeline so the arguments are not left to the router as raw text.
-        command_name = cmd.lstrip("/")
-        command = self._load_command(command_name)
-        if command is not None:
-            spec = self._command_spec(command)
-            if spec:
-                directive = self._resolve_pending_command(command_name, spec, args.strip())
-                await self._handle_text(chat_id, directive)
-                return True
-
-        return False
 
     async def _handle_upload(
         self,
@@ -843,19 +812,10 @@ class TelegramBot:
         text: str,
         attachment_id: str | None = None,
         sender_info: dict[str, str] | None = None,
+        session: TelegramSession | None = None,
     ) -> None:
         set_session(f"tg-{chat_id}")
-        pending_command = self._pending_commands.get(chat_id)
-        if pending_command:
-            command = self._load_command(pending_command)
-            spec = self._command_spec(command)
-            if spec:
-                text = self._resolve_pending_command(pending_command, spec, text)
-            self._pending_commands.pop(chat_id, None)
-
         if self._server.openai_client is None:
-            if pending_command:
-                self._pending_commands[chat_id] = pending_command
             await self._send_text(chat_id, "LLM của Jarvis chưa sẵn sàng. Vui lòng thử lại sau.")
             return
 
@@ -885,18 +845,14 @@ class TelegramBot:
 
         history = self._histories[chat_id]
         prepared_text = await self._prepare_first_turn_context(text, history)
-        observer_ws = getattr(self._server, "_active_ws_session", None)
-        telegram_session = TelegramSession(self, chat_id, observer_ws)
+        telegram_session = session or self._get_session(chat_id)
         if isinstance(sender_info, dict):
             telegram_session.sender_info = sender_info
-        from engine.main.flow_agents import FlowAgents
         from engine.core.learning import get_learning_engine
         learning_engine = get_learning_engine()
-        flow_agents = FlowAgents(telegram_session, self._server.safe_ws_send_json)
 
         typing_task = None
         learning_started = False
-        turn_started_at = time.time()
         try:
             await self._save_user_message(text)
             typing_task = asyncio.create_task(self._typing_loop(chat_id))
@@ -914,7 +870,6 @@ class TelegramBot:
                 ),
                 conversation_history=history,
                 flow_tracker=None,
-                flow_agents=flow_agents,
                 attachment_context=attachment_context,
             )
         except asyncio.CancelledError:
@@ -939,27 +894,18 @@ class TelegramBot:
         history.extend(
             (
                 {"role": "user", "content": text},
-                {"role": "assistant", "content": response},
+                {"role": "assistant", "content": response, **getattr(telegram_session, "last_turn", {})},
             )
         )
         del history[:-30]
-        from engine.core.learning import outcome_for_turn
-        outcome_id, outcome_status = outcome_for_turn(telegram_session, turn_started_at)
-        await self._persist_conversation(
-            text,
-            response,
-            user_already_saved=True,
-            outcome_id=outcome_id,
-            ask_user=getattr(telegram_session, "pending_ask_user", ""),
-            action_run=getattr(telegram_session, "pending_action_run", ""),
+        await self._persist_conversation(text, response, user_already_saved=True)
+        self._start_reflection(text, response)
+        # Nút ⬇ tải bản gốc (nếu lượt này có ảnh upscale): gắn vào chính tin
+        # phản hồi cuối cùng, không gửi rời gây trùng lặp.
+        pending = self._take_pending_download(chat_id)
+        await self._send_text(
+            chat_id, response, reply_markup=self._download_keyboard(pending[1] if pending else "")
         )
-        self._start_reflection(
-            text,
-            response,
-            outcome_id=outcome_id,
-            outcome_status=outcome_status,
-        )
-        await self._send_text(chat_id, response)
 
     async def _save_user_message(self, user_text: str) -> None:
         try:
@@ -973,21 +919,10 @@ class TelegramBot:
     ) -> str:
         return user_text
 
-    def _start_reflection(
-        self,
-        user_text: str,
-        response_text: str,
-        outcome_id: int | None = None,
-        outcome_status: str | None = None,
-    ) -> None:
+    def _start_reflection(self, user_text: str, response_text: str) -> None:
         try:
             from engine.core.learning import get_learning_engine
-            get_learning_engine().schedule_conversation_learning(
-                user_text,
-                response_text,
-                outcome_id=outcome_id,
-                outcome_status=outcome_status,
-            )
+            get_learning_engine().schedule_conversation_learning(user_text, response_text)
             logger.info("Telegram learning queued for idle processing session=%s", get_session())
         except Exception:
             logger.warning("Telegram learning queue failed", exc_info=True)
@@ -997,9 +932,6 @@ class TelegramBot:
         user_text: str,
         response_text: str,
         user_already_saved: bool = False,
-        outcome_id: int | None = None,
-        ask_user: str = "",
-        action_run: str = "",
     ) -> None:
         """Apply the same durable chat records used by the web transport."""
         try:
@@ -1009,7 +941,7 @@ class TelegramBot:
             if not user_already_saved:
                 await self._to_thread(save_message, "user", user_text)
             persistence_started = time.monotonic()
-            await self._to_thread(save_message, "assistant", response_text, "", ask_user, action_run)
+            await self._to_thread(save_message, "assistant", response_text, "")
             logger.info(
                 "Telegram response persistence: assistant_message elapsed=%.3fs",
                 time.monotonic() - persistence_started,
@@ -1019,7 +951,6 @@ class TelegramBot:
                 save_daily_digest,
                 user_text,
                 response_text,
-                outcome_id=outcome_id,
             )
             logger.info(
                 "Telegram response persistence: daily_digest elapsed=%.3fs",
@@ -1031,47 +962,26 @@ class TelegramBot:
         except Exception:
             logger.warning("Telegram conversation persistence failed", exc_info=True)
 
-    async def _send_text(self, chat_id: int, text: str) -> None:
-        for part in split_telegram_text(text):
+    async def _send_text(
+        self, chat_id: int, text: str, reply_markup: dict[str, Any] | None = None
+    ) -> None:
+        parts = split_telegram_text(text)
+        for index, part in enumerate(parts):
+            payload: dict[str, Any] = {
+                "chat_id": chat_id,
+                "text": render_telegram_markdown(part),
+                "parse_mode": "MarkdownV2",
+            }
+            if reply_markup is not None and index == len(parts) - 1:
+                payload["reply_markup"] = reply_markup
             try:
-                await self._request(
-                    "sendMessage",
-                    {
-                        "chat_id": chat_id,
-                        "text": render_telegram_markdown(part),
-                        "parse_mode": "MarkdownV2",
-                    },
-                )
+                await self._request("sendMessage", payload)
             except (OSError, URLError, ValueError):
                 logger.info("Telegram MarkdownV2 rejected; retrying plain text")
-                await self._request("sendMessage", {"chat_id": chat_id, "text": part})
-
-    async def _send_agent_tracker(
-        self, chat_id: int, card: dict[str, Any], message_id: int | None = None
-    ) -> int | None:
-        """Create or update the single status message for one active agent."""
-        title = str(card.get("title") or "Agent")[:200]
-        label = str(card.get("label") or "Đang xử lý")[:500]
-        status = card.get("status")
-        status_text = {
-            "active": "đang xử lý…",
-            "completed": "hoàn tất",
-            "failed": "gặp lỗi",
-        }.get(status, "đang xử lý…")
-        text = f"{title} — {status_text}\n{label}"
-        try:
-            if message_id is None:
-                result = await self._request("sendMessage", {"chat_id": chat_id, "text": text})
-                returned_id = result.get("message_id") if isinstance(result, dict) else None
-                return returned_id if isinstance(returned_id, int) else None
-            await self._request(
-                "editMessageText",
-                {"chat_id": chat_id, "message_id": message_id, "text": text},
-            )
-            return message_id
-        except (OSError, URLError, ValueError):
-            logger.debug("Telegram agent tracker status failed", exc_info=True)
-            return message_id
+                fallback: dict[str, Any] = {"chat_id": chat_id, "text": part}
+                if reply_markup is not None and index == len(parts) - 1:
+                    fallback["reply_markup"] = reply_markup
+                await self._request("sendMessage", fallback)
 
     async def _typing_loop(self, chat_id: int) -> None:
         while True:
@@ -1134,6 +1044,9 @@ class TelegramBot:
             await self._answer_callback(callback_id, "Không được phép")
             return
         parts = data.split(":") if isinstance(data, str) else []
+        if len(parts) == 3 and parts[0] == "jarvis" and parts[1] == "dl":
+            await self._handle_download_callback(callback_id, chat_id, parts[2])
+            return
         if len(parts) != 4 or parts[0] != "jarvis" or parts[1] not in {"confirm", "select"}:
             await self._answer_callback(callback_id, "Yêu cầu không hợp lệ")
             return
@@ -1177,26 +1090,224 @@ class TelegramBot:
             # callback acknowledgement must not interrupt long polling.
             logger.info("Telegram callback acknowledgement was unavailable")
 
-    async def _send_screenshot(self, chat_id: int) -> None:
-        screenshot = Path(__file__).resolve().parents[2] / "media" / "screenshot.png"
+    async def _send_screenshot(self, chat_id: int, filename: str | None = None) -> None:
+        media_dir = Path(__file__).resolve().parents[2] / "media"
+        screenshot = media_dir / (filename if filename else "screenshot.png")
+        if not screenshot.is_file():
+            screenshot = media_dir / "screenshot.png"
         if not screenshot.is_file():
             logger.warning("Telegram screenshot file is unavailable")
             return
         try:
-            await self._to_thread(self._post_photo, chat_id, screenshot)
+            await self._to_thread(
+                self._post_file,
+                chat_id,
+                screenshot,
+                method="sendPhoto",
+                field="photo",
+                content_type="image/png",
+            )
         except (OSError, URLError, ValueError):
             logger.warning("Telegram screenshot upload failed", exc_info=True)
 
-    def _post_photo(self, chat_id: int, path: Path) -> None:
+    async def _send_output_file(self, chat_id: int, payload: dict[str, Any]) -> None:
+        """Đưa tệp tool tạo ra về chat.
+
+        Ảnh: chỉ gửi khung xem trước thuần túy (sendPhoto không caption —
+        không chữ, không nút). Nút icon ⬇ tải bản gốc được gắn vào tin phản
+        hồi cuối cùng của lượt (qua ``_pending_downloads``), không gửi rời.
+        Tài liệu Office gửi sendDocument thẳng.
+        """
+        path = Path(str(payload.get("path") or ""))
+        kind = payload.get("kind") if payload.get("kind") in {"image", "document"} else "document"
+        caption = str(payload.get("caption") or "").strip()[:OUTPUT_CAPTION_LIMIT]
+        name = path.name or str(payload.get("name") or "tệp")
+
+        if not path.is_file():
+            logger.warning("Telegram output file is unavailable: %s", path)
+            await self._send_text(chat_id, f"Không tìm thấy tệp kết quả: {name}")
+            return
+
+        size = path.stat().st_size
+        if size > TELEGRAM_DOCUMENT_MAX_BYTES:
+            logger.warning("Telegram output file too large: %s (%d bytes)", path, size)
+            await self._send_text(
+                chat_id,
+                f"Tệp {name} nặng {size // (1024 * 1024)}MB, vượt giới hạn "
+                f"{TELEGRAM_DOCUMENT_MAX_BYTES // (1024 * 1024)}MB của Telegram. "
+                f"Tệp vẫn được lưu tại: {path}",
+            )
+            return
+
+        # Ảnh: chỉ gửi khung xem trước thuần túy; lượt tải bản gốc chờ gắn nút
+        # ⬇ vào tin phản hồi cuối lượt (không gửi rời).
+        if kind == "image":
+            photo_path: Path | None = path
+            temp_preview = False
+            if size > TELEGRAM_PHOTO_MAX_BYTES:
+                # Ảnh upscale 4x PNG hầu như luôn vượt trần photo 10MB: dựng
+                # bản xem JPEG nhẹ để chat vẫn hiện khung xem trước.
+                built = await self._to_thread(self._build_photo_preview, path)
+                if built is None:
+                    photo_path = None
+                else:
+                    photo_path, temp_preview = built, True
+            if photo_path is not None:
+                temp_path = photo_path if temp_preview else None
+                try:
+                    await self._to_thread(
+                        self._post_file,
+                        chat_id,
+                        photo_path,
+                        method="sendPhoto",
+                        field="photo",
+                    )
+                except (OSError, URLError, ValueError):
+                    logger.warning("Telegram sendPhoto failed; sending as document", exc_info=True)
+                    photo_path = None
+                finally:
+                    if temp_path is not None:
+                        try:
+                            temp_path.unlink()
+                        except OSError:
+                            pass
+                if photo_path is not None:
+                    self._remember_download(chat_id, name, payload)
+                    return
+
+        try:
+            await self._to_thread(
+                self._post_file,
+                chat_id,
+                path,
+                method="sendDocument",
+                field="document",
+                caption=caption or f"Tệp {name}",
+            )
+        except (OSError, URLError, ValueError):
+            logger.warning("Telegram sendDocument failed for %s", path, exc_info=True)
+            await self._send_text(
+                chat_id,
+                f"Không gửi được {name} tới Telegram. Tệp vẫn lưu tại: {path}",
+            )
+
+    def _remember_download(self, chat_id: int, name: str, payload: dict[str, Any]) -> None:
+        """Giữ (tên tệp, token) để gắn nút icon ⬇ vào tin phản hồi cuối lượt."""
+        token = ""
+        url = str(payload.get("url") or "")
+        if "/api/outputs/" in url:
+            token = url.rsplit("/", 1)[-1].split("?", 1)[0]
+        if token:
+            self._pending_downloads[chat_id] = (name, token)
+
+    def _take_pending_download(self, chat_id: int) -> tuple[str, str] | None:
+        """Lấy và xóa lượt tải chờ gắn nút (hết lượt là hết hiệu lực nút)."""
+        return self._pending_downloads.pop(chat_id, None)
+
+    @staticmethod
+    def _download_keyboard(token: str) -> dict[str, Any] | None:
+        """Bàn phím một nút icon ⬇ duy nhất (không thêm chữ nào) tải bản gốc."""
+        if not token:
+            return None
+        return {"inline_keyboard": [[{"text": "⬇", "callback_data": f"jarvis:dl:{token}"}]]}
+
+    async def _handle_download_callback(self, callback_id: str, chat_id: int, token: str) -> None:
+        """Bấm nút ⬇ trên hàng phản hồi: gửi bản gốc của tệp tương ứng."""
+        from engine.core.output_delivery import lookup_output_file
+
+        file_path = lookup_output_file(token) if token else None
+        if file_path is None or not file_path.is_file():
+            await self._answer_callback(callback_id, "Tệp đã hết hiệu lực")
+            return
+        try:
+            too_big = file_path.stat().st_size > TELEGRAM_DOCUMENT_MAX_BYTES
+        except OSError:
+            await self._answer_callback(callback_id, "Tệp đã hết hiệu lực")
+            return
+        if too_big:
+            await self._answer_callback(callback_id, "Tệp vượt giới hạn của Telegram")
+            return
+        try:
+            await self._to_thread(
+                self._post_file,
+                chat_id,
+                file_path,
+                method="sendDocument",
+                field="document",
+            )
+        except (OSError, URLError, ValueError):
+            logger.warning("Telegram callback download failed for %s", file_path, exc_info=True)
+            await self._answer_callback(callback_id, "Không gửi được tệp")
+            return
+        await self._answer_callback(callback_id, "Đang gửi tệp")
+
+    def _build_photo_preview(self, path: Path) -> Path | None:
+        """Nén ảnh vượt trần photo thành bản xem JPEG nhẹ vừa khung 10MB.
+
+        Trả đường dẫn tệp tạm (caller xóa sau khi gửi); trả None khi không
+        dựng được để caller rớt xuống sendDocument như cũ.
+        """
+        try:
+            from PIL import Image
+        except ImportError:
+            logger.warning("PIL is unavailable; oversized image falls back to document")
+            return None
+        try:
+            with Image.open(path) as img:
+                img = img.convert("RGB")
+                for max_side, quality in ((2560, 85), (1920, 82), (1600, 78), (1280, 72)):
+                    frame = img.copy()
+                    frame.thumbnail((max_side, max_side))
+                    fd, tmp_name = tempfile.mkstemp(prefix="jarvis-preview-", suffix=".jpg")
+                    try:
+                        with os.fdopen(fd, "wb") as fh:
+                            frame.save(fh, "JPEG", quality=quality, optimize=True)
+                    except Exception:
+                        try:
+                            Path(tmp_name).unlink()
+                        except OSError:
+                            pass
+                        raise
+                    if Path(tmp_name).stat().st_size <= TELEGRAM_PHOTO_MAX_BYTES - 512 * 1024:
+                        return Path(tmp_name)
+                    try:
+                        Path(tmp_name).unlink()
+                    except OSError:
+                        pass
+        except Exception:
+            logger.warning("Could not build Telegram photo preview for %s", path, exc_info=True)
+            return None
+        return None
+
+    def _post_file(
+        self,
+        chat_id: int,
+        path: Path,
+        *,
+        method: str,
+        field: str,
+        caption: str | None = None,
+        content_type: str | None = None,
+    ) -> None:
         boundary = f"----JarvisTelegram{secrets.token_hex(8)}"
-        image = path.read_bytes()
-        body = (
+        data = path.read_bytes()
+        filename = re.sub(r'["\r\n]', "", path.name)
+        mime = content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        head = (
             f"--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{chat_id}\r\n"
-            f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"{path.name}\"\r\n"
-            "Content-Type: image/png\r\n\r\n"
-        ).encode("utf-8") + image + f"\r\n--{boundary}--\r\n".encode("utf-8")
+        )
+        if caption:
+            head += (
+                f"--{boundary}\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n"
+                f"{caption}\r\n"
+            )
+        head += (
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"{field}\"; "
+            f"filename=\"{filename}\"\r\nContent-Type: {mime}\r\n\r\n"
+        )
+        body = head.encode("utf-8") + data + f"\r\n--{boundary}--\r\n".encode("utf-8")
         request = Request(
-            f"https://api.telegram.org/bot{self._token}/sendPhoto",
+            f"https://api.telegram.org/bot{self._token}/{method}",
             data=body,
             headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
             method="POST",
@@ -1204,4 +1315,4 @@ class TelegramBot:
         with urlopen(request, timeout=40) as response:
             result = json.loads(response.read().decode("utf-8"))
         if not result.get("ok"):
-            raise ValueError("Telegram sendPhoto returned an unsuccessful response")
+            raise ValueError(f"Telegram {method} returned an unsuccessful response")

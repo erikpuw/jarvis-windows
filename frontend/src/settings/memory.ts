@@ -8,12 +8,10 @@ import { decorateActionButton, makeIcon, runAction, type ActionKind } from "../i
 import type { MorphIconElement } from "morphicons/element";
 import {
   Brain, Lightbulb, Dna, Sprout,
-  Sparkles, Database,
   Workflow, RotateCw,
   Target, CheckCheck,
-  Layers, Bookmark,
   MessageSquare, MessagesSquare,
-  FileText, FileCheck,
+  Dumbbell, Activity,
   Search, ChevronLeft, ChevronRight,
   type IconNode,
 } from "lucide";
@@ -26,8 +24,8 @@ type MemoryCategoryId =
   | "workflow"
   | "outcome"
   | "conversation"
-  | "notes"
-  | "evolution";
+  | "evolution"
+  | "gym";
 
 interface MemoryCategory {
   id: MemoryCategoryId;
@@ -50,19 +48,19 @@ const MEMORY_PAGE_SIZE = 50;
 const MEMORY_CATEGORIES: MemoryCategory[] = [
   { id: 'learning', label: "Learnings", endpoint: "/api/learnings/list", responseKey: "learnings", color: "#a78bfa", icon: Brain, activeIcon: Lightbulb },
   { id: 'workflow', label: "Workflows", endpoint: "/api/workflows/list", responseKey: "workflows", color: "#22d3ee", icon: Workflow, activeIcon: RotateCw },
-  { id: 'outcome', label: "Agent Outcomes", endpoint: "/api/outcomes/list", responseKey: "outcomes", color: "#f59e0b", icon: Target, activeIcon: CheckCheck },
+  { id: 'outcome', label: "Outcomes", endpoint: "/api/outcomes/list", responseKey: "outcomes", color: "#f59e0b", icon: Target, activeIcon: CheckCheck },
   { id: 'conversation', label: "Conversations", endpoint: "/api/conversations", responseKey: "conversations", color: "#60a5fa", icon: MessageSquare, activeIcon: MessagesSquare },
-  { id: 'notes', label: "Notes", endpoint: "/api/notes/list", responseKey: "notes", color: "#94a3b8", icon: FileText, activeIcon: FileCheck },
+  { id: 'gym', label: "Gym Memory", endpoint: "/api/gym/list", responseKey: "items", color: "#ec4899", icon: Dumbbell, activeIcon: Activity },
   // Hai file tiến hóa (STYLE.md đang áp dụng, Evolution.md nhật ký): đọc và sửa tay ở đây, không có chỗ nào khác. Là file nên không xoá được.
   { id: 'evolution', label: "Evolution", endpoint: "/api/evolution/list", responseKey: "items", color: "#34d399", icon: Dna, activeIcon: Sprout },
 ];
 
 const EDITABLE_MEMORY_FIELDS: Record<MemoryCategoryId, string[]> = {
   learning: ["type", "semantic_key", "content", "source", "importance", "embedding"],
-  workflow: ["agent", "intent", "tool_chain", "argument_keys", "sample_queries", "success_evidence", "validation_count", "status", "wiki_path"],
-  outcome: ["agent", "query", "status", "result", "traces"],
+  workflow: ["tools", "intent", "tool_chain", "sample_queries", "success_evidence", "validation_count", "wiki_path"],
+  outcome: ["tools", "query", "status", "result", "traces"],
   conversation: ["role", "content", "session_id"],
-  notes: ["title", "content", "tags"],
+  gym: ["title", "content", "type"],
   evolution: ["content"],
 };
 
@@ -118,7 +116,6 @@ function formatFieldLabel(field: string): string {
     memory_id: "Memory ID",
     wiki_scope: "Wiki Scope",
     tool_chain: "Tool Chain",
-    argument_keys: "Tham số đầu vào (Argument Keys)",
     sample_queries: "Mẫu câu truy vấn (Sample Queries)",
     success_evidence: "Bằng chứng thành công (Success Evidence)",
     validation_count: "Số lần kiểm chứng (Validation Count)",
@@ -127,7 +124,7 @@ function formatFieldLabel(field: string): string {
     query: "Câu hỏi / Truy vấn (Query)",
     result: "Kết quả (Result)",
     traces: "Dấu vết thực thi (Traces)",
-    agent: "Tên Agent",
+    tools: "Công cụ",
     importance: "Độ quan trọng (Importance 1-10)",
     source: "Nguồn gốc (Source)",
     content: "Nội dung (Content)",
@@ -173,6 +170,7 @@ function renderMemoryCategoryNav(): void {
     workflow: "workflows",
     outcome: "outcomes",
     conversation: "conversations",
+    gym: "gym",
   };
 
   const existingButtons = nav.querySelectorAll<HTMLButtonElement>(".sd-mem-cat-btn");
@@ -262,9 +260,7 @@ async function loadMemoryList(): Promise<void> {
       limit: String(MEMORY_PAGE_SIZE),
       offset: String(memoryOffset),
     });
-    const notesPath = searchQuery ? "/api/notes/search" : "/api/notes/list";
-    const endpoint = activeMemoryKind === "notes" ? notesPath : category.endpoint;
-    const data = await apiGet<Record<string, unknown>>(`${endpoint}?${query.toString()}`);
+    const data = await apiGet<Record<string, unknown>>(`${category.endpoint}?${query.toString()}`);
     if (!data.success) throw new Error(String(data.error || "request_failed"));
     activeMemoryItems = (data.items || data[category.responseKey] || []) as MemoryItem[];
     memoryTotal = Number(data.total ?? activeMemoryItems.length);
@@ -292,7 +288,7 @@ function memoryItemPreview(item: MemoryItem): string {
 function renderMemoryField(field: string, value: unknown): string {
   const text = memoryValueText(value);
   const rows = activeMemoryKind === "evolution" ? 16 : 4; // một file luật dài hơn một bản ghi
-  const isLong = ["content", "result", "traces", "tool_chain", "argument_keys", "sample_queries", "success_evidence", "embedding"].includes(field);
+  const isLong = ["content", "result", "traces", "tool_chain", "sample_queries", "success_evidence", "embedding"].includes(field);
   const isNumber = ["importance", "validation_count", "memory_id"].includes(field);
   const typeTag = isNumber ? "Số" : (isLong ? "Văn bản lớn" : "Chuỗi ký tự");
   const control = isLong
@@ -417,9 +413,11 @@ function renderMemoryItems(): void {
       </div>
       ${metadataHtml}
       <div class="sd-mem-detail-actions">
+        ${activeMemoryKind === "gym" ? "" : `
         <button class="settings-btn primary" id="memory-save-btn" data-memory-action="save" data-action="save">
           Lưu thay đổi
         </button>
+        `}
         ${activeMemoryKind === "learning" ? `
         <button class="settings-btn" id="memory-reembed-btn" data-memory-action="reembed" data-action="refresh">
           <span class="btn-label">Tính lại embedding</span>
@@ -490,8 +488,8 @@ async function deleteBulkSelectedRecords(btn: HTMLButtonElement): Promise<void> 
     const failures: string[] = [];
     for (const item of targets) {
       try {
-        const result = kind === "notes"
-          ? await (await fetchWithTimeout(`/api/notes/delete?id=${encodeURIComponent(String(item.id))}`, { method: "DELETE" })).json()
+        const result = kind === "gym"
+          ? await (await fetchWithTimeout(`/api/gym/delete?id=${encodeURIComponent(String(item.id))}`, { method: "DELETE" })).json()
           : await apiPost<{ success: boolean; code?: string; error?: string }>("/api/memory-control/delete", { kind, id: Number(item.id) });
         if (!result.success) throw new Error(result.code || result.error || "delete_failed");
       } catch (error) {
@@ -521,11 +519,11 @@ async function saveSelectedMemoryRecord(btn: HTMLButtonElement): Promise<void> {
     values[field] = control.type === "number" ? Number(control.value) : control.value;
   });
   const ok = await runAction(btn, async () => {
-    const result = activeMemoryKind === "notes"
-      ? await apiPost<Record<string, unknown>>("/api/notes/update", { id: item.id, ...values })
-      : activeMemoryKind === "evolution"
+    const result = activeMemoryKind === "evolution"
         ? await apiPost<Record<string, unknown>>("/api/evolution/update", { id: String(item.id), content: values.content })
-        : await apiPost<Record<string, unknown>>("/api/memory-control/update", { kind: activeMemoryKind, id: Number(item.id), values });
+        : activeMemoryKind === "gym"
+          ? { success: true }
+          : await apiPost<Record<string, unknown>>("/api/memory-control/update", { kind: activeMemoryKind, id: Number(item.id), values });
     if (!result.success) throw new Error(`Không thể lưu bản ghi: ${String(result.error || result.code || "update_failed")}`);
   });
   if (ok) await loadMemoryList();
@@ -536,9 +534,9 @@ async function deleteSelectedMemoryRecord(btn: HTMLButtonElement): Promise<void>
   if (!item) return;
   const kind = activeMemoryKind;
   const ok = await runAction(btn, async () => {
-    if (kind === "notes") {
-      if (!confirm("Xóa ghi chú đã chọn?")) return false;
-      const response = await fetchWithTimeout(`/api/notes/delete?id=${encodeURIComponent(String(item.id))}`, { method: "DELETE" });
+    if (kind === "gym") {
+      if (!confirm(`Xóa bản ghi tập luyện: ${memoryItemTitle(item)}?`)) return false;
+      const response = await fetchWithTimeout(`/api/gym/delete?id=${encodeURIComponent(String(item.id))}`, { method: "DELETE" });
       const result = await response.json();
       if (!result.success) throw new Error(`Không thể xóa bản ghi: ${result.error || "delete_failed"}`);
       return;

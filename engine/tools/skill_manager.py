@@ -20,7 +20,6 @@ log = logging.getLogger("jarvis.skill_manager")
 # Paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 SKILLS_DIR = PROJECT_ROOT / "skills"
-COMMANDS_DIR = PROJECT_ROOT / "commands"
 
 
 @dataclass
@@ -45,43 +44,17 @@ class Skill:
         }
 
 
-@dataclass
-class Command:
-    """Command definition from markdown"""
-    name: str
-    description: str
-    usage: str = ""
-    category: str = "general"
-    tags: list[str] = field(default_factory=list)
-    content: str = ""
-    file_path: str = ""
-    enabled: bool = True
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "description": self.description,
-            "usage": self.usage,
-            "category": self.category,
-            "tags": self.tags,
-            "file_path": self.file_path,
-            "enabled": self.enabled,
-        }
-
-
 class SkillManager:
-    """Manages skills and commands loaded from markdown files"""
+    """Manages skills loaded from markdown files"""
 
     def __init__(self):
         self.skills: dict[str, Skill] = {}
-        self.commands: dict[str, Command] = {}
         self.skill_modules: dict[str, types.ModuleType] = {}
         self._ensure_directories()
 
     def _ensure_directories(self):
-        """Create skills and commands directories if they don't exist"""
+        """Create skills directory if it doesn't exist"""
         SKILLS_DIR.mkdir(parents=True, exist_ok=True)
-        COMMANDS_DIR.mkdir(parents=True, exist_ok=True)
         log.info("Skill directories ready")
 
     def _parse_markdown_frontmatter(self, content: str) -> tuple[dict, str]:
@@ -150,40 +123,14 @@ class SkillManager:
             log.error(f"Failed to load skill from {file_path}: {e}")
             return None
 
-    def load_command_from_file(self, file_path: Path) -> Optional[Command]:
-        """Load a single command from markdown file"""
-        try:
-            content = file_path.read_text(encoding="utf-8")
-            frontmatter, body = self._parse_markdown_frontmatter(content)
-            metadata = self._extract_metadata_from_content(content)
-
-            cmd_data = {**metadata, **frontmatter}
-
-            command = Command(
-                name=cmd_data.get("name", file_path.stem),
-                description=cmd_data.get("description", ""),
-                usage=cmd_data.get("usage", ""),
-                category=cmd_data.get("category", "general"),
-                tags=cmd_data.get("tags", []),
-                content=body,
-                file_path=str(file_path),
-                enabled=cmd_data.get("enabled", True),
-            )
-
-            return command
-
-        except Exception as e:
-            log.error(f"Failed to load command from {file_path}: {e}")
-            return None
-
     def scan_skills(self, recursive: bool = True) -> int:
         """Scan and load skills from skills/ — chỉ load file SKILL.md, bỏ rác."""
         if not SKILLS_DIR.exists():
             log.warning("Skills directory not found")
             return 0
 
-        pattern = "**/SKILL.md" if recursive else "SKILL.md"
-        md_files = list(SKILLS_DIR.glob(pattern))
+        pattern = "**/*.md" if recursive else "*.md"
+        md_files = [f for f in SKILLS_DIR.glob(pattern) if f.name.lower() in ("skill.md", "skills.md")]
 
         loaded_count = 0
         for file_path in md_files:
@@ -195,32 +142,9 @@ class SkillManager:
         log.info(f"Loaded {loaded_count} skills")
         return loaded_count
 
-    def scan_commands(self, recursive: bool = True) -> int:
-        """Scan and load all commands from commands/ directory"""
-        if not COMMANDS_DIR.exists():
-            log.warning("Commands directory not found")
-            return 0
-
-        pattern = "**/*.md" if recursive else "*.md"
-        md_files = list(COMMANDS_DIR.glob(pattern))
-
-        loaded_count = 0
-        for file_path in md_files:
-            command = self.load_command_from_file(file_path)
-            if command:
-                self.commands[command.name] = command
-                loaded_count += 1
-
-        log.info(f"Loaded {loaded_count} commands")
-        return loaded_count
-
     def get_skill(self, skill_name: str) -> Optional[Skill]:
         """Get a skill by name"""
         return self.skills.get(skill_name)
-
-    def get_command(self, command_name: str) -> Optional[Command]:
-        """Get a command by name"""
-        return self.commands.get(command_name)
 
     def list_skills(self, enabled_only: bool = True, category: Optional[str] = None) -> list[Skill]:
         """List all loaded skills"""
@@ -234,18 +158,6 @@ class SkillManager:
 
         return skills
 
-    def list_commands(self, enabled_only: bool = True, category: Optional[str] = None) -> list[Command]:
-        """List all loaded commands"""
-        commands = list(self.commands.values())
-
-        if enabled_only:
-            commands = [c for c in commands if c.enabled]
-
-        if category:
-            commands = [c for c in commands if c.category == category]
-
-        return commands
-
     def search_skills(self, query: str) -> list[Skill]:
         """Search skills by name, description, or tags"""
         query_lower = query.lower()
@@ -256,19 +168,6 @@ class SkillManager:
                 query_lower in skill.description.lower() or
                 any(query_lower in tag.lower() for tag in skill.tags)):
                 results.append(skill)
-
-        return results
-
-    def search_commands(self, query: str) -> list[Command]:
-        """Search commands by name, description, or tags"""
-        query_lower = query.lower()
-        results = []
-
-        for command in self.commands.values():
-            if (query_lower in command.name.lower() or
-                query_lower in command.description.lower() or
-                any(query_lower in tag.lower() for tag in command.tags)):
-                results.append(command)
 
         return results
 
@@ -288,40 +187,17 @@ class SkillManager:
         log.info(f"Disabled skill: {skill_name}")
         return True
 
-    def enable_command(self, command_name: str) -> bool:
-        """Enable a command"""
-        if command_name not in self.commands:
-            return False
-        self.commands[command_name].enabled = True
-        log.info(f"Enabled command: {command_name}")
-        return True
-
-    def disable_command(self, command_name: str) -> bool:
-        """Disable a command"""
-        if command_name not in self.commands:
-            return False
-        self.commands[command_name].enabled = False
-        log.info(f"Disabled command: {command_name}")
-        return True
-
     def get_stats(self) -> dict:
-        """Get statistics about loaded skills and commands"""
+        """Get statistics about loaded skills"""
         return {
             "total_skills": len(self.skills),
             "enabled_skills": sum(1 for s in self.skills.values() if s.enabled),
-            "total_commands": len(self.commands),
-            "enabled_commands": sum(1 for c in self.commands.values() if c.enabled),
         }
 
     def get_all_skills_dict(self, enabled_only: bool = True) -> dict:
         """Get all skills as dictionary"""
         skills = self.list_skills(enabled_only=enabled_only)
         return {skill.name: skill.to_dict() for skill in skills}
-
-    def get_all_commands_dict(self, enabled_only: bool = True) -> dict:
-        """Get all commands as dictionary"""
-        commands = self.list_commands(enabled_only=enabled_only)
-        return {cmd.name: cmd.to_dict() for cmd in commands}
 
 
 _skill_manager: Optional[SkillManager] = None
@@ -339,9 +215,8 @@ def initialize_skills() -> SkillManager:
     """Initialize skill manager and scan directories"""
     manager = get_skill_manager()
     manager.scan_skills(recursive=True)
-    manager.scan_commands(recursive=True)
     stats = manager.get_stats()
-    log.info(f"Skills initialized: {stats['total_skills']} skills, {stats['total_commands']} commands")
+    log.info(f"Skills initialized: {stats['total_skills']} skills")
     return manager
 
 

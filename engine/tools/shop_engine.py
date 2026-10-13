@@ -15,18 +15,6 @@ from engine.tools.browser import browser
 log = logging.getLogger(__name__)
 
 # Quy tắc định dạng cho LLM vòng 2 — bàn giao từ actions.py cho tool sở hữu
-SUMMARY_RULES: dict[str, str] = {
-    "search_products": (
-        "QUY TẮC ĐỊNH DẠNG TRA GIÁ SẢN PHẨM BẮT BUỘC:\n"
-        "- Giữ nguyên tên sản phẩm, giá niêm yết, nguồn và liên kết từ kết quả công cụ.\n"
-        "- Không tự suy đoán hoặc bổ sung giá không có trong dữ liệu nguồn.\n"
-        "- Nếu công cụ đang hỏi địa điểm AEON hoặc LOTTE, chỉ chuyển nguyên câu hỏi đó cho người dùng.\n"
-        "- Khi bảng có cột Đánh giá/Đã bán: giữ nguyên bảng, nhận xét ngắn vì sao các mẫu đứng đầu hợp nhu cầu, "
-        "chỉ dựa trên tên, giá, sao, lượt bán trong bảng. Tiêu chí người dùng mà bảng không có (kiểu cửa, loại động cơ…) "
-        "phải nói rõ là chưa kiểm chứng, nên xem chi tiết ở liên kết."
-    ),
-}
-
 _APPLIANCE_KW = (
     "máy giặt", "tủ lạnh", "tivi", "ti vi", "điều hòa", "máy lạnh", "nồi chiên", "nồi cơm",
     "lò vi sóng", "máy lọc", "máy hút bụi", "quạt", "bếp từ", "máy sấy", "máy rửa chén",
@@ -433,6 +421,10 @@ async def _fetch_cards(
         raise pages[0]
     cards = list({c["url"]: c for page in pages if not isinstance(page, Exception) for c in page}.values())
     cards = [c for c in cards if not _is_unwanted_accessory(_plain(c["name"]), _plain(term))]
+    # Ô tìm kiếm của shop khớp lỏng ("máy giặt 11kg" ra cả tủ lạnh, 2026-10-12): giữ đúng loại máy ngài hỏi
+    kinds = [kw for kw in _APPLIANCE_KW if _has_kw(term.lower(), (kw,))]
+    if kinds:
+        cards = [c for c in cards if _has_kw(c["name"].lower(), tuple(kinds))]
     cards = list({(c["name"].casefold(), c["price_vnd"]): c for c in reversed(cards)}.values())[::-1]  # màu/sku khác, cùng tên cùng giá
     # so sánh: lấy mẫu khớp nhất của từng sản phẩm, không lọc theo nhu cầu
     kept = cards[:per_term] if per_term else rank_cards(cards, criteria, sort=sort)
@@ -483,19 +475,23 @@ def _format_results(
     criteria: dict,
     fetched: list[tuple[dict[str, str], list[dict[str, str]]]],
 ) -> str:
-    rated = any("rating" in row for _, rows in fetched for row in rows)
+    # cột Đánh giá/Đã bán chỉ khi có ít nhất một ô có số liệu: cột toàn "—" chỉ làm bảng hẹp đi trên điện thoại
+    extra_cols = [
+        (key, title, align) for key, title, align in (("rating", "Đánh giá", ":---:"), ("sold", "Đã bán", "---:"))
+        if any(row.get(key, "—") != "—" for _, rows in fetched for row in rows)
+    ]
+    rated = bool(extra_cols)
     lines = [
         f"Kết quả tra giá cho **{query}**:",
         "",
-        "| Sản phẩm | Giá niêm yết | Đánh giá | Đã bán | Nguồn |" if rated
-        else "| Sản phẩm | Giá niêm yết | Nguồn |",
-        "| :--- | ---: | :---: | ---: | :--- |" if rated else "| :--- | ---: | :--- |",
+        "| Sản phẩm | Giá niêm yết |" + "".join(f" {title} |" for _, title, _ in extra_cols) + " Nguồn |",
+        "| :--- | ---: |" + "".join(f" {align} |" for _, _, align in extra_cols) + " :--- |",
     ]
     found = False
     for source, rows in fetched:
         for row in rows:
             found = True
-            extra = f" {row.get('rating', '—')} | {row.get('sold', '—')} |" if rated else ""
+            extra = "".join(f" {row.get(key, '—')} |" for key, _, _ in extra_cols)
             lines.append(
                 f"| {row['name']} | {row['price']} |{extra} "
                 f"[{source['source']}]({row['url']}) |"

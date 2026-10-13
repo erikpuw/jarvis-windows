@@ -13,8 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from engine.core.attachment_store import DEFAULT_UPLOAD_ROOT, register_attachment
-from engine.router import archive as RA
-from engine.router.types import TurnContext
+from engine.turn import archive as RA
+from engine.turn.context import TurnContext
 from engine.tools import archive_tool
 
 RAR_EXE = Path(r"C:\Program Files\WinRAR\Rar.exe")
@@ -106,27 +106,23 @@ def test_not_an_archive_is_untouched(box):
     assert msg is None and ctx.attachment_context.filename == "x.pdf"
 
 
-def test_handle_turn_unpacks_before_gate(box, monkeypatch):
-    import engine.router as R
+def test_handle_turn_unpacks_before_loop(box, monkeypatch):
+    from types import SimpleNamespace
+    from engine.turn import entry as E
     seen = {}
 
-    async def fake_decide(text, ctx):
+    async def fake_loop(text, ctx, only=None):
         seen["ext"] = ctx.attachment_context.extension
-        from engine.router.types import RouteDecision
-        return RouteDecision("general", text, "gate")
-
-    async def fake_dispatch(d, text, ctx):
         return "OK"
-    monkeypatch.setattr(R, "decide", fake_decide)
-    monkeypatch.setattr(R._dispatch_module, "dispatch", fake_dispatch)
+    monkeypatch.setattr("engine.turn.loop.run_loop", fake_loop)
     one = _zip(box, "i.zip", {"x.pdf": b"%PDF"})
-    ctx = TurnContext(ws=object(), send_json=lambda *a: asyncio.sleep(0),
+    ctx = TurnContext(ws=SimpleNamespace(forced_command=None), send_json=lambda *a: asyncio.sleep(0),
                       attachment_context=register_attachment(one, filename="i.zip", channel="webui"))
-    assert asyncio.run(R.handle_turn("lưu trữ dữ liệu", ctx)) == "OK" and seen["ext"] == ".pdf"
+    assert asyncio.run(E.handle_turn("lưu trữ dữ liệu", ctx)) == "OK" and seen["ext"] == ".pdf"
 
     seen.clear()
     many = _zip(box, "j.zip", {"a.pdf": b"1", "b.png": b"2"})
-    ctx = TurnContext(ws=object(), send_json=lambda *a: asyncio.sleep(0),
+    ctx = TurnContext(ws=SimpleNamespace(forced_command=None), send_json=lambda *a: asyncio.sleep(0),
                       attachment_context=register_attachment(many, filename="j.zip", channel="webui"))
-    res = asyncio.run(R.handle_turn("lưu trữ dữ liệu", ctx))
-    assert "gửi từng tệp" in res and not seen  # gate không chạy
+    res = asyncio.run(E.handle_turn("lưu trữ dữ liệu", ctx))
+    assert "gửi từng tệp" in res and not seen  # vòng lặp không chạy

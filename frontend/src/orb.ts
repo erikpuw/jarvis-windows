@@ -173,20 +173,20 @@ function buildOrb(canvas: HTMLCanvasElement): Omit<Orb, "setEnabled"> {
 
     switch (state) {
       case "idle":
-        targetRadius = 24; targetSpeed = 0.22; targetBright = 0.5; targetSize = 0.3;
+        targetRadius = 24; targetSpeed = 0.2; targetBright = 0.5; targetSize = 0.35;
         targetLineAmount = 0.15; targetElectronRate = 0; break;
       case "listening":
-        targetRadius = 22; targetSpeed = 0.35; targetBright = 0.65; targetSize = 0.3;
-        targetLineAmount = 0.5; targetElectronRate = 0; break;
+        targetRadius = 22; targetSpeed = 0.3; targetBright = 0.65; targetSize = 0.4;
+        targetLineAmount = 0.4; targetElectronRate = 0; break;
       case "thinking":
-        targetRadius = 18; targetSpeed = 0.45; targetBright = 0.7; targetSize = 0.3;
+        targetRadius = 18; targetSpeed = 0.5; targetBright = 0.7; targetSize = 0.3;
         targetLineAmount = 0.8; targetElectronRate = 0.015; break;
       case "speaking":
-        targetRadius = 16; targetSpeed = 0.4; targetBright = 0.7; targetSize = 0.3;
-        targetLineAmount = 0.4; targetLineDist = 12; targetElectronRate = 0; break;
+        targetRadius = 16; targetSpeed = 0.2; targetBright = 0.7; targetSize = 0.4;
+        targetLineAmount = 0.8; targetLineDist = 12; targetElectronRate = 0; break;
       case "working":
         targetRadius = 14; targetSpeed = 0.38; targetBright = 0.8; targetSize = 0.3;
-        targetLineAmount = 1; lineDistance = 8; targetLineDist = 12; targetElectronRate = 0.015; break;
+        targetLineAmount = 0.5; lineDistance = 8; targetLineDist = 12; targetElectronRate = 0.015; break;
     }
 
     currentRadius += (targetRadius - currentRadius) * 0.02;
@@ -200,7 +200,7 @@ function buildOrb(canvas: HTMLCanvasElement): Omit<Orb, "setEnabled"> {
     // Transition energy
     if (state !== lastState) { transitionEnergy = 1.0; lastState = state; }
     transitionEnergy *= 0.985;
-    spinY += 0.0012; // xoay ngang chậm liên tục (~0.07 rad/s, ~90s một vòng)
+    spinY += 0.0020; // xoay ngang chậm liên tục (~0.07 rad/s, ~90s một vòng)
     if (transitionEnergy > 0.05) {
       spinX += transitionEnergy * 0.012 * Math.sin(t * 1.7);
       spinY += transitionEnergy * 0.015;
@@ -504,11 +504,11 @@ function buildOrb(canvas: HTMLCanvasElement): Omit<Orb, "setEnabled"> {
     electrons.rotation.x = spinX; electrons.rotation.y = spinY; electrons.rotation.z = spinZ;
     electrons.position.z = cloudZ;
 
-    mat.opacity = currentBright + bass * 0.008;
+    mat.opacity = currentBright + bass * 0.08;
     // Khối cầu tiến/lùi theo cloudZ; bù lại để hạt giữ đúng cỡ trên màn hình như idle,
     // không phình to (vỡ hạt) khi thinking/working kéo khối cầu sát camera (z=80).
     const depthScale = (camera.position.z - cloudZ) / camera.position.z;
-    mat.size = (currentSize + bass * 0.008) * depthScale;
+    mat.size = (currentSize + bass * 0.05) * depthScale;
     electronMat.size = ELECTRON_SIZE * depthScale;
 
     if (state === "working") { mat.color.lerp(C_WORKING, 0.015); lineMat.color.lerp(C_WORKING_LINE, 0.015); }
