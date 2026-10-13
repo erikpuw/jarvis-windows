@@ -100,15 +100,6 @@ def verify_input(text: str) -> Tuple[bool, str]:
     return True, ""
 
 
-def looks_like_injection(text: str) -> bool:
-    """Chỉ bộ PROMPT_INJECTION_PATTERNS (không gồm lệnh nguy hiểm), cho nội dung KHÔNG tin cậy
-    như trang web, lịch sử trò chuyện (engine/plans/untrusted.py, spec 2026-09-26 mục 7)."""
-    if not text:
-        return False
-    t = _normalize_for_matching(text).lower()
-    return any(re.search(p, t) for p in PROMPT_INJECTION_PATTERNS)
-
-
 _INJECTION_REMOVED = "[đã lọc 1 dòng nghi prompt injection]"
 
 
