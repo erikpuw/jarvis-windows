@@ -52,6 +52,18 @@ async def zodiac(sign: str) -> str:
 
 
 @tool()
+async def legal_lookup(query: str) -> str:
+    from engine.tools.legal_engine import legal_lookup as _lookup
+    return await _lookup(query)
+
+
+@tool()
+async def vn_admin_lookup(query: str) -> str:
+    from engine.tools.search_engine import handle_vietnam_data_query
+    return await handle_vietnam_data_query(query)
+
+
+@tool()
 async def lookup_knowledge(query: str) -> str:
     from engine.core.mcp_context import build_mcp_context
     text = await build_mcp_context(query, route="general_knowledge")

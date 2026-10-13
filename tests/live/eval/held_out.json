@@ -477,6 +477,72 @@
  },
  {
   "kind": "act",
+  "text": "phạt nồng độ cồn xe máy bao nhiêu",
+  "history": [],
+  "tool": "legal_lookup",
+  "args": {
+   "query": [
+    "nồng độ cồn"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "luật lao động quy định nghỉ phép năm thế nào",
+  "history": [],
+  "tool": "legal_lookup",
+  "args": {
+   "query": [
+    "nghỉ phép"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "vượt đèn đỏ bị phạt bao nhiêu",
+  "history": [],
+  "tool": "legal_lookup",
+  "args": {
+   "query": [
+    "đèn đỏ"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "huyện củ chi có bao nhiêu xã",
+  "history": [],
+  "tool": "vn_admin_lookup",
+  "args": {
+   "query": [
+    "củ chi"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "mã hành chính của tỉnh bình dương",
+  "history": [],
+  "tool": "vn_admin_lookup",
+  "args": {
+   "query": [
+    "bình dương"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "quận 1 gồm những phường nào",
+  "history": [],
+  "tool": "vn_admin_lookup",
+  "args": {
+   "query": [
+    "quận 1"
+   ]
+  }
+ },
+ {
+  "kind": "act",
   "text": "hôm nay tôi nặng 68 ký",
   "history": [],
   "tool": "gym",

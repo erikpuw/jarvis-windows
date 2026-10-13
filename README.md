@@ -267,7 +267,7 @@ Quy mô nội dung tiếng Việt (số dòng chứa chữ Việt): `engine/` h�
 
 **Dùng model lớn (Claude, Gemini, ChatGPT)**: đổi `LOCAL_URL`, `LOCAL_API_KEY`, `LOCAL_MODEL` trong `.env` sang endpoint tương thích OpenAI của nhà cung cấp. Nếu API khác định dạng OpenAI, cần chỉnh hoặc viết lại [`engine/server/llm_server.py`](engine/server/llm_server.py) (cách gọi, tham số, stream); prompt có thể cần chỉnh lại vì được tinh chỉnh cho model local nhỏ.
 
-**Khi tải về**: skill `skills/officecli` chỉ chứa hướng dẫn dùng, hãy cài officecli từ mã nguồn gốc và lấy thư mục `examples/` từ đó. Một số tính năng riêng của tác giả (tra cứu pháp luật, tra cứu đơn vị hành chính) không có trong bản công khai.
+**Khi tải về**: skill `skills/officecli` chỉ chứa hướng dẫn dùng, hãy cài officecli từ mã nguồn gốc và lấy thư mục `examples/` từ đó. Hai tool `legal_lookup` (tra cứu pháp luật Việt Nam) và `vn_admin_lookup` (tỉnh/thành, phường/xã) là dữ liệu riêng của Việt Nam; cứ giữ nguyên nếu cần, không dùng thì xoá tool (`engine/tools/catalog/lookup.py`, `prompt/tools/<tên>.md`) và `engine/tools/legal_engine.py`.
 
 ## API, kiểm thử và bảo mật
 

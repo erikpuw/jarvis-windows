@@ -66,7 +66,7 @@ def test_gym_keeps_done_false(monkeypatch):
 
 def test_read_tools_are_read_kind():
     for name in ("weather", "search_news", "market_price", "search_products", "cinema", "free_games",
-                 "lunar_today", "zodiac", "lookup_knowledge"):
+                 "lunar_today", "zodiac", "legal_lookup", "vn_admin_lookup", "lookup_knowledge"):
         assert R.kind(name) == "read" and R.description(name)
 
 

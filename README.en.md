@@ -195,7 +195,7 @@ Rough size of the Vietnamese content (lines containing Vietnamese text): `engine
 
 **Using a large hosted model (Claude, Gemini, ChatGPT)**: change `LOCAL_URL`, `LOCAL_API_KEY`, `LOCAL_MODEL` in `.env` to the provider's OpenAI-compatible endpoint. If their API is not OpenAI-shaped, adjust or rewrite [`engine/server/llm_server.py`](engine/server/llm_server.py) (request format, parameters, streaming); the prompts may need re-tuning because they were tuned for small local models.
 
-**After downloading**: `skills/officecli` only holds usage guidance; install officecli from its original source and take the `examples/` folder from there. A few of the author's private features (legal lookup, administrative-unit lookup) are not in the public build.
+**After downloading**: `skills/officecli` only holds usage guidance; install officecli from its original source and take the `examples/` folder from there. The tools `legal_lookup` (Vietnamese law) and `vn_admin_lookup` (provinces, wards) are Vietnam-specific data. Keep them if you need them; otherwise delete the tools (`engine/tools/catalog/lookup.py`, `prompt/tools/<name>.md`) and `engine/tools/legal_engine.py`.
 
 ## API, testing and security
 
