@@ -12,6 +12,7 @@ Token là bí danh bất đối xứng với đường dẫn thật: frontend ch
 không biết và không thể đọc file tuỳ ý ngoài danh sách tool đã bàn giao.
 """
 import logging
+import re
 import secrets
 import time
 from pathlib import Path
@@ -95,7 +96,7 @@ async def deliver_output_file(
     payload = {
         "type": "output_file",
         "path": str(file_path),
-        "name": file_path.name,
+        "name": re.split(r"[\\/]", str(file_path))[-1],  # đường dẫn Windows vẫn cắt đúng khi chạy trên Linux/CI
         "ext": file_path.suffix.lower().lstrip("."),
         "label": file_label(file_path),
         "kind": kind or guess_kind(file_path),
@@ -113,5 +114,5 @@ async def deliver_output_file(
             await send_json(payload)
         return True
     except Exception as exc:
-        log.warning("Gửi event output_file thất bại (%s): %s", file_path.name, exc)
+        log.warning("Gửi event output_file thất bại (%s): %s", re.split(r"[\\/]", str(file_path))[-1], exc)
         return False

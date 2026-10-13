@@ -30,6 +30,6 @@ def test_server_has_no_pins():
     assert "pin_to_db" not in memory and "get_pins_from_db" not in memory
 
 
-def test_admin_lookup_sends_no_map():
-    assert "map_admin_boundary" not in read("engine/tools/search_engine.py")
-    assert "bản đồ" not in read("prompt/tools/vn_admin_lookup.md")
+def test_admin_lookup_is_not_in_the_public_build():
+    assert "handle_vietnam_data_query" not in read("engine/tools/search_engine.py")
+    assert not (ROOT / "prompt" / "tools" / "vn_admin_lookup.md").exists()

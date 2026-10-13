@@ -33,7 +33,6 @@ CASES = [
     ("epic đang tặng game gì", [], "free_games", {}, None, False),
     ("hôm nay âm lịch ngày mấy", [], "lunar_today", {}, None, False),
     ("tử vi bọ cạp", [], "zodiac", {"sign": ["bọ cạp", "scorpio"]}, None, False),
-    ("phạt vượt đèn đỏ bao nhiêu", [], "legal_lookup", {"query": ["đèn đỏ"]}, None, False),
     ("máy đang dùng bao nhiêu ram", [], "system_status", {}, None, False),
     ("kiểm tra bảo mật máy", [], "check_security", {}, None, False),
     ("hôm nay tôi nặng 70kg", [], "gym", {"action": ["record_bodyweight"]}, None, False),

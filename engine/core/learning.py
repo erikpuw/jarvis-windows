@@ -1028,6 +1028,9 @@ class LearningEngine:
                 log.info("⏭️ Learning rejected: no explicit learning/complaint/personal signal in '%s'", evidence[:60])
                 continue
 
+            # Người dùng nói thẳng muốn học/ghi nhớ (khác với tín hiệu gián tiếp như phàn nàn): dùng ở bước phản biện bên dưới
+            is_explicit = self._is_explicit_learning_request(user_last_message)
+
             # Kiểm tra trạng thái tạm thời hoặc truy vấn công cụ
             if self._is_temporary_state_or_tool_query(evidence, content):
                 log.info("⏭️ Learning rejected: temporary state: %s", content)
@@ -1494,7 +1497,6 @@ class LearningEngine:
 
         # Xử lý embedding riêng biệt nếu có (chỉ cho learning)
         embedding_value = values.get("embedding")
-        embedding_model_value = values.get("embedding_model")
 
         # Nếu có embedding parameter, xử lý nó
         if kind == "learning" and "embedding" in values:
