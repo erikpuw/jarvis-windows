@@ -10,25 +10,12 @@ export function mountViewportReset(): void {
     if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
-    refreshStatusBarTint();
   };
   const later = () => requestAnimationFrame(reset);
   window.addEventListener("jarvis:overlay", (e) => { if (!(e as CustomEvent<{ open: boolean }>).detail.open) later(); });
   window.addEventListener("pageshow", later);
   window.visualViewport?.addEventListener("resize", () => { if (!document.activeElement?.matches(FIELD)) later(); });
   lockPageDrag();
-}
-
-/** Ép WebKit/Safari trên iOS kích hoạt lại bộ lấy mẫu màu thanh trạng thái và khôi phục dải gradient */
-export function refreshStatusBarTint(): void {
-  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-  if (meta) {
-    const orig = meta.getAttribute("content") || "#050508";
-    meta.setAttribute("content", "#050509");
-    requestAnimationFrame(() => {
-      meta.setAttribute("content", orig);
-    });
-  }
 }
 
 /** The nearest box (from `el` up) that can scroll along the axis, or null. */

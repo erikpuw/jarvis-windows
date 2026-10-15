@@ -60,7 +60,8 @@ def system_prompt(tool_names: list[str], answer: bool = False) -> str:
     from engine.core.evolution import style_lines
     parts = [_read(PROMPT_DIR / "jarvis.md")]
     if answer:  # chỉ tên + mô tả: để biết mình làm được gì (log 19:50-20:07: không thấy danh mục → bịa khả năng)
-        tools = "\n".join(f"- {n}: {registry.description(n)}" for n in tool_names)
+        # tên gọi, không tên hàm: vòng này viết cho ngài đọc, thấy tên hàm là chép ra (ngài 2026-10-16)
+        tools = "\n".join(f"- {registry.label(n)}: {registry.description(n)}" for n in tool_names)
         parts += [_read(PROMPT_DIR / "turn_answer.md"), f"<cong_cu>\n{tools}\n</cong_cu>"]
     else:
         parts += [_read(PROMPT_DIR / "turn_tool.md"),

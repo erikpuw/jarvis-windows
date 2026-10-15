@@ -1447,7 +1447,10 @@ MemoryControlKind = Literal[
     "workflow",
     "outcome",
     "conversation",
+    "correction",
 ]
+# Kiểu bản ghi nằm trong learning engine; còn lại (conversation) ở engine.core.memory
+_LEARNING_CONTROL_KINDS = {"learning", "workflow", "outcome", "correction"}
 
 
 class MemoryControlUpdateBody(BaseModel):
@@ -1515,7 +1518,7 @@ async def api_memory_control_dependencies(
     kind: MemoryControlKind, id: int
 ):
     try:
-        if kind in {"learning", "workflow", "outcome"}:
+        if kind in _LEARNING_CONTROL_KINDS:
             from engine.core.learning import get_learning_engine
 
             preview = await asyncio.to_thread(
@@ -1543,7 +1546,7 @@ async def api_memory_control_dependencies(
 @router.post("/api/memory-control/update")
 async def api_memory_control_update(body: MemoryControlUpdateBody):
     try:
-        if body.kind in {"learning", "workflow", "outcome"}:
+        if body.kind in _LEARNING_CONTROL_KINDS:
             from engine.core.learning import get_learning_engine
 
             success = await asyncio.to_thread(
@@ -1575,7 +1578,7 @@ async def api_memory_control_update(body: MemoryControlUpdateBody):
 @router.post("/api/memory-control/delete")
 async def api_memory_control_delete(body: MemoryControlDeleteBody):
     try:
-        if body.kind in {"learning", "workflow", "outcome"}:
+        if body.kind in _LEARNING_CONTROL_KINDS:
             from engine.core.learning import get_learning_engine
 
             success = await asyncio.to_thread(

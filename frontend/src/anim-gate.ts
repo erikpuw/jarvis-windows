@@ -14,7 +14,7 @@ const FONTS_CAP_MS = 1000;
 const wait = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
 
 /** Resolves once the page has loaded (window "load", then fonts), or after a few seconds at most: the moment the decorations may start. */
-export const pageReady: Promise<void> = new Promise<void>((r) => {
+const pageReady: Promise<void> = new Promise<void>((r) => {
   if (!loading) { r(); return; }
   window.addEventListener("load", () => r(), { once: true });
   window.setTimeout(r, LOAD_CAP_MS);

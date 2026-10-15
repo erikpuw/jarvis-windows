@@ -675,3 +675,29 @@ def test_tool_mention_skips_corrections(env, monkeypatch):
     env["script"] = [{"tool": "market_price", "say": "Tôi xem.", "args": {"item": "vàng"}}, "Xong."]
     asyncio.run(L.run_loop("vàng", _ctx(env), only="market_price"))
     assert called == []
+
+
+def test_result_header_echo_is_dropped_after_tool(env):
+    """log 2026-10-15 17:29/18:51: chạy tool rồi, vòng trả lời vẫn chép dòng "[kết quả search_documents (success) —
+    ngài đã thấy bảng…]" ra màn hình và TTS đọc. Có chạy tool thì chỉ bỏ dòng tiêu đề đó, giữ phần nhận xét."""
+    env["script"] = [{"tool": "market_price", "say": "Tôi xem giá.", "args": {"item": "vàng"}}, {"tool": "none"},
+                     "[kết quả market_price (success) — ngài đã thấy bảng này trên màn hình: chỉ nhận xét]\nVàng đang cao, thưa ngài."]
+    out = asyncio.run(L.run_loop("giá vàng", _ctx(env)))
+    assert "[kết quả" not in out and "Vàng đang cao, thưa ngài." in out and L._NO_PROMISE not in out
+    assert not any("kết quả" in s for s in env.get("tts", []))
+
+
+def test_answer_never_shows_tool_function_names(env):
+    """Ngài 2026-10-16: câu trả lời lộ tên hàm ("cứ bảo tôi `system_status` liền", "[system_status]"). Vòng trả lời
+    chỉ được nói tên gọi; tên hàm còn sót (chép từ lịch sử cũ) được đổi sang tên gọi trước khi hiện và đọc."""
+    env["script"] = [{"tool": "none"}, "Ngài cứ bảo tôi `open_app` hoặc [market_price] nhé.\nTin xem ở news."]
+    out = asyncio.run(L.run_loop("tôi mệt quá", _ctx(env)))
+    assert out == "Ngài cứ bảo tôi mở ứng dụng hoặc giá thị trường nhé.\nTin xem ở news."
+    assert not any("open_app" in s or "market_price" in s for s in env.get("tts", []))
+
+
+def test_answer_round_sees_result_header_by_tool_label(env):
+    env["script"] = [{"tool": "market_price", "say": "Tôi xem giá.", "args": {"item": "vàng"}}, {"tool": "none"}, "Vàng cao."]
+    asyncio.run(L.run_loop("giá vàng", _ctx(env)))
+    answer = "\n".join(m["content"] for m in env["calls"][-1]["messages"][1:])
+    assert "[kết quả Giá thị trường (success)" in answer and "market_price" not in answer

@@ -44,8 +44,8 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   const chatInfo = await page.evaluate(() => { const c = document.getElementById("chat-history"); return { sh: c.scrollHeight, ch: c.clientHeight, ob: getComputedStyle(c).overscrollBehaviorY }; });
   check(chatInfo.sh > chatInfo.ch + 50, "0. khung chat có nhiều nội dung, cuộn được", JSON.stringify(chatInfo));
 
-  let r = await drag("#jarvis-clock", 40);
-  check(r.blocked, "1. bàn phím đang hiện: kéo ở đồng hồ (ngoài khung chat) không kéo được cả trang", JSON.stringify(r));
+  let r = await drag("#jarvis-label", 40);
+  check(r.blocked, "1. bàn phím đang hiện: kéo ở nhãn JARVIS (ngoài khung chat) không kéo được cả trang", JSON.stringify(r));
   r = await drag("#orb-canvas", -60);
   check(r.blocked, "2. kéo ở nền (quả cầu) không kéo được cả trang", JSON.stringify(r));
   r = await drag("#chat-history", 40, "middle");

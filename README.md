@@ -1,26 +1,20 @@
 # JARVIS
 
-**Tiếng Việt** | [English](README.en.md)
-
 **Just A Rather Very Intelligent System** — trợ lý AI giọng nói tiếng Việt, chạy local trên Windows.
 
-**Phiên bản:** xem file [`VERSION`](VERSION) (nguồn duy nhất) · [Nhật ký phiên bản](CHANGELOG.md) · **Dự án gốc:** [Ethan](https://ethanplus.ai)
-
-> [!IMPORTANT]
-> **Dự án do người Việt xây dựng cho người dùng tiếng Việt và chỉ hỗ trợ tiếng Việt.** Không có công tắc đổi ngôn ngữ. Prompt, nhận dạng giọng nói (`vi-VN`), giọng đọc, từ khoá khớp chuỗi trong code, test và chữ trên giao diện đều bằng tiếng Việt, nên nhập tiếng Anh thường không khớp. **Muốn dùng bằng tiếng Anh thì phải fork và chuyển đổi toàn bộ dự án**, không chỉ sửa `.env`: xem [Fork sang ngôn ngữ khác](#fork-sang-ngôn-ngữ-khác).
+**Phiên bản:** [v9.9.8](VERSION) · **Dự án gốc:** [Ethan](https://ethanplus.ai)
 
 JARVIS dùng mô hình ngôn ngữ local để trò chuyện, xử lý yêu cầu và gọi công cụ trên máy. Hệ thống có WebUI, giọng nói tiếng Việt, bộ nhớ hội thoại và hệ thống công cụ phẳng đa năng. Dữ liệu bộ nhớ chính được lưu local.
 
 ## Mục lục
 
 - [Tính năng](#tính-năng)
-- [Vòng lặp sinh có ràng buộc](#vòng-lặp-sinh-có-ràng-buộc-2026-10-12)
+- [Định tuyến tool phẳng](#định-tuyến-tool-phẳng-2026-10-12)
 - [Lối tắt và công cụ chuyên biệt](#lối-tắt-và-công-cụ-chuyên-biệt)
 - [Bộ nhớ và tự học](#bộ-nhớ-và-tự-học)
 - [Giao diện và tích hợp](#giao-diện-và-tích-hợp)
 - [Kiến trúc](#kiến-trúc)
 - [Cài đặt và cấu hình](#cài-đặt-và-cấu-hình)
-- [Fork sang ngôn ngữ khác](#fork-sang-ngôn-ngữ-khác)
 - [API, kiểm thử và bảo mật](#api-kiểm-thử-và-bảo-mật)
 - [Phiên bản và giấy phép](#phiên-bản-và-giấy-phép)
 
@@ -120,7 +114,7 @@ Danh sách tool tệp được cấu hình trực tiếp qua thuộc tính `@too
 
 ## Giao diện và tích hợp
 
-Frontend dùng Vite, TypeScript và Three.js trong `frontend/`. Trên điện thoại JARVIS chỉ dùng chiều dọc: nằm ngang (màn cảm ứng, cao ≤ 500px) thì cả trang bị che bằng dòng "Xoay dọc điện thoại để dùng JARVIS" và mọi hiệu ứng dừng như lúc mở Settings, vì iOS bỏ qua `"orientation": "portrait"` của manifest và Safari không cho trang tự khoá hướng (test `frontend/e2e/landscape.cjs`). Hiệu ứng trang trí đi qua một công tắc chung (`frontend/src/anim-gate.ts`, test `frontend/e2e/anim-gate.cjs`, `anim-boot.cjs`): chưa chạy khi trang còn đang nạp (đợi `load` và font), dừng hết khi mở Settings (cả animation CSS), và khi ẩn thanh lệnh thì bot, shader nút gửi, quầng sáng dừng hẳn, chỉ còn đồng hồ, hàng trạng thái và orb. Orb nền (`frontend/src/orb.ts`, tự dựng lại khi mất GPU lúc app chạy nền, test `frontend/e2e/orb-lost.cjs`) vẽ bằng `WebGPURenderer` của three (máy không có WebGPU thì tự lùi về WebGL 2); three được nạp riêng sau khi trang chạy, nên orb hỏng hay chậm cũng không chặn WebSocket, Settings và phần giao diện còn lại (test `frontend/e2e/orb-toggle.cjs` bước 7). Mở trang với `?debug=1` (bảng `frontend/src/perf-debug.ts`) thì dòng `orb` cho biết nền đang chạy: `webgpu`, `webgl2` hoặc `off`, xem được cả trên Safari iPhone. Bảng này còn đo độ trễ luồng chính (`lag`, chạy được trên Safari) và gửi mỗi mẫu/giây về máy chủ (`POST /api/perf-log`, ghi `logs/perf.jsonl`, mỗi lần mở trang một file mới, test `tests/test_perf_log.py`): dùng điện thoại vài phút rồi đọc file để biết lúc nào máy bận. WebUI gồm giao diện chat/HUD, Command Bar, trình phát media và Settings dashboard. Tính năng bản đồ (panel MapLibre, ghim vị trí, ranh giới hành chính) đã gỡ hẳn ngày 2026-10-13 (test `tests/test_map_removed.py`); tra đơn vị hành chính chỉ trả lời bằng chữ. Webcam chỉ còn khung nhỏ, không phóng toàn màn hình.
+Frontend dùng Vite, TypeScript và Three.js trong `frontend/`. Trên điện thoại JARVIS chỉ dùng chiều dọc: nằm ngang (màn cảm ứng, cao ≤ 500px) thì cả trang bị che bằng dòng "Xoay dọc điện thoại để dùng JARVIS" và mọi hiệu ứng dừng như lúc mở Settings, vì iOS bỏ qua `"orientation": "portrait"` của manifest và Safari không cho trang tự khoá hướng (test `frontend/e2e/landscape.cjs`). Hiệu ứng trang trí đi qua một công tắc chung (`frontend/src/anim-gate.ts`, test `frontend/e2e/anim-gate.cjs`, `anim-boot.cjs`): chưa chạy khi trang còn đang nạp (đợi `load` và font, tối đa vài giây; riêng orb dựng ngay), dừng hết khi mở Settings (cả animation CSS), và khi ẩn thanh lệnh thì bot, shader nút gửi, quầng sáng dừng hẳn, chỉ còn hàng trạng thái và orb. Orb nền (`frontend/src/orb.ts`, tự dựng lại khi mất GPU lúc app chạy nền, test `frontend/e2e/orb-lost.cjs`) vẽ bằng `WebGPURenderer` của three (máy không có WebGPU thì tự lùi về WebGL 2); three được nạp riêng sau khi trang chạy, nên orb hỏng hay chậm cũng không chặn WebSocket, Settings và phần giao diện còn lại (test `frontend/e2e/orb-toggle.cjs` bước 7). Mở trang với `?debug=1` (bảng `frontend/src/perf-debug.ts`) thì dòng `orb` cho biết nền đang chạy: `webgpu`, `webgl2` hoặc `off`, xem được cả trên Safari iPhone. Bảng này còn đo độ trễ luồng chính (`lag`, chạy được trên Safari) và gửi mỗi mẫu/giây về máy chủ (`POST /api/perf-log`, ghi `logs/perf.jsonl`, mỗi lần mở trang một file mới, test `tests/test_perf_log.py`): dùng điện thoại vài phút rồi đọc file để biết lúc nào máy bận. WebUI gồm giao diện chat/HUD, Command Bar, trình phát media và Settings dashboard. Tính năng bản đồ (panel MapLibre, ghim vị trí, ranh giới hành chính) đã gỡ hẳn ngày 2026-10-13 (test `tests/test_map_removed.py`); tra đơn vị hành chính chỉ trả lời bằng chữ. Webcam chỉ còn khung nhỏ, không phóng toàn màn hình.
 
 - Gõ `/` hoặc `@` trên Command Bar để gợi ý công cụ, lối tắt.
 - Nút Cài đặt (Settings) trực tiếp trên thanh điều khiển (thay thế menu sổ dropdown); nút Khởi động lại hệ thống được đưa vào tab "Kết nối & API".
@@ -129,6 +123,8 @@ Frontend dùng Vite, TypeScript và Three.js trong `frontend/`. Trên điện th
 - Telegram có thể dùng cùng backend; cấu hình `TELEGRAM_BOT_TOKEN` và `TELEGRAM_ALLOWED_CHAT_IDS`. Tự động nhận diện mất kết nối mạng/mất điện, tạm dừng polling chống spam log và tự kết nối lại khi có mạng.
 - Mô tả công cụ nằm ở `prompt/tools/<tên>.md`; prompt cấu hình nằm trong `prompt/`.
 - Skills, hooks và MCP mở rộng khả năng của hệ thống. Máy chủ MCP được cấu hình tại `config/mcp_config.json` và quản lý trong Settings.
+
+**Lớp chào phiên mới** (`frontend/src/welcome.ts`, `engine/main/welcome.py`, test `frontend/e2e/welcome.cjs`, `tests/test_welcome.py`): mỗi lần mở WebUI hiện lời chào theo 8 khung giờ của greeting cũ ("Đêm khuya rồi", "Chào buổi sáng sớm" … "Khuya rồi"), thời tiết (qua cache 10 phút của `fetch_weather_snapshot`), "Tôi có thể giúp gì cho ngài hôm nay?" và "Thử hỏi về …" xoay tên công cụ, mỗi lần ngẫu nhiên trượt lên hoặc xuống (Lexend tự host; test `frontend/e2e/welcome-rotate.cjs`). Orb chưa dựng và nút orb khoá tới tin đầu tiên; gửi tin là lớp chào biến mất, orb mở bằng chấm giữ 1.2 s rồi bung. Thay greeting cũ: không còn đoạn chào dài, không đọc thành tiếng.
 
 ## Kiến trúc
 
@@ -167,7 +163,7 @@ SQLite + Memory Center     LLM / Embedding / Windows / Web
 
 **Lịch sử trong bong bóng chat không giới hạn** (`frontend/src/main.ts`, test `frontend/e2e/chat-history-all.cjs`): bỏ mức cắt 36 phần tử trong `addChatMessage`; một phiên chat là một cuộc trò chuyện (tải lại trang = phiên mới, khung chat trống) nên giữ toàn bộ bong bóng của phiên đó.
 
-**Thang cỡ chữ và lớp hiển thị** (`:root` đầu `frontend/src/style.css`): mọi cỡ chữ dùng 7 bước `--fs-label` 11px, `--fs-small` 12px, `--fs-ui` 13px, `--fs-body` 14px, `--fs-input` 16px, `--fs-title` 18px, `--fs-heading` 20px (giao diện chính, Settings và style inline trong TS); điện thoại (khối `@media (max-width: 768px)`) tăng `--fs-small`/`--fs-ui`/`--fs-body` lên 13/14/15px. Chữ nhỏ nhất 11px; số đồng hồ giữ cỡ riêng. Lớp gốc, mỗi lớp một giá trị, từ dưới lên: orb 10, nhãn JARVIS 20, cụm lệnh/chat 30, đồng hồ 40, hàng nút 50, webcam 60, trình phát media 70, đảo thông báo 80, xem ảnh 90, Cài đặt 100 (`--z-*`); z-index khác chỉ có nghĩa bên trong khung cha của nó.
+**Thang cỡ chữ và lớp hiển thị** (`:root` đầu `frontend/src/style.css`): mọi cỡ chữ dùng 7 bước `--fs-label` 11px, `--fs-small` 12px, `--fs-ui` 13px, `--fs-body` 14px, `--fs-input` 16px, `--fs-title` 18px, `--fs-heading` 20px (giao diện chính, Settings và style inline trong TS); điện thoại (khối `@media (max-width: 768px)`) tăng `--fs-small`/`--fs-ui`/`--fs-body` lên 13/14/15px. Chữ nhỏ nhất 11px. Lớp gốc, mỗi lớp một giá trị, từ dưới lên: orb 10, nhãn JARVIS 20, cụm lệnh/chat 30, hàng nút 50, webcam 60, trình phát media 70, đảo thông báo 80, xem ảnh 90, Cài đặt 100 (`--z-*`); z-index khác chỉ có nghĩa bên trong khung cha của nó.
 
 **Đảo thông báo (Dynamic Island) kiểu Sileo** (`frontend/src/notify-island.ts`, chuyển động `frontend/src/island-shape.ts`, `.island*` trong `style.css`, gốc `#error-text`, test `frontend/e2e/notify-island.cjs`): khung các bước xử lý (flow-tracker, `flow_step`) và lỗi hệ thống (`showError`) không còn là bong bóng/dòng chữ riêng mà vào một viên thuốc ở giữa mép trên màn hình (top-center mặc định), theo thiết kế của sileo.aaryan.design: viên thuốc rộng đúng bằng chữ (icon trạng thái, bước hiện tại hoặc lỗi, số đếm) nền xám than `#2b3240` đậm 90% (sáng hơn nền trang tối một chút nên không chìm, chữ trắng vẫn tương phản ~12:1); bấm vào thì một thẻ rũ xuống dưới liệt kê các bước, nối với viên thuốc bằng cổ cong. Dựng đúng như Sileo (đọc từ mã nguồn gói `sileo` và soi từng khung video demo): một SVG cố định kích thước chứa hai `rect` (viên thuốc và thân thẻ) dưới bộ lọc goo nhẹ của Sileo (blur 8 → ngưỡng → ghép, 3 bước), JS đổi thuộc tính các `rect` mỗi khung hình theo lò xo của Sileo (`island-shape.ts`). Bung: nửa dưới viên thuốc kéo xuống thêm 24px, thân thẻ đủ bề rộng nằm ngay dưới cao dần và hiện dần (còn thấp thì gần như trong suốt, không thành vạch kẻ), goo nối hai hình thành cổ cong nên thân như kéo ra từ viên thuốc rồi bung ngang; thu thì ngược lại. Không viền (như Sileo). Giống hệt trên PC và điện thoại. Thẻ agent (flow-agent) vẫn nằm trong khu bong bóng chat.
 - **Mặc định không bao giờ tự popup**: thông báo mới chỉ hiện viên thuốc; thẻ chỉ bung khi người dùng bấm (kể cả khi có media/webcam: thẻ nằm trên cả hai lớp đó: đảo 80 > media 70 > webcam 60, dưới xem ảnh 90 và Cài đặt 100; Cài đặt che đảo).
@@ -193,7 +189,7 @@ SQLite + Memory Center     LLM / Embedding / Windows / Web
 
 **Menu nút điều khiển** (`frontend/src/controls-menu.ts`, `#controls` trong `style.css`, `frontend/index.html`, test `frontend/e2e/controls-menu.cjs`): 6 nút (webcam, mic, tiếng TTS, thanh lệnh, orb, cài đặt) gom sau một nút chính tròn ở góc trên phải. Bấm nút chính: cả 6 nút tròn nhỏ (30px, ôm sát icon) hiện cùng lúc trên hai vòng cung quanh nó (3 nút vòng trong bán kính 44px ở 0°/45°/90°, 3 nút vòng ngoài 78px ở 15°/45°/75°, về phía trái và dưới). Không chạm gì 4 giây thì tự thu lại (chạm nút nào cũng đếm lại), bấm nút chính hoặc Escape thì thu ngay. Đóng: các nút kia ẩn hẳn (`visibility:hidden`), nên test e2e bấm chuột thật phải mở menu trước (`#btn-controls`) hoặc gọi `.click()` trong trang.
 
-**Khung chat tự co giãn theo chỗ trống** (`frontend/src/chat-fit.ts`, test `frontend/e2e/chat-fit.cjs`): chiều cao tối đa của `#chat-history` là khoảng trống giữa đáy khung chat và vật thấp nhất phía trên: đồng hồ `#jarvis-clock` (luôn), và trên điện thoại là trình phát media khi đang mở (video nằm ngay dưới hàng nút). Không media: chat dài kéo lên sát mép dưới đồng hồ; có media: dừng ở mép dưới video; bàn phím ảo bật lên làm khung thấp đi thì khung chat co lại thay vì chui lên đè đồng hồ và hàng nút; chat ngắn thì khung ôm vừa nội dung. Thay cho các chiều cao cố định cũ (điện thoại 360px, máy nhỏ 180px). Trên PC chỉ tính đồng hồ (video nằm bên trái). **Bàn phím ảo: cả trang trôi lên nguyên vẹn** (`keyboardShift` trong `frontend/src/chat-fit.ts`, `html.kb-open` cuối `style.css`, test `frontend/e2e/chat-keyboard.cjs`, 6 cỡ máy iOS/Android): iOS Safari tự kéo trang lên để lộ ô nhập (khung layout giữ nguyên) nên trang KHÔNG can thiệp gì (lần sửa trước nâng thanh lệnh và co khung chat thêm làm cụm chat co lại, đẩy lệch khi cuộn). Android khi trình duyệt thu nhỏ khung layout (Samsung Internet, Chrome PWA/WebView) thì thanh lệnh bị đẩy lên theo đáy còn đồng hồ/hàng nút ở mép trên giữ nguyên làm khung chat chui lên đè đồng hồ; khi ô nhập đang focus và khung layout thấp đi hơn 120px, đồng hồ, hàng nút, thông báo lỗi và trình phát media được đẩy lên đúng bằng phần thu nhỏ (`translate`), cả trang trôi lên như iOS, khung chat giữ nguyên chiều cao. Bàn phím hạ xuống (kể cả ô nhập vẫn còn focus) thì về chỗ cũ. Khung chat luôn chỉ cao tới mép trên vùng nhìn thấy (đáy đồng hồ, hoặc mép trên của `visualViewport` khi iOS đã kéo trang, hoặc mép màn hình khi Android đã đẩy đồng hồ lên) để vuốt đọc được hết tin cũ.
+**Khung chat tự co giãn theo chỗ trống** (`frontend/src/chat-fit.ts`, test `frontend/e2e/chat-fit.cjs`): chiều cao tối đa của `#chat-history` là khoảng trống giữa đáy khung chat và vật thấp nhất phía trên: viên đảo thông báo `#error-text` (luôn, cách thêm `GAP` 10px; đồng hồ đã gỡ 2026-10-15, test `frontend/e2e/chat-ceiling.cjs`), và trên điện thoại là trình phát media khi đang mở (video nằm ngay dưới hàng nút). Không media: chat dài kéo lên tới ngay dưới đảo thông báo; có media: dừng ở mép dưới video; bàn phím ảo bật lên làm khung thấp đi thì khung chat co lại thay vì chui lên đè đồng hồ và hàng nút; chat ngắn thì khung ôm vừa nội dung. Thay cho các chiều cao cố định cũ (điện thoại 360px, máy nhỏ 180px). Trên PC chỉ tính đảo thông báo (video nằm bên trái). **Bàn phím ảo: cả trang trôi lên nguyên vẹn** (`keyboardShift` trong `frontend/src/chat-fit.ts`, `html.kb-open` cuối `style.css`, test `frontend/e2e/chat-keyboard.cjs`, 6 cỡ máy iOS/Android): iOS Safari tự kéo trang lên để lộ ô nhập (khung layout giữ nguyên) nên trang KHÔNG can thiệp gì (lần sửa trước nâng thanh lệnh và co khung chat thêm làm cụm chat co lại, đẩy lệch khi cuộn). Android khi trình duyệt thu nhỏ khung layout (Samsung Internet, Chrome PWA/WebView) thì thanh lệnh bị đẩy lên theo đáy còn đồng hồ/hàng nút ở mép trên giữ nguyên làm khung chat chui lên đè đồng hồ; khi ô nhập đang focus và khung layout thấp đi hơn 120px, đồng hồ, hàng nút, thông báo lỗi và trình phát media được đẩy lên đúng bằng phần thu nhỏ (`translate`), cả trang trôi lên như iOS, khung chat giữ nguyên chiều cao. Bàn phím hạ xuống (kể cả ô nhập vẫn còn focus) thì về chỗ cũ. Khung chat luôn chỉ cao tới mép trên vùng nhìn thấy (đáy đồng hồ, hoặc mép trên của `visualViewport` khi iOS đã kéo trang, hoặc mép màn hình khi Android đã đẩy đồng hồ lên) để vuốt đọc được hết tin cũ.
 - Bàn phím iPhone: Safari trả toạ độ theo vùng nhìn thấy (đã trừ phần trang bị kéo lên), trình duyệt khác theo khung layout; mép trên vùng nhìn thấy được đo bằng `#safe-top-fill` (cố định ở top 0) cộng `visualViewport.offsetTop`, nên không trừ phần kéo lên hai lần (lỗi cũ: khung chat bị gom còn ~80px; test `chat-keyboard.cjs` mục 1d).
 
 **Thông báo lỗi `#error-text`** (`frontend/src/style.css`, test `frontend/e2e/error-text.cjs`): đang được dùng (`showError` khi webcam/mic/upload lỗi, hiện 5 giây). Trên điện thoại hàng nút điều khiển đè lên dòng lỗi, nên dòng lỗi nay hiện ngay dưới hàng nút, căn giữa, trong màn hình.
@@ -254,28 +250,6 @@ Giá trị mặc định và các biến bổ sung nằm trong `.env.example`; k
 
 Truy cập từ xa qua Tailscale: cài Tailscale trên máy chạy JARVIS và thiết bị truy cập, mở frontend cho mạng bằng `npm run dev -- --host`, sau đó thêm origin Tailscale của máy chủ vào `JARVIS_CORS_ORIGINS`. Không cần mở cổng router.
 
-## Fork sang ngôn ngữ khác
-
-Quy mô nội dung tiếng Việt (số dòng chứa chữ Việt): `engine/` hơn 3.000 dòng, `frontend/src/` hơn 500, `prompt/`, `prompt/tools/` và `tests/` hàng trăm dòng. Tác giả không có kế hoạch hỗ trợ ngôn ngữ khác, nên hãy coi đây là việc chuyển đổi toàn bộ. Làm theo thứ tự:
-
-1. **Prompt**: `prompt/jarvis.md`, `prompt/turn_tool.md`, `prompt/turn_answer.md`, `prompt/voice_cues.md`, mọi mô tả tool trong `prompt/tools/*.md` và các prompt nền (`learning_*`, `evolution`, `dream_*`, `self_healing`). Thêm chỉ dẫn rõ ràng ở đầu `prompt/jarvis.md`, ví dụ:
-   ```
-   The user's language is English. Always reply in English, even when tool results come back in Vietnamese.
-   Address the user as "sir" and refer to yourself as "I". Keep sentences short and natural for speech.
-   ```
-2. **Từ khoá khớp chuỗi trong code** (phần dễ hỏng âm thầm nhất): `_NEEDS_WORD`, `_FUTURE`, `_ACT` và câu thay thế `_NO_PROMISE` trong `engine/turn/loop.py`; `_PREF_STYLE` và tên thứ trong tuần ở `engine/turn/prompt.py`; chữ tiếng Việt trong các tool ở `engine/tools/catalog/` và `engine/tools/*.py`; tên file wiki như `Học hỏi.md` ở `engine/core/learning.py`. Mẫu chặn `PROMPT_INJECTION_PATTERNS` ở `engine/core/guardrails.py` đã có tiếng Anh.
-3. **Giọng nói**:
-   - Đọc: đặt `TTS_LOCAL_MODEL=en-US-GuyNeural` trong `.env` (`edge-tts --list-voices` liệt kê giọng). Giữ `EDGE_TTS_ENABLED=true`, `VIENEU_TTS_ENABLED=false`, vì VieNeu chỉ đọc tiếng Việt. Muốn ElevenLabs, OpenAI TTS, Azure, Google: viết thêm engine trong `engine/server/` theo mẫu `tts_engine.py`, đăng ký ở `tts_manager.py` (đọc `TTS_ENGINE`); dịch vụ nên trả âm thanh từng câu để phát liên tục.
-   - Nghe: phía trình duyệt dùng `vi-VN` trong `frontend/src/voice.ts`, còn `engine/server/whisper_server.py` cố định `language="vi"`. Đổi cả hai.
-4. **Nguồn dữ liệu**: tin tức, thời tiết, giá vàng/xăng, lịch vạn niên, rạp CGV, Epic, trang bán hàng đều của Việt Nam. Thay hoặc bỏ tool tương ứng (`engine/tools/catalog/` + `prompt/tools/<tên>.md`).
-5. **Chữ trên giao diện** trong `frontend/src/` và các trang Settings.
-6. **Test**: nhiều test và bản chụp `tests/golden/` chứa câu tiếng Việt; cập nhật theo prompt mới rồi chạy lại toàn bộ test.
-7. **Đo lại**: prompt được tinh chỉnh cho model local nhỏ bằng tiếng Việt. Dịch xong hãy chạy lại các probe trong `tests/live/` với llama-server của bạn.
-
-**Dùng model lớn (Claude, Gemini, ChatGPT)**: đổi `LOCAL_URL`, `LOCAL_API_KEY`, `LOCAL_MODEL` trong `.env` sang endpoint tương thích OpenAI của nhà cung cấp. Nếu API khác định dạng OpenAI, cần chỉnh hoặc viết lại [`engine/server/llm_server.py`](engine/server/llm_server.py) (cách gọi, tham số, stream); prompt có thể cần chỉnh lại vì được tinh chỉnh cho model local nhỏ.
-
-**Khi tải về**: skill `skills/officecli` chỉ chứa hướng dẫn dùng, hãy cài officecli từ mã nguồn gốc và lấy thư mục `examples/` từ đó. Hai tool `legal_lookup` (tra cứu pháp luật Việt Nam) và `vn_admin_lookup` (tỉnh/thành, phường/xã) là dữ liệu riêng của Việt Nam; cứ giữ nguyên nếu cần, không dùng thì xoá tool (`engine/tools/catalog/lookup.py`, `prompt/tools/<tên>.md`) và `engine/tools/legal_engine.py`.
-
 ## API, kiểm thử và bảo mật
 
 ### API
@@ -291,13 +265,13 @@ Các API nhạy cảm yêu cầu quyền/trạng thái phù hợp; xem router tr
 ### Kiểm thử
 
 ```powershell
-python -m pytest tests -q --ignore=tests/live --ignore-glob="tests/test_live_*"
+python -m pytest tests -q --ignore=tests/live
 # Chẩn đoán RAM và kiểm tra cache mô hình HuggingFace VieNeu-TTS:
 python scripts/check_vieneu_memory.py
 python -m pytest tests/test_vieneu_health_and_memory.py -v
 ```
 
-Frontend dùng các kịch bản Playwright trong `frontend/e2e/*.cjs` (chạy `npm run dev` ở `:5173`, rồi `PW=<đường dẫn module playwright> node frontend/e2e/<tên>.cjs`; Playwright không nằm trong `package.json`, cần tự cài). CI (`.github/workflows/ci.yml`, chạy mỗi lần push `main` và mỗi PR) gồm: `ruff check .`, compile Python, `python .github/scripts/check_imports.py` (mọi `from engine... import X` phải trỏ tới tên có thật), `pytest` (cài `requirements-ci.txt` và `bsdtar`) và `npm run build` cho frontend; chạy lại các lệnh này trước khi push. Một số test cần máy thật (VieNeu, llama-server) nên tự bỏ qua trên CI; nếu test lỗi trên máy bạn, hãy kiểm tra lại trước khi sửa code. Test dữ liệu learning/wiki chạy trên thư mục tạm để tránh thay đổi dữ liệu người dùng.
+Frontend dùng các script kiểm tra trong `frontend/e2e/`; xem `frontend/package.json` để biết lệnh hiện hành. Test dữ liệu learning/wiki chạy trên thư mục tạm để tránh thay đổi dữ liệu người dùng.
 
 ### Bảo mật
 
@@ -308,7 +282,7 @@ Frontend dùng các kịch bản Playwright trong `frontend/e2e/*.cjs` (chạy `
 
 ## Phiên bản và giấy phép
 
-Phiên bản được quản lý tại [`VERSION`](VERSION) (nguồn duy nhất); lịch sử cũ ở [CHANGELOG.md](CHANGELOG.md). Khi phát hành bản mới, cập nhật `VERSION` và ghi tóm tắt thay đổi chính tại đây.
+Phiên bản được quản lý tại [`VERSION`](VERSION). Hiện tại là **v9.9.8**, gồm `@rag`, giao diện Settings/HUD và các cải tiến bảo vệ prompt injection. Khi phát hành bản mới, cập nhật `VERSION` và ghi tóm tắt thay đổi chính tại đây.
 
 ### Chưa phát hành
 

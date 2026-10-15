@@ -205,7 +205,11 @@ async def _stream_answer(ctx, out: _Output, text, answer_msgs, names, ran_tool=F
 
     async def emit(sentence: str):
         nonlocal raw, dropped, fake
-        if not ran_tool and _FAKE_RESULT.search(sentence):
+        sentence = registry.humanize(sentence)  # tên hàm còn sót (chép từ lịch sử cũ) → tên gọi, trước khi hiện + đọc
+        if _FAKE_RESULT.search(sentence):
+            if ran_tool:  # chép dòng tiêu đề [kết quả …] của tool vừa chạy (log 2026-10-15 17:29): chỉ bỏ dòng đó
+                log.info("[TURN] bỏ dòng tiêu đề kết quả bị chép: %r", sentence.strip()[:80])
+                return
             log.warning("[TURN] bịa kết quả tool khi không chạy tool: %r, cắt và dừng", sentence.strip()[:80])
             dropped = fake = True
             return
@@ -267,8 +271,9 @@ async def _pick_file_tool(ctx) -> str | None:
     return None if not selected or selected == "cancel" else selected
 
 
-async def _run_tool(ctx, out, tool_ctx, tool: str, args: dict, say: str, cua_replay=None) -> tuple[dict, dict] | None:
-    """Chạy một tool đã validate: status working → tool → thinking → hiện bảng display. None = bị huỷ. thay đổi trạng thái status-label tại đây"""
+async def _run_tool(ctx, out, tool_ctx, tool: str, args: dict, say: str, cua_replay=None) -> tuple[dict, dict, dict] | None:
+    """Chạy một tool đã validate: status working → tool → thinking → hiện bảng display. None = bị huỷ. thay đổi trạng thái status-label tại đây
+    Trả (bước, kết quả cho vòng chọn tool, kết quả cho vòng trả lời — tiêu đề bằng tên gọi, không tên hàm)."""
     await ctx.send_json(ctx.ws, {"type": "status", "state": "working", "message": f"Công cụ: {registry.label(tool)}"}) 
     tool_ctx.trace = [] if tool == "win_control" else None
     tool_ctx.replay_steps = cua_replay if tool == "win_control" else None
@@ -284,7 +289,9 @@ async def _run_tool(ctx, out, tool_ctx, tool: str, args: dict, say: str, cua_rep
     if tool_ctx.trace and None not in tool_ctx.trace:
         step_rec["cua_steps"] = tool_ctx.trace
     result = history.result_message(tool, res.text, res.outcome, displayed, registry.answer_rules(tool), RESULT_CHARS)
-    return step_rec, result
+    answer = history.result_message(registry.label(tool), res.text, res.outcome, displayed, registry.answer_rules(tool),
+                                    RESULT_CHARS)
+    return step_rec, result, answer
 
 
 async def run_loop(text: str, ctx, only: str | None = None, replay: dict | None = None) -> str:
@@ -318,14 +325,15 @@ async def run_loop(text: str, ctx, only: str | None = None, replay: dict | None 
             args, err = registry.validate(st["tool"], st.get("args") or {}, set(names))
             if err:
                 steps.append(history.step_record(say, st["tool"], st.get("args") or {}, f"Lỗi: {err}", "failed"))
-                answer_msgs.append(history.result_message(st["tool"], f"Lỗi: {err}", "failed", False, "", RESULT_CHARS))
+                answer_msgs.append(history.result_message(registry.label(st["tool"]), f"Lỗi: {err}", "failed", False, "",
+                                                          RESULT_CHARS))
                 break
             ran_step = await _run_tool(ctx, out, tool_ctx, st["tool"], args, say, st.get("cua_steps"))
             if ran_step is None:
                 await out.abort()
                 return _stop()
             steps.append(ran_step[0])
-            answer_msgs += [{"role": "assistant", "content": say}, ran_step[1]]
+            answer_msgs += [{"role": "assistant", "content": say}, ran_step[2]]
             if ran_step[0]["outcome"] != "success":
                 break
     round_no, answer, summary = 0, True, None
@@ -399,10 +407,10 @@ async def run_loop(text: str, ctx, only: str | None = None, replay: dict | None 
         if ran_step is None:
             await out.abort()
             return _stop()
-        step_rec, result = ran_step
+        step_rec, result, answer_result = ran_step
         steps.append(step_rec)
         turn_msgs += [history.assistant_message(turn["say"], turn["tool"], args), result]
-        answer_msgs += [{"role": "assistant", "content": turn["say"]}, result] if turn["say"] else [result]
+        answer_msgs += [{"role": "assistant", "content": turn["say"]}, answer_result] if turn["say"] else [answer_result]
     if answer:
         if summary is None:
             summary = ctx.flow_tracker.step(_SUMMARY if steps else "Trả lời")

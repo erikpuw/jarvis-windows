@@ -85,7 +85,8 @@ def test_answer_prompt_plain_text_knows_its_tools(env):
     for tag in ("danh_tinh", "cach_lam_viec", "cach_tra_loi", "dinh_dang", "cong_cu", "giong_dieu", "nguoi_dung",
                 "thoi_gian"):
         assert s.count(f"<{tag}>") == 1, tag
-    assert "JSON" not in s and "- open_app: Mở app." in s and "app_name" not in s
+    assert "JSON" not in s and "- Mở ứng dụng: Mở app." in s and "app_name" not in s
+    assert "open_app" not in s  # ngài 2026-10-16: vòng trả lời chỉ thấy tên gọi, không thấy tên hàm để chép ra
     work = s.split("<cach_lam_viec>")[1].split("</cach_lam_viec>")[0]
     for rule in ("không nói đã làm", "chưa có công cụ", "tôi sẽ", "tên riêng"):
         assert rule in work, rule

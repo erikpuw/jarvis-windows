@@ -1,6 +1,7 @@
 // E2E: orb dùng 1000 hạt trên cả điện thoại lẫn máy tính, canvas vẫn 1080px cao.
 // Đếm số hạt qua số instance lớn nhất của lệnh vẽ instanced (mỗi hạt là một sprite; WebGPU không vẽ điểm to hơn 1px). Chromium headless không lấy được GPU nên three chạy nền WebGL 2. Chạy: PW=<module playwright> node frontend/e2e/orb-mobile.cjs   (cần `npm run dev` ở :5173)
 const { chromium } = require(process.env.PW || "playwright");
+const { dismissWelcome } = require("./_welcome.cjs");
 const BASE = process.env.BASE_URL || "http://localhost:5173/";
 let failed = 0;
 const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} ${name}${extra ? " — " + extra : ""}`); if (!ok) failed++; };
@@ -18,6 +19,8 @@ async function probe(browser, opts) {
   await page.routeWebSocket(/\/ws/, () => {});
   await page.route("**/api/**", (r) => r.fulfill({ json: { success: true, env_keys_set: { llama: true } } }));
   await page.goto(BASE);
+  await page.waitForTimeout(1500);
+  await dismissWelcome(page); // lớp chào giữ orb tắt tới tin đầu (spec 2026-10-16): gửi tin để orb dựng
   await page.waitForTimeout(1500);
   const r = await page.evaluate(() => ({ n: window.__n, h: document.getElementById("orb-canvas").height, ih: innerHeight, dpr: devicePixelRatio }));
   await ctx.close();

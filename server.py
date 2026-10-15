@@ -40,7 +40,7 @@ from pydantic import BaseModel
 from engine.core.memory import (
     SemanticMemoryEngine,
 )
-from engine.main.greeting_engine import send_greeting
+from engine.main.welcome import send_welcome
 from engine.core.session_context import resolve_ws_session, resume_history, set_session
 from engine.server.ws_sessions import ActiveSessions
 
@@ -93,8 +93,6 @@ LOCAL_URL     = os.getenv("LOCAL_URL")
 TTS_LOCAL_URL = os.getenv("TTS_LOCAL_URL")
 LOCAL_MODEL   = os.getenv("LOCAL_MODEL")
 VISION_MODEL  = os.getenv("VISION_MODEL")
-USER_NAME = os.getenv("USER_NAME")
-HONORIFIC = os.getenv("HONORIFIC")
 # ---------------------------------------------------------------------------
 # Speech-to-Text Corrections
 # ---------------------------------------------------------------------------
@@ -900,27 +898,9 @@ async def voice_handler(ws: WebSocket):
         _background_tasks.add(reader_task)
         reader_task.add_done_callback(_background_tasks.discard)
 
-        # Chạy greeting ở background, hủy nếu user nói trước
-        greeting_task: Optional[asyncio.Task] = None
-
-        async def _run_greeting():
-            try:
-                await send_greeting(ws, history, safe_ws_send_json)
-            except asyncio.CancelledError:
-                pass
-
-        # Không await — greeting chạy background, message loop chạy ngay
-        greeting_task = asyncio.create_task(_run_greeting())
-        ws.greeting_task = greeting_task
-
-        async def _cancel_greeting_audio() -> None:
-            """Dừng audio greeting độc lập trước khi đổi sang trạng thái/phiên mới."""
-            greeting_tts_task = getattr(ws, "greeting_tts_task", None)
-            if greeting_tts_task and not greeting_tts_task.done():
-                greeting_tts_task.cancel()
-                await asyncio.gather(greeting_tts_task, return_exceptions=True)
-            if getattr(ws, "greeting_tts_task", None) is greeting_tts_task:
-                ws.greeting_tts_task = None
+        # Lớp chào WebUI (spec 2026-10-16): danh sách công cụ ngay, thời tiết khi có; không chữ chat, không TTS.
+        welcome_task = asyncio.create_task(send_welcome(ws, safe_ws_send_json))
+        ws.welcome_task = welcome_task
 
         while True:
             msg = await message_queue.get()
@@ -931,8 +911,6 @@ async def voice_handler(ws: WebSocket):
                 ws.user_tts_disabled = not enabled
                 _sync_tts_gate(ws)
                 log.info(f"TTS toggled to: {enabled}")
-                if not enabled:
-                    await _cancel_greeting_audio()
                 continue
 
             if msg.get("type") == "media_state":
@@ -1036,13 +1014,6 @@ async def voice_handler(ws: WebSocket):
                     })
                     await safe_ws_send_json(ws, {"type": "stream_end"})
                     continue
-
-            # Nếu greeting còn chạy, hủy ngay để xử lý tin nhắn user
-            if greeting_task and not greeting_task.done():
-                ws.cancel_requested = True
-                greeting_task.cancel()
-                greeting_task = None
-            await _cancel_greeting_audio()
 
             ws.cancel_requested = False
 
@@ -1209,11 +1180,11 @@ async def voice_handler(ws: WebSocket):
     except Exception as e:
         log.error(f"WebSocket error: {e}", exc_info=True)
     finally:
-        greeting_task = getattr(ws, "greeting_task", None)
-        if greeting_task is not None and not greeting_task.done():
-            greeting_task.cancel()
-            await asyncio.gather(greeting_task, return_exceptions=True)
-        ws.greeting_task = None
+        welcome_task = getattr(ws, "welcome_task", None)
+        if welcome_task is not None and not welcome_task.done():
+            welcome_task.cancel()
+            await asyncio.gather(welcome_task, return_exceptions=True)
+        ws.welcome_task = None
         await dispatcher.close()
         ws._event_dispatcher = None
         _ws_sessions.remove(ws)

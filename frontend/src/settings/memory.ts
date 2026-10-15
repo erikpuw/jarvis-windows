@@ -51,7 +51,7 @@ const MEMORY_CATEGORIES: MemoryCategory[] = [
   { id: 'learning', label: "Learnings", endpoint: "/api/learnings/list", responseKey: "learnings", color: "#a78bfa", icon: Brain, activeIcon: Lightbulb },
   { id: 'workflow', label: "Workflows", endpoint: "/api/workflows/list", responseKey: "workflows", color: "#22d3ee", icon: Workflow, activeIcon: RotateCw },
   { id: 'outcome', label: "Outcomes", endpoint: "/api/outcomes/list", responseKey: "outcomes", color: "#f59e0b", icon: Target, activeIcon: CheckCheck },
-  // Ngài sửa lại công cụ JARVIS đã chọn (engine/core/learning.py corrections). Backend chưa cho sửa bản ghi: chỉ xem và xoá.
+  // Ngài sửa lại công cụ JARVIS đã chọn (engine/core/learning.py corrections): sửa câu, công cụ, số lần; xoá.
   { id: 'correction', label: "Sửa công cụ", endpoint: "/api/corrections/list", responseKey: "corrections", color: "#fb923c", icon: Wrench, activeIcon: Hammer },
   { id: 'conversation', label: "Conversations", endpoint: "/api/conversations", responseKey: "conversations", color: "#60a5fa", icon: MessageSquare, activeIcon: MessagesSquare },
   { id: 'gym', label: "Gym Memory", endpoint: "/api/gym/list", responseKey: "items", color: "#ec4899", icon: Dumbbell, activeIcon: Activity },
@@ -423,7 +423,7 @@ function renderMemoryItems(): void {
       </div>
       ${metadataHtml}
       <div class="sd-mem-detail-actions">
-        ${activeMemoryKind === "gym" || activeMemoryKind === "correction" ? "" : `
+        ${activeMemoryKind === "gym" ? "" : `
         <button class="settings-btn primary" id="memory-save-btn" data-memory-action="save" data-action="save">
           Lưu thay đổi
         </button>

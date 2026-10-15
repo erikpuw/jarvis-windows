@@ -4,6 +4,7 @@
 // Đếm lệnh vẽ của orb lớn (WebGL, #orb-canvas), orb trạng thái (#status-orb) và bot (#jarvis-bot) qua init script. WebSocket và /api bị mock.
 // Chạy: PW=<module playwright> node frontend/e2e/anim-media.cjs   (cần `npm run dev` ở :5173)
 const { chromium } = require(process.env.PW || "playwright");
+const { dismissWelcome } = require("./_welcome.cjs");
 const BASE = process.env.BASE_URL || "http://localhost:5173/";
 let failed = 0;
 const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} ${name}${extra ? " — " + extra : ""}`); if (!ok) failed++; };
@@ -34,8 +35,9 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   await page.route("**/blank-video.html**", (r) => r.fulfill({ contentType: "text/html", body: "<html><body style='background:#000'></body></html>" }));
   await page.goto(BASE);
   for (let i = 0; i < 50 && !sock; i++) await page.waitForTimeout(100);
+  await dismissWelcome(page); // lớp chào giữ orb tắt tới tin đầu (spec 2026-10-16): gửi một tin, orb dựng xong sau chấm giữ 1200 ms
   await page.evaluate(() => document.getElementById("command-container")?.classList.add("visible"));
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(1800);
   // số lệnh vẽ của từng vòng lặp trong ms mili-giây
   const rate = async (ms) => {
     const a = await page.evaluate(() => ({ ...window.__c }));

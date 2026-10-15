@@ -1119,9 +1119,96 @@ class LearningEngine:
     # Truy vấn hội thoại từ jarvis.db (messages table — dùng chung memory)
     # ------------------------------------------------------------------
 
+    def get_recent_interactions(self, limit: int = 20) -> list[dict]:
+        """Lấy N cặp user+assistant gần nhất từ jarvis.db messages table."""
+        conn = self._get_memory_db()
+        rows = conn.execute(
+            "SELECT id, role, content, created_at FROM messages ORDER BY id DESC LIMIT ?",
+            (limit * 2,)
+        ).fetchall()
+        conn.close()
+
+        pairs = []
+        user_msg = None
+        for r in reversed(rows):
+            d = dict(r)
+            if d["role"] == "user":
+                user_msg = d
+            elif d["role"] == "assistant" and user_msg is not None:
+                pairs.append({
+                    "user_input": user_msg["content"],
+                    "assistant_response": d["content"],
+                    "created_at": d["created_at"],
+                })
+                user_msg = None
+        return pairs[-limit:]
+
+    def get_interactions_in_range(self, since: float, until: float) -> list[dict]:
+        """Lấy cặp user+assistant trong khoảng thời gian."""
+        conn = self._get_memory_db()
+        rows = conn.execute(
+            "SELECT id, role, content, created_at FROM messages "
+            "WHERE created_at >= ? AND created_at <= ? ORDER BY id ASC",
+            (since, until)
+        ).fetchall()
+        conn.close()
+
+        pairs = []
+        user_msg = None
+        for r in rows:
+            d = dict(r)
+            if d["role"] == "user":
+                user_msg = d
+            elif d["role"] == "assistant" and user_msg is not None:
+                pairs.append({
+                    "user_input": user_msg["content"],
+                    "assistant_response": d["content"],
+                    "created_at": d["created_at"],
+                })
+                user_msg = None
+        return pairs
+
     # ------------------------------------------------------------------
     # Truy xuất learnings
     # ------------------------------------------------------------------
+
+    def recall_learnings(self, query: str, limit: int = 5, agent: str = "") -> list[dict]:
+        if not query or len(query.strip()) < 3:
+            return []
+
+        keywords = [w.lower() for w in query.split() if len(w) > 2]
+        if not keywords:
+            return self.get_recent_learnings(limit)
+
+        conn = self._get_learning_db()
+        if agent:
+            rows = conn.execute(
+                "SELECT * FROM learnings WHERE source IN (?, 'session_reflection') ORDER BY importance DESC LIMIT 80",
+                (f"agent_outcome:{agent}",),
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM learnings ORDER BY importance DESC LIMIT 80").fetchall()
+        conn.close()
+
+        scored: list[dict] = []
+        for row in rows:
+            d = dict(row)
+            haystack = d["content"].lower()
+            hits = sum(1 for kw in keywords if kw in haystack)
+            if hits:
+                d["score"] = (hits / len(keywords)) * 0.7 + (d["importance"] / 10) * 0.3
+                scored.append(d)
+
+        scored.sort(key=lambda x: x["score"], reverse=True)
+        return scored[:limit]
+
+    def get_recent_learnings(self, limit: int = 5) -> list[dict]:
+        conn = self._get_learning_db()
+        rows = conn.execute(
+            "SELECT * FROM learnings ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
 
     @staticmethod
     def _bounded_page(limit: int, offset: int) -> tuple[int, int]:
@@ -1485,9 +1572,56 @@ class LearningEngine:
         conn.close()
         _write_wiki_link_index(WORKFLOWS_HUB_WIKI_PATH, names)
 
+    def _update_correction(self, record_id: int, values: dict) -> bool:
+        """Memory Control sửa một dòng corrections (ngài 2026-10-16). Câu đổi → query_norm + vector theo câu mới
+        (similar_corrections so bằng vector); luật chung (wrong_tool rỗng) không dùng vector."""
+        from engine.tools import registry
+        allowed = {"query", "wrong_tool", "right_tool", "count"}
+        if not values or set(values) - allowed:
+            raise ValueError("invalid_payload")
+        conn = self._get_learning_db()
+        try:
+            row = conn.execute("SELECT * FROM corrections WHERE id=?", (record_id,)).fetchone()
+            if not row:
+                return False
+            new = {**dict(row), **values}
+            wrong, right = str(new["wrong_tool"] or "").strip(), str(new["right_tool"] or "").strip()
+            names = registry.names()
+            if right not in names or (wrong and wrong not in names) or wrong == right:
+                raise ValueError("invalid_tool")
+            try:
+                count = int(new["count"])
+            except (TypeError, ValueError):
+                raise ValueError("invalid_count")
+            if count < 1:
+                raise ValueError("invalid_count")
+            query = str(new["query"] or "").strip()
+            q = normalize_query(query)
+            if not q:
+                raise ValueError("invalid_query")
+            embedding = row["embedding"]
+            if q != row["query_norm"] or (wrong and not embedding):
+                vec = self._embed_text(q) if wrong else None
+                if wrong and not vec:  # embedder tắt: không ghi dòng mất vector (similar_corrections sẽ bỏ qua nó)
+                    raise ValueError("embedder_unavailable")
+                embedding = json.dumps(vec) if vec else ""
+            try:
+                conn.execute("UPDATE corrections SET query=?, query_norm=?, wrong_tool=?, right_tool=?, count=?, "
+                             "embedding=?, updated_at=? WHERE id=?",
+                             (query, q, wrong, right, count, embedding, time.time(), record_id))
+            except sqlite3.IntegrityError:
+                raise ValueError("duplicate_key")
+            conn.commit()
+        finally:
+            conn.close()
+        self._sync_learning_wiki()
+        return True
+
     def update_learning_control_record(
         self, kind: str, record_id: int, values: dict
     ) -> bool:
+        if kind == "correction":
+            return self._update_correction(record_id, values)
         schemas = {
             "learning": (
                 "learnings",
@@ -1508,6 +1642,7 @@ class LearningEngine:
 
         # Xử lý embedding riêng biệt nếu có (chỉ cho learning)
         embedding_value = values.get("embedding")
+        embedding_model_value = values.get("embedding_model")
 
         # Nếu có embedding parameter, xử lý nó
         if kind == "learning" and "embedding" in values:
@@ -1774,7 +1909,8 @@ class LearningEngine:
             conn.close()
             if not row:
                 raise LookupError("not_found")
-            return {"will_delete": {"records": [dict(row)], "wiki_paths": [str(LESSONS_WIKI_PATH)]},
+            record = {k: v for k, v in dict(row).items() if k != "embedding"}  # vector làm hộp xác nhận dài hàng nghìn ký tự
+            return {"will_delete": {"records": [record], "wiki_paths": [str(LESSONS_WIKI_PATH)]},
                     "will_update": [], "related_only": []}
         conn.close()
         raise ValueError("unsupported_kind")

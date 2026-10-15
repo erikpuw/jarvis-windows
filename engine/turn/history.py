@@ -3,6 +3,8 @@
 (log 2026-10-12 03:20: chữ "[đã gọi …]" trong lịch sử làm Gemma chép chữ thay vì gọi tool)."""
 import json
 
+from engine.tools import registry
+
 MAX_TURNS = 3
 SHORT = 300
 LAST = 3000  # lượt gần nhất (ngài 2026-10-13: hỏi tiếp "nói thêm bài 2" mà chỉ còn 300 ký tự → hết nội dung)
@@ -49,7 +51,7 @@ def for_model(conversation_history: list[dict], plain: bool = False) -> list[dic
             text = m.get("final_say") if steps and m.get("final_say") else m.get("content")
             out.append({"role": "assistant", "content": str(text or "")[:limit]})
             if limit == LAST and steps:  # kết quả tool lượt gần nhất đi kèm câu hỏi của lượt đó: vẫn xen kẽ vai
-                carry = "\n".join(result_message(s["tool"], s.get("result", ""), s.get("outcome", ""), False, "",
+                carry = "\n".join(result_message(registry.label(s["tool"]), s.get("result", ""), s.get("outcome", ""), False, "",
                                                  LAST)["content"] for s in steps)
             continue
         block = []

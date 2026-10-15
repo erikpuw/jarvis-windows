@@ -228,3 +228,10 @@ async def stream_text_smoothly(ws, safe_ws_send_json, text: str, word_delay: flo
             await safe_ws_send_json(ws, {"type": "text_chunk", "text": chunk})
         if word_delay > 0:
             await asyncio.sleep(word_delay)
+
+
+async def stream_chunk_smoothly(ws, safe_ws_send_json, chunk: str, char_delay: float = 0.005, **kwargs):
+    if not chunk or not ws:
+        return
+    chunk = clean_latex_math(chunk)
+    await safe_ws_send_json(ws, {"type": "text_chunk", "text": chunk})

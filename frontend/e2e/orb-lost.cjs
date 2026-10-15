@@ -3,6 +3,7 @@
 //  (đợi trang hiện lại nếu đang ẩn). Chromium headless chạy three ở nền WebGL 2: mất ngữ cảnh giả lập bằng WEBGL_lose_context.
 // WebSocket và /api bị mock. Chạy: PW=<module playwright> node frontend/e2e/orb-lost.cjs   (cần `npm run dev` ở :5173)
 const { chromium } = require(process.env.PW || "playwright");
+const { dismissWelcome } = require("./_welcome.cjs");
 const BASE = process.env.BASE_URL || "http://localhost:5173/";
 let failed = 0;
 const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} ${name}${extra ? " — " + extra : ""}`); if (!ok) failed++; };
@@ -24,6 +25,9 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   await page.route("**/api/**", (r) => r.fulfill({ json: { success: true, env_keys_set: { llama: true } } }));
   await page.goto(BASE);
   await page.waitForTimeout(2500);
+  // lớp chào giữ orb tắt tới tin đầu (spec 2026-10-16): gửi tin để orb dựng
+  await dismissWelcome(page);
+  await page.waitForTimeout(1800);
   const drawsOver = async (ms) => { const a = await page.evaluate(() => window.__draws); await page.waitForTimeout(ms); return (await page.evaluate(() => window.__draws)) - a; };
   const live = () => page.evaluate(() => { const c = document.getElementById("orb-canvas"); return window.__ctxs.some((x) => x.canvas === c && !x.isContextLost()); });
 
@@ -65,6 +69,7 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   await hp.routeWebSocket(/\/ws/, () => {});
   await hp.route("**/api/**", (r) => r.fulfill({ json: { success: true, env_keys_set: { llama: true } } }));
   await hp.goto(BASE);
+  await dismissWelcome(hp); // the first message builds the orb: the GPU request hangs from there
   await hp.waitForTimeout(8000);
   const hb = await hp.evaluate(() => document.getElementById("orb-canvas").dataset.backend || "loading");
   check(hb === "webgl2", "7. GPU treo lúc mở trang: tự bỏ lượt treo và dựng lại, orb hiện (không cần bấm tắt/bật)", hb);
@@ -78,10 +83,32 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   await sp.route("**/api/**", (r) => r.fulfill({ json: { success: true, env_keys_set: { llama: true } } }));
   await sp.route("**/__never.png", () => { /* never answered */ });
   await sp.goto(BASE, { waitUntil: "domcontentloaded" });
+  await sp.waitForSelector("#welcome");
+  await dismissWelcome(sp); // the first message builds the orb (orb is off while the welcome layer shows)
   await sp.waitForTimeout(7000);
   const sb = await sp.evaluate(() => ({ ready: document.readyState, orb: document.getElementById("orb-canvas").dataset.backend || "loading", paused: document.documentElement.classList.contains("anim-paused") }));
   check(sb.ready !== "complete" && sb.orb !== "loading" && !sb.paused, "8. load không bao giờ tới: orb và hiệu ứng vẫn bắt đầu sau vài giây", JSON.stringify(sb));
   await slow.close();
+
+  // 9. at app launch the iPhone can report a zero/wrong window size: the orb drew 60 fps into a canvas that setSize() had styled
+  //    0px tall (invisible until a resize or a toggle). The orb now sizes from the canvas's own box, so it shows at once.
+  const zero = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await zero.addInitScript(() => {
+    const until = performance.now() + 1500; // the first 1.5 s: innerWidth/innerHeight read as 0, and no resize event follows
+    for (const k of ["innerWidth", "innerHeight"]) {
+      const d = Object.getOwnPropertyDescriptor(window, k) || Object.getOwnPropertyDescriptor(Window.prototype, k);
+      Object.defineProperty(window, k, { configurable: true, get() { return performance.now() < until ? 0 : d.get.call(window); } });
+    }
+  });
+  const zp = await zero.newPage();
+  await zp.routeWebSocket(/\/ws/, () => {});
+  await zp.route("**/api/**", (r) => r.fulfill({ json: { success: true, env_keys_set: { llama: true } } }));
+  await zp.goto(BASE);
+  await dismissWelcome(zp); // the orb is built by the first message: inside the 0-size window on purpose
+  await zp.waitForTimeout(3000);
+  const z = await zp.evaluate(() => { const c = document.getElementById("orb-canvas"), r = c.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), bufH: c.height, first: !!c.dataset.first, op: getComputedStyle(c).opacity }; });
+  check(z.w === 390 && z.h === 844 && z.bufH > 0 && z.first && z.op === "1", "9. cỡ cửa sổ báo 0 lúc mở app: orb vẫn phủ kín màn hình và hiện ra (không cần bấm tắt/bật)", JSON.stringify(z));
+  await zero.close();
   await browser.close();
   console.log(failed ? `\n${failed} FAIL` : "\nALL PASS");
   process.exit(failed ? 1 : 0);

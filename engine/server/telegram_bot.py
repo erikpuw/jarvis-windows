@@ -158,7 +158,9 @@ def build_telegram_command_menu(commands: list[Any] | None = None) -> list[dict[
     for name in sorted(registry.names()):
         if name in seen or not re.fullmatch(r"[a-z0-9_]{1,32}", name):
             continue
-        description = " ".join(registry.description(name).split())[:256] or name
+        # câu đầu của mô tả: mô tả đầy đủ (khi nào dùng/không dùng, de67719) dài quá → setMyCommands 400 (log 2026-10-15)
+        full = " ".join(registry.description(name).split())
+        description = (re.split(r"(?<=[.!?])\s", full, maxsplit=1)[0][:120]) or name
         menu.append({"command": name, "description": description})
         seen.add(name)
         if len(menu) == 100:

@@ -21,13 +21,14 @@ _APPLIANCE_KW = (
     "máy nước nóng", "robot hút bụi",
 )
 _TECH_KW = (
-    "iphone", "ipad", "macbook", "laptop", "legion", "thinkpad", "ram",
+    "iphone", "ipad", "macbook", "mac mini", "macmini", "imac", "airpods", "airpod", "apple watch",
+    "laptop", "legion", "thinkpad", "ram", "chuột", "bàn phím", "loa", "đồng hồ thông minh",
     "ddr", "ssd", "cpu", "gpu", "điện thoại", "máy tính", "tai nghe",
     "sạc", "màn hình", "samsung", "xiaomi", "oppo", "vivo",
 )
 _GROCERY_KW = (
     "đi chợ", "thịt", "gà", "heo", "bò", "cá", "tôm", "rau", "củ",
-    "trái cây", "kimchi", "kim chi", "sữa", "gạo", "mì", "nước",
+    "trái cây", "kimchi", "kim chi", "sữa", "gạo", "mì", "nước", "trứng", "đỗ", "đậu", "nấm",
     "gia vị", "thực phẩm", "bánh", "kẹo",
 )
 _PRICE_RE = re.compile(
@@ -50,7 +51,8 @@ _QUERY_STOPWORDS = frozenset({
     "tim", "kiem", "tra", "cuu", "xem", "mua", "gia", "san", "pham",
 })
 # Phụ kiện/dịch vụ trôi vào kết quả "iphone 17 pro": bỏ trừ khi người dùng chính là tìm loại đó
-_ACCESSORY_PREFIXES = ("op lung", "dan sticker", "mieng dan", "s-buyback", "kinh cuong luc", "bao da")
+_ACCESSORY_PREFIXES = ("op lung", "dan sticker", "mieng dan", "s-buyback", "kinh cuong luc", "bao da", "hop đung",
+                       "vo op", "op ", "nut tai", "day đeo", "day sac", "cap sac", "tui đung")  # _plain giữ "đ"
 _PRODUCT_QUERY_PREFIX_RE = re.compile(
     r"^(?:(?:hãy|giúp|vui\s+lòng|làm\s+ơn)\s+)?"
     r"(?:tìm(?:\s+kiếm)?|tra(?:\s+cứu)?|xem)\s+"
@@ -245,6 +247,7 @@ def build_source_urls(
 ) -> list[dict[str, str]]:
     """Tạo URL tìm kiếm theo đúng thanh tìm kiếm của từng nguồn."""
     encoded = quote_plus(query.strip())
+    tiki = {"source": "Tiki", "url": sources_mod.tiki_search_url(query)}
     if category == "appliance":
         return [{
             "source": "Điện máy xanh",
@@ -264,12 +267,13 @@ def build_source_urls(
                 "source": "FPT Shop",
                 "url": f"https://fptshop.com.vn/tim-kiem?s={encoded}",
             },
+            tiki,
         ]
-    if category == "general":
+    if category == "general":  # Shopee hay trả trang chặn bot (log 2026-10-15): Tiki API chạy song song làm nguồn chắc
         return [{
             "source": "Shopee",
             "url": f"https://shopee.vn/search?keyword={encoded}",
-        }]
+        }, tiki]
 
     sources = [
         {
@@ -370,7 +374,7 @@ def _extract_rows(
     return list(rows_by_name.values())
 
 
-_CARD_SOURCES = frozenset({"Điện máy xanh", "Thế giới di động", "CellphoneS", "FPT Shop", "Bách Hóa Xanh"})
+_CARD_SOURCES = frozenset({"Điện máy xanh", "Thế giới di động", "CellphoneS", "FPT Shop", "Bách Hóa Xanh", "Tiki"})
 
 
 def _card_row(card: dict, source: str) -> dict[str, str]:
@@ -385,6 +389,8 @@ def _card_row(card: dict, source: str) -> dict[str, str]:
 
 
 async def _load_cards(item: dict[str, str], url: str) -> list[dict]:
+    if item["source"] == "Tiki":
+        return sources_mod.parse_tiki(await browser.get_json(url, headers={"Accept": "application/json"}))
     if item["source"] == "Bách Hóa Xanh":  # API công khai của chính trang: trang HTML không có sản phẩm khi chưa chọn cửa hàng
         headers = {"Origin": sources_mod.BHX_BASE, "Referer": f"{sources_mod.BHX_BASE}/tim-kiem"}
         data = await browser.post_json(sources_mod.BHX_SEARCH_API, sources_mod.bhx_search_body(item["keyword"]), headers=headers)
@@ -394,6 +400,17 @@ async def _load_cards(item: dict[str, str], url: str) -> list[dict]:
             cards += sources_mod.parse_bhx(more)
         return cards
     return sources_mod.parse_listing(url, await browser.fetch_listing_html(url))
+
+
+def _relevant_cards(cards: list[dict], term: str) -> list[dict]:
+    """Ô tìm kiếm của shop trả lẫn hàng chỉ khớp một chữ ("Airpods Pro 3" → "iPhone 18 Pro"): giữ thẻ có quá nửa từ khoá.
+    Không còn thẻ nào thì giữ nguyên để _missing_model_tokens báo kết quả gần nhất."""
+    tokens = [t for t in _query_tokens(term) if not t.isdigit()]
+    if len(tokens) < 2:
+        return cards
+    kept = [c for c in cards if sum(bool(re.search(rf"\b{re.escape(t)}\b", _plain(c["name"]))) for t in tokens) * 2
+            > len(tokens)]
+    return kept or cards
 
 
 def _missing_model_tokens(term: str, cards: list[dict]) -> list[str]:
@@ -421,6 +438,7 @@ async def _fetch_cards(
         raise pages[0]
     cards = list({c["url"]: c for page in pages if not isinstance(page, Exception) for c in page}.values())
     cards = [c for c in cards if not _is_unwanted_accessory(_plain(c["name"]), _plain(term))]
+    cards = _relevant_cards(cards, term)
     # Ô tìm kiếm của shop khớp lỏng ("máy giặt 11kg" ra cả tủ lạnh, 2026-10-12): giữ đúng loại máy ngài hỏi
     kinds = [kw for kw in _APPLIANCE_KW if _has_kw(term.lower(), (kw,))]
     if kinds:
@@ -446,7 +464,7 @@ async def _fetch_source(
     try:
         if item["source"] in _CARD_SOURCES:
             result = await _fetch_cards(item, query, criteria or {}, sort=sort, per_term=per_term)
-            if result[1] or result[0].get("note") or item["source"] == "Bách Hóa Xanh":
+            if result[1] or result[0].get("note") or item["source"] in ("Bách Hóa Xanh", "Tiki"):
                 return result
             # trang không có thẻ (vd Thế Giới Di Động chuyển thẳng sang trang chi tiết): đọc text như nguồn khác
         page = await browser.visit_product_listing(item["url"])

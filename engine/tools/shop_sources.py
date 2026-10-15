@@ -104,6 +104,29 @@ def bhx_search_body(keyword: str, page: int = 0, size: int = 20) -> dict:
             "pageIndex": page, "pageSize": size, "brandIds": "", "categoryIds": "", "sortStr": ""}
 
 
+TIKI_API = "https://tiki.vn/api/v2/products"
+TIKI_BASE = "https://tiki.vn"
+
+
+def tiki_search_url(keyword: str, limit: int = 20) -> str:
+    from urllib.parse import quote_plus
+    return f"{TIKI_API}?limit={limit}&q={quote_plus(keyword.strip())}"
+
+
+def parse_tiki(data: dict) -> list[dict]:
+    """JSON của tiki.vn/api/v2/products (API công khai, không cần trình duyệt — Shopee chặn bot, 2026-10-15)."""
+    cards = []
+    for item in (data or {}).get("data") or []:
+        if not item.get("price"):
+            continue
+        card = _card(item["name"], int(item["price"]), urljoin(TIKI_BASE + "/", item.get("url_path", "")),
+                     rating=float(item["rating_average"]) if item.get("rating_average") else None,
+                     sold=int((item.get("quantity_sold") or {}).get("value") or 0))
+        card["reviews"] = int(item.get("review_count") or 0)
+        cards.append(card)
+    return cards
+
+
 def parse_bhx(data: dict) -> list[dict]:
     """JSON của api.bachhoaxanh.com/gw/search/v2/DataSearch. Giá mặc định là gói nhỏ nhất; hàng bán theo
     cân (netUnitValue = số kg của gói) ghi cỡ gói vào tên để so giá khỏi nhầm."""

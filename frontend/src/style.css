@@ -6,6 +6,8 @@
   --bubble-radius: 18px;
   --bubble-font-size: 13.5px;
   --container-width: 800px;
+  --controls-inset: 16px; /* #controls distance from the top/right edges (12px on phones) */
+  --controls-size: 36px;
   --container-bottom: 18px;
   --cmd-padding: 4px 4px;
   --cmd-bg: rgba(8, 8, 12, 0.4);
@@ -20,9 +22,9 @@
   --fs-heading: 20px; /* page headings */
   /* Root layers, bottom → top. One value per layer; z-index elsewhere is local to its parent. */
   --z-orb: 10;        /* #orb-canvas */
+  --z-welcome: 15;    /* #welcome (new-session greeting), above the orb, under the chat */
   --z-label: 20;      /* #jarvis-label */
   --z-chat: 30;       /* #command-container */
-  --z-clock: 40;      /* #jarvis-clock */
   --z-controls: 50;   /* #controls */
   --z-cam: 60;        /* #webcam-hud */
   --z-media: 70;      /* .media-player */
@@ -66,7 +68,7 @@ body {
      status bar short of the screen's bottom. In a Safari tab (it never scrolls) both are the same. */
   height: 100dvh;
   overflow: hidden;
-  background: #050508;
+  background: #000; /* main background: deep black (2026-10-15); the command bar and Settings keep #050508 */
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   touch-action: auto;
 }
@@ -76,19 +78,28 @@ body {
   top: 0;
   left: 0;
   width: 100%;
-  height: 100%;
+  /* the large viewport, not 100%: iOS 26 Safari's bottom address bar is glass floating over the page, and a backdrop that stops
+     at its top edge leaves nothing under it but a grey fallback band. html/body stay 100dvh (home-screen app bottom gap). */
+  height: 100lvh;
   z-index: var(--z-orb);
   pointer-events: none;
+  transition: opacity 0.6s ease-out;
+}
+
+/* the orb fades in with its first frame (orb.ts sets data-first) instead of popping in mid-build; the flat backdrop of a turned-off
+   orb (data-backend="off") always shows */
+#orb-canvas:not([data-first]):not([data-backend="off"]) {
+  opacity: 0;
 }
 
 /* Six round buttons behind one main button (src/controls-menu.ts). Closed: only the main button shows. Open: the six
    fan out together on two arcs round it (3 on each arc, to the left and below the corner). */
 #controls {
   position: fixed;
-  top: calc(16px + env(safe-area-inset-top, 0px));
-  right: calc(16px + env(safe-area-inset-right, 0px));
-  width: 36px;
-  height: 36px;
+  top: calc(var(--controls-inset) + env(safe-area-inset-top, 0px));
+  right: calc(var(--controls-inset) + env(safe-area-inset-right, 0px));
+  width: var(--controls-size);
+  height: var(--controls-size);
   z-index: var(--z-controls);
 }
 
@@ -268,10 +279,12 @@ html.anim-paused body > :not(#settings-container) * {
   transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s;
 }
 
-/* faded out, then visibility:hidden once the fade is over: an opacity-0 layer is still painted every frame */
+/* fades out sliding 10 px down, then visibility:hidden once the fade is over (an opacity-0 layer is still painted every frame).
+   Not more: the bar sits 18 px above the bottom; at 20 px it slid past the screen's edge and at 15 px (3 px short of it) iOS
+   Safari still tinted its address bar from it (grey under the bar once it had faded, user 2026-10-16). */
 #command-container:not(.visible)> :not(#status-row) {
   opacity: 0;
-  transform: translateY(20px);
+  transform: translateY(10px);
   pointer-events: none;
   visibility: hidden;
   transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s 0.25s;
@@ -931,9 +944,8 @@ html.anim-paused body > :not(#settings-container) * {
     line-height: 1.5;
   }
 
-  #controls {
-    top: calc(12px + env(safe-area-inset-top, 0px));
-    right: calc(12px + env(safe-area-inset-right, 0px));
+  :root {
+    --controls-inset: 12px;
   }
 
   /* 40px touch target around the 14px icon; negative margin keeps the layout unchanged. */
@@ -1818,179 +1830,6 @@ html.anim-paused body > :not(#settings-container) * {
   }
 }
 
-/* Flip clock (src/clock.ts), HTC Sense style without the card: one digit per
-   slot, a dark split line across the middle; centred under the top button row,
-   above the orb, the JARVIS label and the chat; the buttons, the island, webcam, media and settings cover it. */
-#jarvis-clock {
-  --fc-h: 64px;
-  position: fixed;
-  top: calc(84px + env(safe-area-inset-top, 0px));
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: var(--z-clock);
-  display: flex;
-  gap: 2px;
-  pointer-events: none;
-  user-select: none;
-}
-
-#jarvis-clock .fc-colon {
-  width: 16px;
-  height: var(--fc-h);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-}
-
-#jarvis-clock .fc-colon i {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: rgba(207, 239, 255, 0.8);
-  animation: fc-radar 2s ease-out infinite;
-}
-
-/* radar ping: a ring spreads out of each dot in turn */
-#jarvis-clock .fc-colon i:last-child {
-  animation-delay: 1s;
-}
-
-@keyframes fc-radar {
-  from {
-    box-shadow: 0 0 0 0 rgba(125, 211, 252, 0.7);
-  }
-
-  to {
-    box-shadow: 0 0 0 7px rgba(125, 211, 252, 0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  #jarvis-clock .fc-colon i {
-    animation: none;
-  }
-}
-
-#jarvis-clock .fc {
-  position: relative;
-  width: 30px;
-  height: var(--fc-h);
-  font-family: "Oswald", sans-serif;
-  font-weight: 300;
-  font-size: 54px;
-  color: rgba(207, 239, 255, 0.92);
-  perspective: 300px;
-}
-
-/* the cut */
-#jarvis-clock .fc::after {
-  content: "";
-  position: absolute;
-  left: -1px;
-  right: -1px;
-  top: calc(50% - 1px);
-  height: 2px;
-  background: rgba(3, 5, 8, 0.9);
-  z-index: 3;
-}
-
-#jarvis-clock .fc>div {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 50%;
-  overflow: hidden;
-  backface-visibility: hidden;
-}
-
-#jarvis-clock .fc span {
-  display: block;
-  height: var(--fc-h);
-  line-height: var(--fc-h);
-  text-align: center;
-}
-
-#jarvis-clock .fc-top,
-#jarvis-clock .fc-flap-top {
-  top: 0;
-}
-
-#jarvis-clock .fc-bottom,
-#jarvis-clock .fc-flap-bottom {
-  bottom: 0;
-}
-
-#jarvis-clock .fc-bottom span,
-#jarvis-clock .fc-flap-bottom span {
-  margin-top: calc(var(--fc-h) / -2);
-}
-
-#jarvis-clock .fc-flap-top {
-  transform-origin: 50% 100%;
-  animation: fc-fold 0.3s ease-in forwards;
-  z-index: 2;
-}
-
-#jarvis-clock .fc-flap-bottom {
-  transform-origin: 50% 0;
-  transform: rotateX(90deg);
-  animation: fc-drop 0.3s ease-out 0.3s forwards;
-  z-index: 2;
-}
-
-/* No card to hide what is behind a flap: the static halves cross-fade with it. */
-#jarvis-clock .fc.flipping .fc-top span {
-  animation: fc-in 0.3s ease-in;
-}
-
-#jarvis-clock .fc.flipping .fc-bottom span {
-  animation: fc-out 0.3s ease-out 0.3s forwards;
-}
-
-@keyframes fc-fold {
-  to {
-    transform: rotateX(-90deg);
-    opacity: 0.3;
-  }
-}
-
-@keyframes fc-drop {
-  to {
-    transform: rotateX(0deg);
-  }
-}
-
-@keyframes fc-in {
-  from {
-    opacity: 0;
-  }
-}
-
-@keyframes fc-out {
-  to {
-    opacity: 0;
-  }
-}
-
-@media (max-width: 768px) {
-  #jarvis-clock {
-    --fc-h: 52px;
-    top: calc(64px + env(safe-area-inset-top, 0px));
-  }
-
-  #jarvis-clock .fc {
-    width: 25px;
-    font-size: 44px;
-  }
-
-  #jarvis-clock .fc-colon {
-    width: 13px;
-    gap: 10px;
-  }
-}
-
 /* Phones are portrait only (user 2026-10-15). iOS ignores the manifest's "orientation": "portrait" and Safari will not let a page
    lock it, so a phone on its side (touch, at most 500px tall) gets a cover over the whole page; main.ts pauses every effect behind
    it like under Settings. A short desktop window (mouse) is not covered. e2e/landscape.cjs */
@@ -2526,3 +2365,86 @@ body:has(#settings-container.open) .island,
   .island, .island-panel, .island-pill, .island-pill-content { transition: none !important; }
   .timeline-dot, .timeline-connector, .timeline-dot-inner { transition: none !important; animation: none !important; }
 }
+
+/* ── New-session welcome layer (src/welcome.ts, spec 2026-10-16) ──────────────
+   Lexend only; scale 13 / 17 / display; two groups 12 px inside, 24 px apart; left edge = the text in the command input.
+   Transparent and never at a screen edge: iOS Safari tints its bars from painted layers there. */
+#welcome {
+  --w-ink-1: rgba(214, 240, 255, 0.95);
+  --w-ink-2: rgba(214, 240, 255, 0.72);
+  --w-ink-3: rgba(214, 240, 255, 0.52);
+  --w-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-welcome);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* bottom: the command bar (136 px) plus 12vh, so the block sits high (centre ~36% of the screen). Anchored right under the
+     menu button it looked off (user 2026-10-16): centred it is. */
+  padding: 0 24px calc(136px + 12vh) calc((100vw - min(800px, 100vw - 28px)) / 2 + 31px);
+  font-family: 'Lexend', -apple-system, sans-serif;
+  color: var(--w-ink-1);
+  pointer-events: none;
+  transition: opacity 0.4s ease, filter 0.4s ease;
+}
+#welcome.gone { opacity: 0; filter: blur(6px); }
+.welcome-hello {
+  font-size: clamp(40px, 10.5vw, 56px);
+  font-weight: 200;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  margin: 0 0 0 -0.05em; /* optical alignment: a large C carries white space on its left */
+  animation: welcome-rise 0.9s var(--w-ease) both;
+}
+.welcome-weather {
+  margin: 12px 0 0;
+  min-height: 18px; /* the weather may come late: its room is kept */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--w-ink-3);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+#welcome.has-weather .welcome-weather { opacity: 1; }
+.welcome-weather svg { width: 16px; height: 16px; flex: none; }
+.welcome-weather .dot { opacity: 0.6; }
+.welcome-sub, .welcome-try { font-size: 17px; font-weight: 300; margin: 0; }
+.welcome-sub { margin-top: 24px; line-height: 1.4; color: var(--w-ink-2); animation: welcome-rise 0.9s 0.16s var(--w-ease) both; }
+.welcome-try {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  line-height: 1.5em;
+  color: var(--w-ink-3);
+  animation: welcome-rise 0.9s 0.24s var(--w-ease) both;
+}
+.welcome-slot {
+  position: relative;
+  display: inline-block;
+  height: 1.5em;
+  overflow: hidden;
+  color: #7fd8ff;
+  font-weight: 400;
+  transition: width 0.45s var(--w-ease);
+}
+.welcome-slot span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  line-height: 1.5em;
+  transition: transform 0.45s var(--w-ease), opacity 0.45s ease;
+}
+.welcome-slot span.below { transform: translateY(100%); opacity: 0; transition: none; }
+.welcome-slot span.above { transform: translateY(-100%); opacity: 0; transition: none; }
+.welcome-slot span.out { transform: translateY(-100%); opacity: 0; }
+.welcome-slot span.out-down { transform: translateY(100%); opacity: 0; }
+@keyframes welcome-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+#btn-orb-toggle:disabled { opacity: 0.35; cursor: default; }

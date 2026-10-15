@@ -4,6 +4,7 @@
 // Đếm lệnh vẽ và ngữ cảnh WebGL của canvas #orb-canvas qua init script. WebSocket và /api bị mock.
 // Chạy: PW=<module playwright> node frontend/e2e/orb-toggle.cjs   (cần `npm run dev` ở :5173)
 const { chromium } = require(process.env.PW || "playwright");
+const { dismissWelcome } = require("./_welcome.cjs");
 const BASE = process.env.BASE_URL || "http://localhost:5173/";
 let failed = 0;
 const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} ${name}${extra ? " — " + extra : ""}`); if (!ok) failed++; };
@@ -31,8 +32,18 @@ async function open(browser, opts = {}) {
   await page.goto(BASE);
   for (let i = 0; i < 50 && !sock; i++) await page.waitForTimeout(100);
   await page.waitForTimeout(1200);
+  await dismissWelcome(page); // lớp chào giữ orb tắt tới tin đầu (spec 2026-10-16): gửi tin, orb dựng xong sau chấm giữ 1.2 s
+  await page.waitForTimeout(1800);
   return { ctx, page, errors, sock: () => sock };
 }
+// one screen pixel as [r, g, b] (a 1x1 PNG screenshot, decoded here: IHDR colour type 2 = RGB, 6 = RGBA)
+const screenPx = async (page, x, y) => {
+  const png = await page.screenshot({ clip: { x, y, width: 1, height: 1 } });
+  const bpp = png[25] === 6 ? 4 : 3, idat = [];
+  for (let o = 8; o < png.length;) { const n = png.readUInt32BE(o), t = png.toString("ascii", o + 4, o + 8); if (t === "IDAT") idat.push(png.subarray(o + 8, o + 8 + n)); o += 12 + n; }
+  const raw = require("zlib").inflateSync(Buffer.concat(idat)); // filter byte, then one pixel
+  return [...raw.subarray(1, 1 + bpp)].slice(0, 3);
+};
 const drawsOver = async (page, ms) => { const a = await page.evaluate(() => window.__draws); await page.waitForTimeout(ms); return (await page.evaluate(() => window.__draws)) - a; };
 const orbState = (page) => page.evaluate(() => {
   const c = document.getElementById("orb-canvas"), b = document.getElementById("btn-orb-toggle");
@@ -47,10 +58,18 @@ const orbState = (page) => page.evaluate(() => {
   const browser = await chromium.launch();
   const { ctx, page, errors, sock } = await open(browser);
 
-  // 1. mặc định bật
+  // 1. sau tin đầu orb bật (mặc định khi mở, trước tin đầu lớp chào giữ orb tắt)
   let st = await orbState(page);
   check(st.btn && st.canvas && st.w === 1280 && st.h === 800 && st.lost.length >= 1 && st.lost.every((l) => !l) && st.pressed === "true" && !st.cls, "1a. mặc định: có nút, orb hiện đầy khung, ngữ cảnh WebGL còn sống", JSON.stringify(st));
   check((await drawsOver(page, 600)) > 5, "1b. mặc định: orb đang vẽ liên tục");
+  // nền chính đen sâu (#000, ngài 2026-10-15): nền trang và màu xoá của orb; góc trái giữa màn hình không có hạt orb
+  const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  const onPx = await screenPx(page, 4, 400);
+  check(bodyBg === "rgb(0, 0, 0)" && onPx.join() === "0,0,0", "1e. nền chính đen sâu #000 (nền trang + orb)", JSON.stringify({ bodyBg, onPx }));
+  // iOS 26 Safari: thanh địa chỉ dưới là kính nổi trên trang; nền (orb) chỉ cao 100dvh thì dưới kính không có gì → dải xám.
+  // Canvas cao 100lvh (khung lớn nhất, gồm cả phần dưới thanh địa chỉ); html/body vẫn 100dvh (lỗi hở đáy app màn hình chính)
+  const orbH = await page.evaluate(() => { for (const sh of document.styleSheets) { let rules; try { rules = sh.cssRules; } catch { continue; } for (const r of rules) if (r.selectorText === "#orb-canvas") return r.style.height; } return null; });
+  check(orbH === "100lvh", "1f. canvas orb cao 100lvh, tràn xuống dưới thanh địa chỉ Safari", String(orbH));
   check(!(await page.$("#settings-container #btn-orb-toggle")) && !(await page.$("#settings-container [data-orb-toggle]")), "1c. nút nằm ở hàng nút điều khiển, không thêm vào Settings");
   const inRow = await page.evaluate(() => document.getElementById("btn-orb-toggle")?.parentElement?.id);
   check(inRow === "controls", "1d. nút nằm trong hàng nút điều khiển (#controls)", String(inRow));
@@ -59,7 +78,7 @@ const orbState = (page) => page.evaluate(() => {
   await page.evaluate(() => document.getElementById("btn-orb-toggle").click()); await page.waitForTimeout(500);
   st = await orbState(page);
   check(!st.canvas && st.lost.length >= 1 && st.lost.every((l) => l) && st.pressed === "false" && st.cls, "2a. bấm tắt: ngữ cảnh WebGL đã trả về GPU, nút đổi trạng thái", JSON.stringify(st));
-  check(st.backdrop && st.w === 1280 && st.h === 800 && st.px[0] === 5 && st.px[1] === 5 && st.px[2] === 8 && st.px[3] === 255, "2a2. tắt: thay bằng một canvas phẳng 1×1 màu nền (#050508) phủ kín khung hình, không vẽ lại — giữ lớp nền cố định toàn màn hình như lúc orb bật (PWA iOS không bị mờ phía trên)", JSON.stringify({ backdrop: st.backdrop, px: st.px, w: st.w, h: st.h }));
+  check(st.backdrop && st.w === 1280 && st.h === 800 && st.px[0] === 0 && st.px[1] === 0 && st.px[2] === 0 && st.px[3] === 255, "2a2. tắt: thay bằng một canvas phẳng 1×1 màu nền (#000) phủ kín khung hình, không vẽ lại — giữ lớp nền cố định toàn màn hình như lúc orb bật (PWA iOS không bị mờ phía trên)", JSON.stringify({ backdrop: st.backdrop, px: st.px, w: st.w, h: st.h }));
   check((await drawsOver(page, 1200)) === 0, "2b. tắt: không còn lệnh vẽ nào (kể cả 1 giây liền)");
   const freed = await page.evaluate(() => window.__ctxs.filter((x) => x.isContextLost()).every((x) => x.canvas.width === 0 && x.canvas.height === 0));
   check(freed, "2b2. tắt: bộ đệm vẽ của canvas cũ được xả về 0×0 trước khi gỡ (không để lại khung hình cuối làm lớp mờ trên iOS Safari)");
@@ -88,7 +107,10 @@ const orbState = (page) => page.evaluate(() => {
   await page.evaluate(() => document.getElementById("btn-orb-toggle").click()); await page.waitForTimeout(400);
   await page.reload(); await page.waitForTimeout(1500);
   st = await orbState(page);
-  check(st.canvas && st.pressed === "true" && (await drawsOver(page, 500)) > 3, "5. tắt rồi tải lại trang → orb bật lại (mặc định luôn bật, không lưu)", JSON.stringify(st));
+  check(!st.canvas && st.pressed === "false" && st.cls && (await page.$("#welcome")) !== null, "5a. tải lại trang → lớp chào hiện lại, orb tắt tới tin đầu (spec 2026-10-16)", JSON.stringify(st));
+  await dismissWelcome(page); await page.waitForTimeout(1800);
+  st = await orbState(page);
+  check(st.canvas && st.pressed === "true" && (await drawsOver(page, 500)) > 3, "5b. tin đầu sau khi tải lại → orb bật (không lưu trạng thái tắt cũ)", JSON.stringify(st));
 
   check(errors.length === 0, "6. không có lỗi console/trang trong cả quá trình", errors.slice(0, 2).join(" | "));
   await ctx.close();
@@ -108,6 +130,7 @@ const orbState = (page) => page.evaluate(() => {
   await bp.route("**/api/**", (r) => r.fulfill({ json: { success: true, env_keys_set: { llama: true } } }));
   await bp.goto(BASE);
   for (let i = 0; i < 50 && !bsock; i++) await bp.waitForTimeout(100);
+  await dismissWelcome(bp); // the first message is what tries to build the orb
   await bp.evaluate(() => document.getElementById("btn-settings")?.click()); await bp.waitForTimeout(600);
   const opened = await bp.$("#settings-container.open");
   await bp.evaluate(() => { document.getElementById("settings-close")?.click(); document.getElementById("btn-orb-toggle")?.click(); document.getElementById("btn-orb-toggle")?.click(); });

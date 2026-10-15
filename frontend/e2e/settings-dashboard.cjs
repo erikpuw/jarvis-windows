@@ -2,6 +2,7 @@
 // Mọi /api và /ws đều bị mock — không chạm JARVIS thật.
 // Chạy: PW=<module playwright> node frontend/e2e/settings-dashboard.cjs   (cần `npm run dev` ở :5173)
 const { chromium } = require(process.env.PW || "playwright");
+const { dismissWelcome } = require("./_welcome.cjs");
 const BASE = process.env.BASE_URL || "http://localhost:5173/";
 let failed = 0;
 const check = (ok, name, extra = "") => {
@@ -81,6 +82,9 @@ async function newPage(browser, { width, height, hasKey = true }) {
   page.on("dialog", (d) => { calls.push(["dialog", d.type(), d.message()]); d.accept(); });
   await page.goto(BASE);
   await page.waitForSelector("#btn-settings", { state: "attached" });
+  // lớp chào giữ orb tắt tới tin đầu (spec 2026-10-16): gửi tin để orb dựng xong trước khi test đo khung orb
+  await dismissWelcome(page);
+  await page.waitForTimeout(1800);
   return { page, calls };
 }
 

@@ -9,9 +9,15 @@ import re
 
 _DEFAULT_PRONOUN = "ngài"
 _DEFAULT_NAME = "erikpuw"
+# Ngài 2026-10-15: tạm khoá — HONORIFIC trong .env ("bro") không được áp; luôn "ngài". Mở lại: đặt False.
+HONORIFIC_LOCKED = True
+# Ngài 2026-10-15: tạm khoá cả USER_NAME (.env) — dùng tên có sẵn trong prompt. Mở lại: đặt False.
+USER_NAME_LOCKED = True
 
 
 def _pronoun() -> str:
+    if HONORIFIC_LOCKED:
+        return _DEFAULT_PRONOUN
     value = os.environ.get("HONORIFIC", "").strip()
     if value.lower().startswith("thưa "):
         value = value[5:].strip()
@@ -19,6 +25,8 @@ def _pronoun() -> str:
 
 
 def _name() -> str:
+    if USER_NAME_LOCKED:
+        return _DEFAULT_NAME
     return os.environ.get("USER_NAME", "").strip() or _DEFAULT_NAME
 
 

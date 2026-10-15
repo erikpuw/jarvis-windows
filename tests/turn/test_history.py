@@ -77,5 +77,5 @@ def test_latest_turn_keeps_long_result_older_turns_stay_short():
     plain = H.for_model(hist, plain=True)
     assert [m["role"] for m in plain] == ["user", "assistant", "user", "assistant"]  # vẫn xen kẽ user/assistant
     assert plain[0]["content"] == "tin cũ"
-    assert plain[2]["content"].startswith("tin mới\n\n[kết quả search_news (success)]")
+    assert plain[2]["content"].startswith("tin mới\n\n[kết quả Tin tức (success)]")  # vòng trả lời: tên gọi, không tên hàm
     assert len(plain[2]["content"]) > H.LAST - 10 and plain[3]["content"] == "Tóm tắt."

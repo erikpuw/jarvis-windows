@@ -6,6 +6,7 @@
  */
 
 import { createOrb, type OrbState } from "./orb";
+import { mountWelcome, type WelcomeData } from "./welcome";
 import { createVoiceInput, createAudioPlayer, createInterruptDetector } from "./voice";
 import { createSocket } from "./ws";
 import { openSettings, checkFirstTimeSetup, ensureMounted } from "./settings/index";
@@ -14,7 +15,6 @@ import { escapeHtml } from "./settings/api";
 import "./style.css";
 import { mountBot } from "./bot";
 import { showStreamLoader, clearStreamLoader } from "./stream-loader";
-import { mountClock } from "./clock";
 import { mountControlsMenu } from "./controls-menu";
 import { mountViewportReset } from "./viewport-reset";
 import { mountNotifyIsland } from "./notify-island";
@@ -93,7 +93,6 @@ const chatHistory = document.getElementById("chat-history")!;
 const statusEl = document.getElementById("status-text")!;
 const island = mountNotifyIsland(document.getElementById("error-text")!); // flow tracker + system errors (notify-island.ts)
 mountBot(document.getElementById("command-bar-inner")!);
-mountClock();
 mountViewportReset();
 mountControlsMenu(document.getElementById("controls")!, document.getElementById("btn-controls") as HTMLButtonElement);
 mountStatusOrb(document.getElementById("status-orb")!);
@@ -109,17 +108,16 @@ let userHasScrolledUp = false;
 
 /**
  * Tự động đo và điều chỉnh trần (maxHeight) của #chat-history theo thời gian thực:
- * - Dừng ngay dưới mép của thành phần thấp nhất đang hiển thị ở đỉnh (Đồng hồ, Media Player, Webcam HUD).
+ * - Dừng dưới viên đảo thông báo (#error-text, Dynamic Island) một khoảng GAP; đồng hồ đã gỡ (2026-10-15).
  * - Trên mobile: co xuống dưới mép Media Player hoặc Webcam HUD khi chúng mở.
  * - Thích ứng chính xác với mọi kích thước / tỉ lệ màn hình (iPhone SE, Pro Max, Android...).
  * - Hoàn toàn không can thiệp vào bàn phím ảo, để hệ điều hành đẩy giao diện tự nhiên.
  */
 function initChatAutoCeiling(): void {
-  const clockEl = document.getElementById("jarvis-clock");
   const mediaEl = document.getElementById("media-player");
   const webcamEl = document.getElementById("webcam-hud");
   const isPhone = () => matchMedia("(max-width: 768px)").matches;
-  const GAP = 18; // Cách đáy đồng hồ/media/webcam 14px (thụt xuống dưới thêm 6px để không bị sát)
+  const GAP = 10; // thụt xuống dưới đáy viên đảo/media/webcam một chút (~20px tính cả viền mờ mép trên), không sát
   const MIN_HEIGHT = 100;
 
   let frame = 0;
@@ -134,13 +132,16 @@ function initChatAutoCeiling(): void {
     if (phone && webcamEl && !webcamEl.classList.contains("hidden")) {
       topCeiling = Math.max(topCeiling, webcamEl.getBoundingClientRect().bottom);
     }
-    if (clockEl) {
-      const cb = clockEl.getBoundingClientRect().bottom;
-      if (cb > 0) topCeiling = Math.max(topCeiling, cb);
-    }
+    // the island's resting pill, from layout offsets: its enter/leave scale and the card it opens over the chat must not move the chat
+    const island = document.getElementById("error-text");
+    const pill = island?.querySelector<HTMLElement>(".island-pill");
+    if (island && pill) topCeiling = Math.max(topCeiling, island.offsetTop + pill.offsetTop + pill.offsetHeight);
 
     const bottom = chatHistory.getBoundingClientRect().bottom;
-    const available = bottom - topCeiling - GAP;
+    // max-height is the content box: the list's own padding comes on top of it, so it is taken off here (it ate the GAP)
+    const cs = getComputedStyle(chatHistory);
+    const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    const available = bottom - topCeiling - GAP - pad;
     if (available > 0) {
       chatHistory.style.maxHeight = `${Math.max(MIN_HEIGHT, Math.floor(available))}px`;
     }
@@ -154,7 +155,6 @@ function initChatAutoCeiling(): void {
   const mo = new MutationObserver(schedule);
   if (mediaEl) mo.observe(mediaEl, { attributes: true, attributeFilter: ["class"] });
   if (webcamEl) mo.observe(webcamEl, { attributes: true, attributeFilter: ["class"] });
-  if (clockEl) new ResizeObserver(schedule).observe(clockEl);
   updateCeiling();
 }
 
@@ -414,6 +414,7 @@ export { formatMarkdown };
 
 function addChatMessage(role: "user" | "assistant", text: string): HTMLElement | null {
   console.log(`[UI] Adding ${role} message: ${text}`);
+  if (role === "user") welcome.dismiss(); // every user message passes here: the first one ends the welcome
   if (!chatHistory) {
     console.error("[UI] Chat history element not found!");
     return null;
@@ -1197,10 +1198,24 @@ function captureAndSendWebcamFrame() {
 // ---------------------------------------------------------------------------
 
 const canvas = document.getElementById("orb-canvas") as HTMLCanvasElement;
-const orb = createOrb(canvas);
+// Off until the first message: the welcome layer greets an empty screen (spec 2026-10-16)
+const orb = createOrb(canvas, { enabled: false });
 
-// Orb on/off button (top-right controls). Off = no drawing at all and the WebGL context goes back to the GPU; always on at page load.
-const btnOrb = document.getElementById("btn-orb-toggle")!;
+// Orb on/off button (top-right controls). Off = no drawing at all and the WebGL context goes back to the GPU. Locked while the
+// welcome layer shows; the first message opens the orb with a longer-held dot.
+const btnOrb = document.getElementById("btn-orb-toggle") as HTMLButtonElement;
+btnOrb.disabled = true;
+btnOrb.classList.add("orb-off"); // the icon follows this class: off at load
+btnOrb.setAttribute("aria-pressed", "false");
+btnOrb.title = "Bật orb";
+const WELCOME_DOT_HOLD_MS = 1200;
+const welcome = mountWelcome(() => {
+  btnOrb.disabled = false;
+  btnOrb.classList.remove("orb-off");
+  btnOrb.setAttribute("aria-pressed", "true");
+  btnOrb.title = "Tắt orb (ngừng vẽ, trả GPU)";
+  orb.setEnabled(true, WELCOME_DOT_HOLD_MS);
+});
 btnOrb.addEventListener("click", () => {
   const turnOn = btnOrb.classList.contains("orb-off");
   orb.setEnabled(turnOn);
@@ -1647,6 +1662,8 @@ socket.onMessage((msg) => {
   } else if (type === "flow_step") {
     const step = msg.step as any;
     if (step && step.id) island.flowStep(step);
+  } else if (type === "welcome") {
+    welcome.update(msg as unknown as WelcomeData);
   } else if (type === "memory_updated") {
     console.log("[UI] Memory updated");
   }

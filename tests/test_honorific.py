@@ -7,6 +7,8 @@ from engine.prompts import honorific as h, load
 
 
 def _env(monkeypatch, honorific="ngài", name="erikpuw"):
+    monkeypatch.setattr(h, "HONORIFIC_LOCKED", False)  # các test dưới kiểm chức năng đổi xưng hô khi mở khoá
+    monkeypatch.setattr(h, "USER_NAME_LOCKED", False)
     monkeypatch.setenv("HONORIFIC", honorific)
     monkeypatch.setenv("USER_NAME", name)
 
@@ -59,3 +61,12 @@ def test_payload_and_tts_are_personalized(monkeypatch):
     assert h.personalize_payload(other) is other
     from engine.server.tts_engine import prepare_tts_text
     assert "ngài" not in prepare_tts_text("Xin chào ngài.").lower()
+
+
+def test_honorific_locked_ignores_env(monkeypatch):
+    """Ngài 2026-10-15: tạm khoá HONORIFIC (.env đặt "bro" làm prompt/TTS/test đổi "ngài"); luôn "ngài"."""
+    assert h.HONORIFIC_LOCKED is True and h.USER_NAME_LOCKED is True
+    monkeypatch.setenv("HONORIFIC", "bro")
+    monkeypatch.setenv("USER_NAME", "Tèo")
+    s = "Thưa ngài, trợ lý của ngài erikpuw. Ngài có muốn không?"
+    assert h.personalize(s) == s

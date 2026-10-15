@@ -17,3 +17,11 @@ def _wiki_in_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(evolution, "EVOLUTION_LOG", system / "Evolution.md")
     monkeypatch.setattr(self_healing, "ERRORS_FILE", system / "Errors.md")
     monkeypatch.setattr(evolution, "STYLE_FILE", tmp_path / "_skills" / "STYLE.md")
+
+
+@pytest.fixture(autouse=True)
+def _default_honorific(monkeypatch):
+    """`import server` nạp .env thật (HONORIFIC=bro, 2026-10-15) vào os.environ → test TTS/prompt chạy sau đổi "ngài".
+    Mặc định xưng hô gốc; test cần xưng hô khác tự setenv."""
+    monkeypatch.delenv("HONORIFIC", raising=False)
+    monkeypatch.delenv("USER_NAME", raising=False)

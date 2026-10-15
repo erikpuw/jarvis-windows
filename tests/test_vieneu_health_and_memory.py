@@ -5,9 +5,6 @@ import psutil
 from pathlib import Path
 import pytest
 
-# Các kiểm tra này đo máy cài VieNeu (gói, cache Hugging Face, RAM): bỏ qua nơi chưa cài VieNeu, như CI
-pytest.importorskip("vieneu")
-
 
 def test_vieneu_packages_installed():
     """Kiểm tra các gói bắt buộc cho VieNeu TTS đã được cài đặt."""

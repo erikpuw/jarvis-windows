@@ -697,6 +697,11 @@ class JarvisScraplingBrowser:
         )
         return str(page.html_content) if page else ""
 
+    async def get_json(self, url: str, headers: dict | None = None) -> dict:
+        """GET JSON từ API công khai của chính trang (không cần trình duyệt)."""
+        page = await AsyncFetcher.get(url, stealthy_headers=True, headers=headers or {}, timeout=TIMEOUT_MS)
+        return json.loads(page.body)
+
     async def post_json(self, url: str, body: dict, headers: dict | None = None) -> dict:
         """POST JSON tới API công khai của chính trang (không cần trình duyệt), trả về JSON đã parse."""
         page = await AsyncFetcher.post(url, json=body, stealthy_headers=True, headers=headers or {}, timeout=TIMEOUT_MS)

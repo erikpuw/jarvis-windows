@@ -19,7 +19,7 @@ def test_polite_padding_on_both_sides():
 
 
 def test_already_clean_queries_are_unchanged():
-    for q in ("tìm tin tức nvidia rtx spark", "tin tức nóng thời sự hôm nay"):  # 2nd = greeting_engine's query
+    for q in ("tìm tin tức nvidia rtx spark", "tin tức nóng thời sự hôm nay"):  # 2nd = query tin tức nóng (cũ của greeting đã xoá)
         assert strip_conversational_filler(q) == q, q
 
 

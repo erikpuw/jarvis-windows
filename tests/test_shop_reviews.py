@@ -110,3 +110,42 @@ def test_appliance_cards_keep_only_requested_type(monkeypatch):
     item = {"source": "Điện máy xanh", "url": "x"}
     _, rows = asyncio.run(S._fetch_cards(item, "máy giặt 11kg", {}, sort=False, per_term=None))
     assert [r["name"] for r in rows] == ["Máy giặt LG AI DD Inverter 11 kg"]
+
+
+def test_general_queries_also_search_tiki_when_shopee_blocks():
+    """log 2026-10-15 18:51: Shopee trả trang chặn bot (verify/traffic) → "không trích xuất được giá" mãi. Nhóm general
+    tra thêm Tiki (API công khai) song song; tai nghe/airpods là công nghệ, giá đỗ/trứng là thực phẩm."""
+    assert [u["source"] for u in shop.build_source_urls("bút bi", "general")] == ["Shopee", "Tiki"]
+    assert shop.classify_product_query("airpods pro 3") == "technology"
+    assert shop.classify_product_query("mac mini m4") == "technology"
+    assert shop.classify_product_query("giá đỗ") == "grocery"
+    assert shop.classify_product_query("trứng gà") == "grocery"
+    data = {"data": [{"name": "Tai nghe Apple AirPods Pro 3", "price": 6250000, "url_path": "tai-nghe-p1.html",
+                      "rating_average": 4.8, "review_count": 12, "quantity_sold": {"value": 100}},
+                     {"name": "Hết giá", "price": 0, "url_path": "x.html"}]}
+    cards = shop.sources_mod.parse_tiki(data)
+    assert cards == [{"name": "Tai nghe Apple AirPods Pro 3", "price_vnd": 6250000, "rating": 4.8, "sold": 100,
+                      "url": "https://tiki.vn/tai-nghe-p1.html", "reviews": 12}]
+
+
+def test_tiki_and_technology_sources_include_tiki():
+    assert "Tiki" in [u["source"] for u in shop.build_source_urls("airpods pro 3", "technology")]
+
+
+def test_case_and_eartip_accessories_are_dropped():
+    """probe 2026-10-15: "Airpods Pro 3" ra toàn hộp đựng/ốp của CellphoneS, không có chính sản phẩm."""
+    p = shop._plain
+    for name in ("Hộp đựng tai nghe Apple Airpods Pro 3 ESR", "Ốp Airpods Pro 3 silicone", "Vỏ ốp cho AirPods Pro 3",
+                 "Nút Tai Nghe Thay Thế cho AirPods Pro 3", "Dây đeo Apple Watch"):
+        assert shop._is_unwanted_accessory(p(name), p("airpods pro 3")), name
+    assert not shop._is_unwanted_accessory(p("Tai nghe Bluetooth Apple AirPods Pro 3"), p("airpods pro 3"))
+    assert not shop._is_unwanted_accessory(p("Ốp lưng iPhone 17"), p("ốp lưng iphone 17"))
+
+
+def test_cards_must_match_most_query_words():
+    """probe 2026-10-15: "Airpods Pro 3" ở CellphoneS lẫn "iPhone 18 Pro" (chỉ khớp chữ "pro")."""
+    cards = [{"name": "Tai nghe Apple AirPods Pro 3 Chính hãng", "price_vnd": 5890000, "url": "a"},
+             {"name": "iPhone 18 Pro 256GB", "price_vnd": 38690000, "url": "b"}]
+    assert [c["url"] for c in shop._relevant_cards(cards, "airpods pro 3")] == ["a"]
+    only_off = [{"name": "iPhone 18 Pro 256GB", "price_vnd": 1, "url": "b"}]
+    assert shop._relevant_cards(only_off, "airpods pro 3") == only_off  # không còn gì thì giữ nguyên, để báo gần nhất

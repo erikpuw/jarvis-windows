@@ -4,6 +4,7 @@
 // Giả lập: điện thoại 390x844, rAF bị ép 120Hz. WebSocket và /api bị mock.
 // Chạy: PW=<module playwright> node frontend/e2e/anim-gate.cjs   (cần `npm run dev` ở :5173)
 const { chromium } = require(process.env.PW || "playwright");
+const { dismissWelcome } = require("./_welcome.cjs");
 const BASE = process.env.BASE_URL || "http://localhost:5173/";
 let failed = 0;
 const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} ${name}${extra ? " — " + extra : ""}`); if (!ok) failed++; };
@@ -36,6 +37,10 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   await page.route("**/api/**", (r) => r.fulfill({ json: { success: true, env_keys_set: { llama: true } } }));
   await page.goto(BASE);
   await page.waitForTimeout(2500);
+  // lớp chào giữ orb tắt tới tin đầu (spec 2026-10-16): gửi một tin, rồi chờ orb dựng xong (chấm giữ 1200 ms) trước khi đo
+  for (let i = 0; i < 50 && !sock; i++) await page.waitForTimeout(100);
+  await dismissWelcome(page);
+  await page.waitForTimeout(1800);
   const rate = async (ms = 1500) => {
     await page.evaluate(() => { window.__raf.clear(); window.__gl = 0; });
     await page.waitForTimeout(ms);
@@ -55,7 +60,7 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   check(open.gl === 0 && sum(open, LOOPS) <= 2, "4. mở Settings → mọi vòng lặp dừng hẳn", `gl=${open.gl} ${JSON.stringify(open.raf)}`);
   const cssRunning = () => page.evaluate(() => document.getAnimations().filter((a) => a.playState === "running" && !a.effect?.target?.closest?.("#settings-container")).map((a) => a.animationName || a.transitionProperty));
   const behind = await cssRunning();
-  check(behind.length === 0, "4b. mở Settings → animation CSS trên màn hình chính (đồng hồ, chữ trạng thái, quầng sáng…) cũng dừng hết", behind.join(","));
+  check(behind.length === 0, "4b. mở Settings → animation CSS trên màn hình chính (chữ trạng thái, quầng sáng…) cũng dừng hết", behind.join(","));
 
   await page.evaluate(() => window.dispatchEvent(new CustomEvent("jarvis:overlay", { detail: { open: false } })));
   await page.waitForTimeout(400);
@@ -71,6 +76,9 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   // bot linh vật: 60 khung/s cả trên màn cảm ứng (đã bỏ giới hạn 30; xem bot-fps.cjs). Máy test với rAF giả 120Hz chỉ đo được 35–60 kể cả
   // code cũ (2026-10-15), nên ngưỡng 32 chỉ để bắt lại giới hạn 30
   for (let i = 0; i < 50 && !sock; i++) await page.waitForTimeout(100);
+  // orb đang vẽ (GL phần mềm trong headless) chiếm CPU làm bot rớt ~60→30 khung/s (đo: bot ~47 khi orb tắt). Test 7–8 đo bot/quả cầu/shader nên tắt orb trước
+  await page.evaluate(() => { if (document.getElementById("orb-canvas")?.dataset.backend !== "off") document.getElementById("btn-orb-toggle").click(); });
+  await page.waitForTimeout(800);
   await page.evaluate(() => document.getElementById("command-container")?.classList.add("visible"));
   await page.waitForTimeout(800);
   await page.evaluate(() => (window.__bot = 0)); await page.waitForTimeout(1500);
@@ -89,6 +97,19 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   const statusLoop = hid.raf["anim-gate.ts"] || 0;
   check(statusLoop >= 50 && statusLoop <= 70, "8b. ẩn thanh lệnh: quả cầu trạng thái vẫn chạy (chỉ còn một vòng chung ~60/s)", `${statusLoop.toFixed(0)}/s · lúc hiện ${(shown.raf["anim-gate.ts"] || 0).toFixed(0)}/s`);
   check(hidState.vis === "hidden", "8c. ẩn thanh lệnh: phần đã mờ hẳn được ẩn (visibility), trình duyệt thôi vẽ lớp trong suốt", hidState.vis);
+  await page.evaluate(() => document.getElementById("btn-cmd-bar").click());
+  // fade with a 10 px slide (user 2026-10-16; 15 px still tinted the address bar on the iPhone). 20 px pushed the bar (bottom 18 px) past the screen's bottom edge on hide, and
+  // iOS Safari then tinted its address bar from it: the slide must stay short of the edge
+  const dy = () => page.evaluate(() => { const m = getComputedStyle(document.getElementById("command-bar")).transform; return m === "none" ? 0 : new DOMMatrix(m).m42; });
+  await page.waitForTimeout(100);
+  const yIn = await dy();
+  await page.waitForTimeout(500);
+  await page.evaluate(() => document.getElementById("btn-cmd-bar").click());
+  await page.waitForTimeout(100);
+  const yOut = await dy();
+  await page.waitForTimeout(500);
+  const yHidden = await dy();
+  check(yIn > 0 && yIn < 10 && yOut > 0 && yOut < 10 && Math.abs(yHidden - 10) < 0.01, "8e. hiện/ẩn thanh lệnh: mờ dần kèm trượt 10px (không chạm mép dưới)", JSON.stringify({ yIn, yOut, yHidden }));
   await page.evaluate(() => document.getElementById("btn-cmd-bar").click());
   await page.waitForTimeout(600);
   await page.evaluate(() => (window.__bot = 0)); await page.waitForTimeout(1000);

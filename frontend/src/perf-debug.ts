@@ -19,6 +19,7 @@ export interface PerfSample {
   bubbles: number;
   canvases: number;
   orb: string;
+  orbFirstMs: number | null; // ms after page start when the orb drew its first frame (null: not yet)
   animations: number;
   animNames: string[];
   audio: string;
@@ -128,6 +129,7 @@ export function mountPerfDebug(audioCtx: AudioContext): void {
       bubbles: document.querySelectorAll("#chat-history .chat-bubble").length,
       canvases: document.getElementsByTagName("canvas").length,
       orb: (document.getElementById("orb-canvas") as HTMLCanvasElement | null)?.dataset.backend ?? "loading",
+      orbFirstMs: Number((document.getElementById("orb-canvas") as HTMLCanvasElement | null)?.dataset.first) || null,
       animations: anims.length,
       animNames: [...names].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([n, c]) => (c > 1 ? `${n}×${c}` : n)),
       audio: audioCtx.state,

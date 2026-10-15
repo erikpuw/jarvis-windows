@@ -217,11 +217,11 @@ def description(name: str) -> str:
 _LABELS = {
     "open_app": "Mở ứng dụng", "close_app": "Đóng ứng dụng", "win_control": "Điều khiển Windows",
     "capture_screen": "Chụp màn hình", "read_screen": "Đọc màn hình", "read_webcam": "Webcam",
-    "system_status": "Trạng thái máy", "check_security": "Kiểm tra bảo mật", "play_media": "Phát nhạc/video",
+    "system_status": "Trạng thái máy", "check_security": "Kiểm tra bảo mật", "play_media": "Phát Youtube",
     "weather": "Thời tiết", "search_news": "Tin tức", "market_price": "Giá thị trường",
     "search_products": "Giá sản phẩm", "cinema": "Lịch chiếu phim", "free_games": "Game miễn phí",
-    "lunar_today": "Lịch âm", "zodiac": "Tử vi", "legal_lookup": "Tra cứu pháp luật",
-    "vn_admin_lookup": "Đơn vị hành chính", "lookup_knowledge": "Bách khoa", "check_mail": "Gmail", "gym": "Gym",
+    "lunar_today": "Lịch âm", "zodiac": "Cung hoàng đạo", "legal_lookup": "Tra cứu pháp luật",
+    "vn_admin_lookup": "Đơn vị hành chính", "lookup_knowledge": "Bách khoa toàn thư", "check_mail": "Gmail", "gym": "Gym",
     "office_edit": "Chỉnh sửa tài liệu", "rag_ask": "Hỏi đáp tài liệu", "search_documents": "Kho tài liệu", "read_image": "Đọc ảnh",
     "upscale_image": "Nâng cấp ảnh", "dream": "Dọn dẹp bộ nhớ", "install_extension": "Cài tiện ích",
     "mcp_call": "Gọi MCP", "check_project": "Kiểm tra dự án",
@@ -230,6 +230,26 @@ _LABELS = {
 
 def label(name: str) -> str:
     return _LABELS.get(name, name)
+
+
+def humanize(text: str) -> str:
+    """Tên hàm công cụ lọt vào câu trả lời ("`system_status`", "[system_status]", "system_status") → tên gọi
+    (ngài 2026-10-16: chỉ được nói tên gọi). Tên không có "_" (weather, gym) là từ thường: chỉ đổi khi nằm trong `` hoặc []."""
+    _ensure_loaded()
+    names = sorted((s.name for s in _TOOLS.values()), key=len, reverse=True)
+    if not names:
+        return text
+    alt = "|".join(map(re.escape, names))
+    rx = rf"`({alt})`|\[({alt})\]"
+    under = "|".join(re.escape(n) for n in names if "_" in n)
+    if under:
+        rx += rf"|(?<![\w/])({under})(?![\w/])"
+
+    def sub(m: re.Match) -> str:
+        lab = label(m.group(m.lastindex))
+        keep = not text[:m.start()].strip() or lab.startswith("Gmail")  # đầu câu / tên riêng: giữ chữ hoa
+        return lab if keep else lab[:1].lower() + lab[1:]
+    return re.sub(rx, sub, text)
 
 
 def answer_rules(name: str) -> str:

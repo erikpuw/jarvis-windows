@@ -4,6 +4,7 @@
 //  bấm nút chính hoặc Escape thì thu lại ngay. Đóng: chỉ còn một nút chính, các nút kia không bấm/không focus được.
 // WebSocket và /api bị mock. Chạy: PW=<module playwright> node frontend/e2e/controls-menu.cjs   (cần `npm run dev` ở :5173)
 const { chromium } = require(process.env.PW || "playwright");
+const { dismissWelcome } = require("./_welcome.cjs");
 const BASE = process.env.BASE_URL || "http://localhost:5173/";
 let failed = 0;
 const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} ${name}${extra ? " — " + extra : ""}`); if (!ok) failed++; };
@@ -17,6 +18,9 @@ async function run(label, opts) {
   await page.addInitScript(() => { navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("denied", "NotAllowedError")); });
   await page.goto(BASE);
   await page.waitForTimeout(1500);
+  // lớp chào khoá nút orb (disabled, mờ 0.35) tới tin đầu (spec 2026-10-16): gửi một tin để nút orb mở khoá trước khi đo menu
+  await dismissWelcome(page);
+  await page.waitForTimeout(1800);
   const tag = `[${label}]`;
   const state = () => page.evaluate((IDS) => {
     const root = document.getElementById("controls"), main = document.getElementById("btn-controls");

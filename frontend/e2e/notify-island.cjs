@@ -85,8 +85,8 @@ async function run(label, opts, hasHover) {
     const L = 0.2126 * lum(rgb[0]) + 0.7152 * lum(rgb[1]) + 0.0722 * lum(rgb[2]), contrast = 1.05 / (L + 0.05);
     check(L >= 0.008 && contrast >= 7 && parseFloat(s.canvasOp) >= 0.85 && s.canvasFilter.includes("island-goo"), `${tag} 6. nền đảo sáng hơn nền trang (không chìm vào nền tối) mà chữ trắng vẫn rõ, dựng như Sileo (hai rect dưới bộ lọc goo)`, `${s.fillColor} · độ sáng ${L.toFixed(3)} · tương phản chữ trắng ${contrast.toFixed(1)}:1 · độ đậm ${s.canvasOp}`);
   }
-  const zl = await page.evaluate(() => Object.fromEntries(["jarvis-clock", "command-container", "controls", "webcam-hud", "media-player", "settings-container"].map((id) => [id, +getComputedStyle(document.getElementById(id) || document.body).zIndex || 0])));
-  check(s.z > Math.max(zl["jarvis-clock"], zl["command-container"], zl["controls"], zl["webcam-hud"], zl["media-player"]) && (!zl["settings-container"] || s.z < zl["settings-container"]) && await islandOnTop(page), `${tag} 7. z-index che được đồng hồ/chat/hàng nút/webcam/media nhưng dưới Cài đặt`, `z ${s.z} · ${JSON.stringify(zl)}`);
+  const zl = await page.evaluate(() => Object.fromEntries(["command-container", "controls", "webcam-hud", "media-player", "settings-container"].map((id) => [id, +getComputedStyle(document.getElementById(id) || document.body).zIndex || 0])));
+  check(s.z > Math.max(zl["command-container"], zl["controls"], zl["webcam-hud"], zl["media-player"]) && (!zl["settings-container"] || s.z < zl["settings-container"]) && await islandOnTop(page), `${tag} 7. z-index che được chat/hàng nút/webcam/media nhưng dưới Cài đặt`, `z ${s.z} · ${JSON.stringify(zl)}`);
   await page.waitForTimeout(3300);
   s = await st();
   check(s.state === "pill", `${tag} 8. sau vài giây vẫn không tự bung`, s.state);
@@ -133,7 +133,7 @@ async function run(label, opts, hasHover) {
     `${tag} 9d. nội dung thẻ chỉ đổi độ mờ, không tính lại bố cục mỗi khung hình (không animate grid/width)`, "");
   const early = fr.filter((f) => f.op > 0.15 && f.h < finalH * 0.45);
   check(early.length === 0 && Math.max(...fr.map((f) => f.op)) >= 0.99, `${tag} 10. chữ hiện cùng thẻ: khi chữ đã rõ (>15%) khung đã rũ xuống ≥ 45%`, `${early.length} khung chữ hiện sớm; chữ cuối ${Math.max(...fr.map((f) => f.op)).toFixed(2)}`);
-  check(await islandOnTop(page), `${tag} 11. thẻ nằm trên cùng (che đồng hồ/chat)`, "");
+  check(await islandOnTop(page), `${tag} 11. thẻ nằm trên cùng (che chat)`, "");
   { // PC và điện thoại giống hệt nhau, dựng như Sileo: hai rect dưới một bộ lọc goo nhẹ
     const look = await page.evaluate(() => {
       const r = document.getElementById("error-text");
