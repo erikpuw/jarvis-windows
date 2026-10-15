@@ -2,7 +2,7 @@
 
 **Just A Rather Very Intelligent System** — trợ lý AI giọng nói tiếng Việt, chạy local trên Windows.
 
-**Phiên bản:** [v9.9.8](VERSION) · **Dự án gốc:** [Ethan](https://ethanplus.ai)
+**Phiên bản:** [v10.0.1](VERSION) · **Dự án gốc:** [Ethan](https://ethanplus.ai)
 
 JARVIS dùng mô hình ngôn ngữ local để trò chuyện, xử lý yêu cầu và gọi công cụ trên máy. Hệ thống có WebUI, giọng nói tiếng Việt, bộ nhớ hội thoại và hệ thống công cụ phẳng đa năng. Dữ liệu bộ nhớ chính được lưu local.
 
