@@ -391,28 +391,6 @@ class MCPHub:
                 log.error("Failed to list tools from '%s': %s", name, e)
         return all_tools
 
-    async def get_all_tools_openai(self) -> list[dict]:
-        """List all tools from connected servers as OpenAI function calling schemas.
-        
-        Used for diagnostics/admin. Not passed to LLM (MCP is infrastructure tier).
-        """
-        openai_tools: list[dict] = []
-        for server_name, session in self.sessions.items():
-            try:
-                tools_result = await session.list_tools()
-                for tool in tools_result.tools:
-                    openai_tools.append({
-                        "type": "function",
-                        "function": {
-                            "name": tool.name,
-                            "description": tool.description,
-                            "parameters": tool.inputSchema,
-                        }
-                    })
-            except Exception as e:
-                log.warning("Failed to list tools from '%s': %s", server_name, e)
-        return openai_tools
-
     async def call_tool(
         self, server_name: str, tool_name: str, arguments: dict[str, Any] = None, timeout: float = 60.0
     ) -> Any:

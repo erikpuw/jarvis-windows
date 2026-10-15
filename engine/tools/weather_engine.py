@@ -314,31 +314,6 @@ def _format_response(resolved: str, data: dict) -> str:
     return "\n".join(lines)
 
 
-def sanitize_weather_display_text(text: str) -> str:
-    """Dọn ký hiệu LaTeX do LLM chèn vào các đơn vị thời tiết."""
-    if not text:
-        return text
-
-    cleaned = re.sub(r"\^\s*\\circ\s*C\b", "°C", text, flags=re.I)
-    cleaned = re.sub(r"\\circ\s*C\b", "°C", cleaned, flags=re.I)
-    cleaned = cleaned.replace(r"\%", "%")
-
-    weather_measurement = r"[+-]?\d+(?:[.,]\d+)?\s*(?:km/h|m/s|mm|°C|%)"
-    cleaned = re.sub(
-        rf"\$(?=\s*{weather_measurement})",
-        "",
-        cleaned,
-        flags=re.I,
-    )
-    cleaned = re.sub(
-        rf"({weather_measurement})\$",
-        r"\1",
-        cleaned,
-        flags=re.I,
-    )
-    return cleaned
-
-
 # ── Báo Mới: danh sách tỉnh thành + thời tiết từng giờ (JSON nhúng trong trang, dữ liệu gốc từ weather.com) ──
 
 _BAOMOI_URL = "https://baomoi.com/tien-ich-thoi-tiet-{slug}.epi"

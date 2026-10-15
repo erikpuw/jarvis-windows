@@ -142,62 +142,12 @@ class SkillManager:
         log.info(f"Loaded {loaded_count} skills")
         return loaded_count
 
-    def get_skill(self, skill_name: str) -> Optional[Skill]:
-        """Get a skill by name"""
-        return self.skills.get(skill_name)
-
-    def list_skills(self, enabled_only: bool = True, category: Optional[str] = None) -> list[Skill]:
-        """List all loaded skills"""
-        skills = list(self.skills.values())
-
-        if enabled_only:
-            skills = [s for s in skills if s.enabled]
-
-        if category:
-            skills = [s for s in skills if s.category == category]
-
-        return skills
-
-    def search_skills(self, query: str) -> list[Skill]:
-        """Search skills by name, description, or tags"""
-        query_lower = query.lower()
-        results = []
-
-        for skill in self.skills.values():
-            if (query_lower in skill.name.lower() or
-                query_lower in skill.description.lower() or
-                any(query_lower in tag.lower() for tag in skill.tags)):
-                results.append(skill)
-
-        return results
-
-    def enable_skill(self, skill_name: str) -> bool:
-        """Enable a skill"""
-        if skill_name not in self.skills:
-            return False
-        self.skills[skill_name].enabled = True
-        log.info(f"Enabled skill: {skill_name}")
-        return True
-
-    def disable_skill(self, skill_name: str) -> bool:
-        """Disable a skill"""
-        if skill_name not in self.skills:
-            return False
-        self.skills[skill_name].enabled = False
-        log.info(f"Disabled skill: {skill_name}")
-        return True
-
     def get_stats(self) -> dict:
         """Get statistics about loaded skills"""
         return {
             "total_skills": len(self.skills),
             "enabled_skills": sum(1 for s in self.skills.values() if s.enabled),
         }
-
-    def get_all_skills_dict(self, enabled_only: bool = True) -> dict:
-        """Get all skills as dictionary"""
-        skills = self.list_skills(enabled_only=enabled_only)
-        return {skill.name: skill.to_dict() for skill in skills}
 
 
 _skill_manager: Optional[SkillManager] = None
@@ -209,15 +159,6 @@ def get_skill_manager() -> SkillManager:
     if _skill_manager is None:
         _skill_manager = SkillManager()
     return _skill_manager
-
-
-def initialize_skills() -> SkillManager:
-    """Initialize skill manager and scan directories"""
-    manager = get_skill_manager()
-    manager.scan_skills(recursive=True)
-    stats = manager.get_stats()
-    log.info(f"Skills initialized: {stats['total_skills']} skills")
-    return manager
 
 
 def _auto_skill_description(content: str, fallback: str, max_len: int = 150) -> str:
@@ -272,47 +213,5 @@ def create_skill(name: str, content: str, category: str = "general", tags: list[
         return {"success": True, "message": f"Skill '{name_clean}' created successfully at {file_path}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
-
-
-def patch_skill(name: str, old_content: str, new_content: str) -> dict:
-    """Sửa đổi một phần nội dung kỹ năng hiện có dưới dạng markdown trong skills/ để tự tối ưu hóa.
-    
-    Args:
-        name: Tên kỹ năng (ví dụ: 'git-rebase')
-        old_content: Nội dung cũ cần tìm để thay thế
-        new_content: Nội dung mới dùng để thay thế
-    """
-    if not name or not old_content:
-        return {"success": False, "error": "Name and old_content are required"}
-        
-    skill_manager = get_skill_manager()
-    skill = skill_manager.get_skill(name)
-    if not skill:
-        for s in skill_manager.skills.values():
-            if s.name.lower() == name.lower():
-                skill = s
-                break
-                
-    if not skill or not skill.file_path:
-        return {"success": False, "error": f"Skill '{name}' not found"}
-        
-    file_path = Path(skill.file_path)
-    if not file_path.exists():
-        return {"success": False, "error": f"Skill file does not exist: {file_path}"}
-        
-    content = file_path.read_text(encoding="utf-8")
-    if old_content not in content:
-        return {"success": False, "error": "old_content not found in skill file"}
-        
-    updated_content = content.replace(old_content, new_content)
-    
-    try:
-        file_path.write_text(updated_content, encoding="utf-8")
-        skill_manager.scan_skills()
-        log.info("Agent patched skill: %s", name)
-        return {"success": True, "message": f"Skill '{name}' patched successfully"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
 
 

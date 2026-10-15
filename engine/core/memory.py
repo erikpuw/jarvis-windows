@@ -183,15 +183,6 @@ def save_memory(content: str, mem_type: str = "fact", source: str = "", importan
     return mem_id
 
 
-def get_important_memories(limit: int = 10) -> list[dict]:
-    conn = _get_db()
-    results = conn.execute(
-        "SELECT * FROM memories ORDER BY importance DESC, access_count DESC LIMIT ?", (limit,)
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in results]
-
-
 def _list_memory_table(
     table: str,
     columns: str,
@@ -340,45 +331,6 @@ def delete_memory(mem_id: int) -> bool:
         return True
     except Exception as e:
         log.error(f"Failed to delete memory: {e}", exc_info=True)
-        return False
-
-
-def update_memory(
-    mem_id: int,
-    content: str,
-    importance: int = 5,
-    mem_type: str = "fact",
-    *,
-    source: str | None = None,
-) -> bool:
-    """Cập nhật ghi nhớ dài hạn và reload vector index."""
-    try:
-        content = strip_images(strip_emojis(content.strip()))
-        conn = _get_db()
-        row = conn.execute(
-            "SELECT source FROM memories WHERE id=?", (mem_id,)
-        ).fetchone()
-        if not row:
-            conn.close()
-            return False
-        final_source = row["source"] if source is None else source
-        conn.execute(
-            """UPDATE memories
-               SET content=?, type=?, source=?, importance=? WHERE id=?""",
-            (content, mem_type, final_source, importance, mem_id),
-        )
-        conn.execute(
-            """UPDATE memory_fts
-               SET content=?, type=?, source=? WHERE rowid=?""",
-            (content, mem_type, final_source, mem_id),
-        )
-        conn.commit()
-        conn.close()
-        _invalidate_semantic_memory_cache(mem_id, content, mem_type)
-        log.info(f"📝 Updated memory id={mem_id}")
-        return True
-    except Exception as e:
-        log.error(f"Failed to update memory: {e}", exc_info=True)
         return False
 
 
@@ -712,51 +664,6 @@ class SemanticMemoryEngine:
             self.mem_contents[key] = {"content": content, "type": mtype}
             self._save_cache()
         log.info(f"⚡ Add vector: id={mid} type={mtype}")
-
-    def semantic_recall(self, query: str, limit: int = 3) -> list[dict]:
-        if not self.initialized:
-            return []
-
-        if self.vector_index is None or len(self.vector_index) == 0:
-            return []
-
-        q_vec = self._get_embedding(query)
-        if q_vec is None:
-            return []
-
-        query_np = np.array([q_vec], dtype=np.float32)
-        scores, ids = self.vector_index.search(query_np, k=limit)
-
-        source_by_id: dict[int, str] = {}
-        candidate_ids = [int(mid) for mid in ids[0] if mid != -1] if len(ids) and len(ids[0]) else []
-        if candidate_ids:
-            placeholders = ",".join("?" for _ in candidate_ids)
-            conn = _get_db()
-            try:
-                rows = conn.execute(
-                    f"SELECT id, source FROM memories WHERE id IN ({placeholders})", candidate_ids
-                ).fetchall()
-                source_by_id = {int(row["id"]): str(row["source"] or "") for row in rows}
-            finally:
-                conn.close()
-
-        results = []
-        if len(ids) > 0 and len(ids[0]) > 0:
-            for score, mid_val in zip(scores[0], ids[0]):
-                if mid_val != -1:
-                    key = f"db_{mid_val}"
-                    if key in self.mem_contents:
-                        info = self.mem_contents[key]
-                        results.append({
-                            "id": mid_val,
-                            "type": info["type"],
-                            "content": info["content"],
-                            "source": source_by_id.get(int(mid_val), ""),
-                            "score": float(score)
-                        })
-        if results:
-            log.info("🔮 Semantic recall")
-        return results
 
 
 # ---------------------------------------------------------------------------
