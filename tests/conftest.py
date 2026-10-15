@@ -2,7 +2,7 @@
 vì đường dẫn wiki tính sẵn lúc import). Test cần đường dẫn riêng vẫn tự monkeypatch đè lên được."""
 import pytest
 
-from engine.core import evolution, learning
+from engine.core import evolution, learning, self_healing
 
 
 @pytest.fixture(autouse=True)
@@ -15,4 +15,5 @@ def _wiki_in_tmp(tmp_path, monkeypatch):
                        ("LEARNING_HUB_WIKI_PATH", system / "Học hỏi.md")):
         monkeypatch.setattr(learning, name, path)
     monkeypatch.setattr(evolution, "EVOLUTION_LOG", system / "Evolution.md")
+    monkeypatch.setattr(self_healing, "ERRORS_FILE", system / "Errors.md")
     monkeypatch.setattr(evolution, "STYLE_FILE", tmp_path / "_skills" / "STYLE.md")

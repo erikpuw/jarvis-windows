@@ -238,6 +238,12 @@ body:has(#settings-container.open) #controls,
   text-shadow: 0 0 10px rgba(74, 222, 128, 0.3);
 }
 
+/* Settings (or a hidden tab) paused the page (anim-gate.ts): every CSS animation behind it stops too, not just the JS loops */
+html.anim-paused body > :not(#settings-container),
+html.anim-paused body > :not(#settings-container) * {
+  animation-play-state: paused !important;
+}
+
 #command-container {
   position: fixed;
   bottom: var(--container-bottom);
@@ -259,13 +265,16 @@ body:has(#settings-container.open) #controls,
 }
 
 #command-container> :not(#status-row) {
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s;
 }
 
+/* faded out, then visibility:hidden once the fade is over: an opacity-0 layer is still painted every frame */
 #command-container:not(.visible)> :not(#status-row) {
   opacity: 0;
   transform: translateY(20px);
   pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s 0.25s;
 }
 
 #chat-history {
@@ -282,7 +291,6 @@ body:has(#settings-container.open) #controls,
   pointer-events: auto;
   position: relative;
   z-index: 10;
-  -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 3%, black 100%);
   mask-image: linear-gradient(to bottom, transparent 0%, black 3%, black 100%);
@@ -466,7 +474,6 @@ body:has(#settings-container.open) #controls,
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
   margin: 8px 0;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1984,6 +1991,26 @@ body:has(#settings-container.open) #controls,
   }
 }
 
+/* Phones are portrait only (user 2026-10-15). iOS ignores the manifest's "orientation": "portrait" and Safari will not let a page
+   lock it, so a phone on its side (touch, at most 500px tall) gets a cover over the whole page; main.ts pauses every effect behind
+   it like under Settings. A short desktop window (mouse) is not covered. e2e/landscape.cjs */
+@media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
+  body::after {
+    content: "Xoay dọc điện thoại để dùng JARVIS";
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px);
+    background: #050508;
+    color: rgba(207, 239, 255, 0.85);
+    font-size: var(--fs-input);
+    letter-spacing: 0.5px;
+  }
+}
+
 /* ── Command hub, phase 1 ─────────────────────────────────────────────── */
 
 /* status row: orb + label, in the flow between the chat and the bar so nothing overlaps it */
@@ -2041,23 +2068,7 @@ body:has(#settings-container.open) #controls,
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0;
-  animation: metal-glow-fade 3s infinite;
-}
-
-#cmd-send-wrap .metal-glow.paused {
-  animation-play-state: paused;
-}
-
-@keyframes metal-glow-fade {
-  0%, 1% { opacity: 0; animation-timing-function: ease-in-out; }
-  33.3% { opacity: 1; }
-  66.7% { opacity: 1; animation-timing-function: ease-in-out; }
-  100% { opacity: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  #cmd-send-wrap .metal-glow { animation: none; opacity: 1; }
+  opacity: 0; /* the 3 s beat (fade in, hold, fade out) is run by metal-halo.ts */
 }
 
 #cmd-send-wrap .metal-ring canvas {

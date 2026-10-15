@@ -10,6 +10,7 @@ import {
   Brain, Lightbulb, Dna, Sprout,
   Workflow, RotateCw,
   Target, CheckCheck,
+  Wrench, Hammer,
   MessageSquare, MessagesSquare,
   Dumbbell, Activity,
   Search, ChevronLeft, ChevronRight,
@@ -23,6 +24,7 @@ type MemoryCategoryId =
   | "learning"
   | "workflow"
   | "outcome"
+  | "correction"
   | "conversation"
   | "evolution"
   | "gym";
@@ -49,6 +51,8 @@ const MEMORY_CATEGORIES: MemoryCategory[] = [
   { id: 'learning', label: "Learnings", endpoint: "/api/learnings/list", responseKey: "learnings", color: "#a78bfa", icon: Brain, activeIcon: Lightbulb },
   { id: 'workflow', label: "Workflows", endpoint: "/api/workflows/list", responseKey: "workflows", color: "#22d3ee", icon: Workflow, activeIcon: RotateCw },
   { id: 'outcome', label: "Outcomes", endpoint: "/api/outcomes/list", responseKey: "outcomes", color: "#f59e0b", icon: Target, activeIcon: CheckCheck },
+  // Ngài sửa lại công cụ JARVIS đã chọn (engine/core/learning.py corrections). Backend chưa cho sửa bản ghi: chỉ xem và xoá.
+  { id: 'correction', label: "Sửa công cụ", endpoint: "/api/corrections/list", responseKey: "corrections", color: "#fb923c", icon: Wrench, activeIcon: Hammer },
   { id: 'conversation', label: "Conversations", endpoint: "/api/conversations", responseKey: "conversations", color: "#60a5fa", icon: MessageSquare, activeIcon: MessagesSquare },
   { id: 'gym', label: "Gym Memory", endpoint: "/api/gym/list", responseKey: "items", color: "#ec4899", icon: Dumbbell, activeIcon: Activity },
   // Hai file tiến hóa (STYLE.md đang áp dụng, Evolution.md nhật ký): đọc và sửa tay ở đây, không có chỗ nào khác. Là file nên không xoá được.
@@ -59,6 +63,7 @@ const EDITABLE_MEMORY_FIELDS: Record<MemoryCategoryId, string[]> = {
   learning: ["type", "semantic_key", "content", "source", "importance", "embedding"],
   workflow: ["tools", "intent", "tool_chain", "sample_queries", "success_evidence", "validation_count", "wiki_path"],
   outcome: ["tools", "query", "status", "result", "traces"],
+  correction: ["query", "wrong_tool", "right_tool", "count"],
   conversation: ["role", "content", "session_id"],
   gym: ["title", "content", "type"],
   evolution: ["content"],
@@ -125,6 +130,9 @@ function formatFieldLabel(field: string): string {
     result: "Kết quả (Result)",
     traces: "Dấu vết thực thi (Traces)",
     tools: "Công cụ",
+    wrong_tool: "Đã dùng",
+    right_tool: "Nên dùng",
+    count: "Số lần sửa",
     importance: "Độ quan trọng (Importance 1-10)",
     source: "Nguồn gốc (Source)",
     content: "Nội dung (Content)",
@@ -169,6 +177,7 @@ function renderMemoryCategoryNav(): void {
     learning: "learnings",
     workflow: "workflows",
     outcome: "outcomes",
+    correction: "corrections",
     conversation: "conversations",
     gym: "gym",
   };
@@ -281,6 +290,7 @@ function memoryItemTitle(item: MemoryItem): string {
 }
 
 function memoryItemPreview(item: MemoryItem): string {
+  if (item.wrong_tool !== undefined) return `${memoryValueText(item.wrong_tool)} → ${memoryValueText(item.right_tool)} · ${memoryValueText(item.count)} lần`;
   const value = item.content ?? item.result ?? item.success_evidence ?? item.mem_type ?? item.source ?? "";
   return memoryValueText(value).replace(/\s+/g, " ").slice(0, 160);
 }
@@ -289,7 +299,7 @@ function renderMemoryField(field: string, value: unknown): string {
   const text = memoryValueText(value);
   const rows = activeMemoryKind === "evolution" ? 16 : 4; // một file luật dài hơn một bản ghi
   const isLong = ["content", "result", "traces", "tool_chain", "sample_queries", "success_evidence", "embedding"].includes(field);
-  const isNumber = ["importance", "validation_count", "memory_id"].includes(field);
+  const isNumber = ["importance", "validation_count", "memory_id", "count"].includes(field);
   const typeTag = isNumber ? "Số" : (isLong ? "Văn bản lớn" : "Chuỗi ký tự");
   const control = isLong
     ? `<textarea data-memory-field="${field}" rows="${rows}" class="sd-memory-input sd-memory-textarea" placeholder="Nhập ${escapeMemoryHtml(formatFieldLabel(field))}…">${escapeMemoryHtml(text)}</textarea>`
@@ -413,7 +423,7 @@ function renderMemoryItems(): void {
       </div>
       ${metadataHtml}
       <div class="sd-mem-detail-actions">
-        ${activeMemoryKind === "gym" ? "" : `
+        ${activeMemoryKind === "gym" || activeMemoryKind === "correction" ? "" : `
         <button class="settings-btn primary" id="memory-save-btn" data-memory-action="save" data-action="save">
           Lưu thay đổi
         </button>

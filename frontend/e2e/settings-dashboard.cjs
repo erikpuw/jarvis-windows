@@ -25,11 +25,13 @@ function status(hasKey) {
 async function newPage(browser, { width, height, hasKey = true }) {
   const page = await browser.newPage({ viewport: { width, height } });
   const calls = [];
-  // Đếm frame của orb: vòng lặp trong orb.ts là callback rAF tên "animate".
+  // Đếm frame của orb: mỗi khung orb xoá canvas #orb-canvas một lần (orb vẽ trong vòng của three, Chromium headless chạy nền WebGL 2).
   await page.addInitScript(() => {
     window.__orbFrames = 0;
-    const raf = window.requestAnimationFrame.bind(window);
-    window.requestAnimationFrame = (cb) => { if (cb.name === "animate") window.__orbFrames++; return raf(cb); };
+    for (const C of [WebGL2RenderingContext, WebGLRenderingContext]) {
+      const c = C.prototype.clear;
+      C.prototype.clear = function (m) { if (this.canvas.id === "orb-canvas") window.__orbFrames++; return c.call(this, m); };
+    }
   });
   await page.routeWebSocket(/\/ws/, () => {}); // không bao giờ nối tới JARVIS thật
   const json = (r, body) => r.fulfill({ json: body });
@@ -57,7 +59,7 @@ async function newPage(browser, { width, height, hasKey = true }) {
   await page.route("**/api/settings/catalog", (r) => { calls.push(["catalog"]); return json(r, {
     success: true, hooks: [], skills: [], plugins: [],
     prompts: [{ id: "chat", name: "chat.md", title: "Chat", description: "d", content: "old prompt", file_path: "prompt/chat.md" }],
-    commands: [{ name: "check_mail", file: "check_mail.md", description: "d", usage: `'{"max_results": "Số email"}'` }],
+    commands: [{ name: "check_mail", file: "check_mail.md", description: "d", usage: "/check_mail <max_results>" }],
     mentions: [{ id: "desktop", name: "desktop", file: "agent_desktop.py", description: "d", example: "@desktop mở notepad", mention: "@desktop" }],
   }); });
   await page.route("**/api/settings/test-llama", (r) => json(r, { valid: true }));
@@ -78,12 +80,11 @@ async function newPage(browser, { width, height, hasKey = true }) {
   });
   page.on("dialog", (d) => { calls.push(["dialog", d.type(), d.message()]); d.accept(); });
   await page.goto(BASE);
-  await page.waitForSelector("#btn-menu morph-icon path");
+  await page.waitForSelector("#btn-settings", { state: "attached" });
   return { page, calls };
 }
 
 async function openViaMenu(page) {
-  await page.click("#btn-menu");
   await page.evaluate(() => document.getElementById("btn-settings").click());
   await page.waitForSelector("#settings-container.open");
   await page.waitForTimeout(400);
@@ -97,7 +98,7 @@ const orbFramesIn = async (page, ms) => {
 };
 
 const LEGACY_IDS = [
-  "settings-close", "settings-welcome", "setup-nav", "btn-setup-next",
+  "settings-close", "setup-nav", "btn-setup-next",
   "input-llama-key", "btn-test-llama", "status-llama", "input-llama-url", "btn-save-llama-url",
   "input-fish-key", "btn-test-fish", "status-fish", "btn-save-keys",
   "field-vieneu-voice", "select-vieneu-voice", "btn-save-voice-id", "input-clone-name", "input-clone-file",
@@ -175,8 +176,8 @@ const PAGES = ["overview", "connect", "voice", "user", "system", "memory"];
     await page.click('.sd-nav-item[data-page="commands"]');
     await page.waitForTimeout(400);
     const cmdText = await page.textContent("#commands-grid");
-    check(cmdText.includes("/check_mail <max_results>") && cmdText.includes("Số email"),
-      "14. Commands hiện cú pháp /lệnh và tham số thật", cmdText.slice(0, 160));
+    check(cmdText.includes("/check_mail <max_results>") && cmdText.includes("JARVIS sẽ hỏi lại"),
+      "14. Commands hiện cú pháp /lệnh <tham số> lấy từ registry.usage", cmdText.slice(0, 160));
 
     await page.click('.sd-nav-item[data-page="prompts"]');
     await page.waitForTimeout(400);

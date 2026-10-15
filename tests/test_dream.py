@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from engine.core.dream import (
-    _split_message_chunks, _split_log_entries, _extract_json, _is_junk_bullet, _remove_day_link,
+    _split_message_chunks, _split_log_entries, _is_junk_bullet, _remove_day_link,
     extract_day_summary_from_month,
 )
 
@@ -44,24 +44,6 @@ def test_split_log_entries_keeps_unparseable_headings():
     assert len(entries) == 1
     assert entries[0][0] is None
     assert "content here" in entries[0][1]
-
-
-def test_extract_json_plain():
-    assert _extract_json('{"bullets": ["a", "b"]}') == {"bullets": ["a", "b"]}
-
-
-def test_extract_json_fenced_code_block():
-    raw = 'Đây là kết quả:\n```json\n{"bullets": ["x"]}\n```\nCảm ơn!'
-    assert _extract_json(raw) == {"bullets": ["x"]}
-
-
-def test_extract_json_embedded_in_prose():
-    raw = 'Chào bạn, tôi đã tóm tắt xong: {"trivial": false, "summary": "abc"} Bạn cần gì thêm không?'
-    assert _extract_json(raw) == {"trivial": False, "summary": "abc"}
-
-
-def test_extract_json_garbage_returns_empty_dict():
-    assert _extract_json("không có JSON nào ở đây cả") == {}
 
 
 def test_is_junk_bullet_catches_offers_and_questions():
@@ -114,10 +96,6 @@ if __name__ == "__main__":
     test_split_message_chunks_groups_by_gap()
     test_split_log_entries_preserves_preamble_and_parses_dates()
     test_split_log_entries_keeps_unparseable_headings()
-    test_extract_json_plain()
-    test_extract_json_fenced_code_block()
-    test_extract_json_embedded_in_prose()
-    test_extract_json_garbage_returns_empty_dict()
     test_is_junk_bullet_catches_offers_and_questions()
     test_remove_day_link_drops_only_the_matching_day()
     test_remove_day_link_is_noop_when_day_not_present()

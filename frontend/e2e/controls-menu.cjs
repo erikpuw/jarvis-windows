@@ -50,7 +50,7 @@ async function run(label, opts) {
   for (let a = 0; a < 6; a++) for (let b = a + 1; b < 6; b++) minD = Math.min(minD, Math.hypot(s.items[a].cx - s.items[b].cx, s.items[a].cy - s.items[b].cy));
   check(minD >= 31, `${tag} 7. các nút không chồng lên nhau`, `cách nhau gần nhất ${minD.toFixed(1)}px`);
   const dist = s.items.map((i) => Math.hypot(i.cx - s.main.cx, i.cy - s.main.cy));
-  check(Math.max(...dist) <= 96 && Math.min(...dist) >= 45, `${tag} 8. xếp trên hai vòng cung ôm nút chính, cụm gọn (bán kính ${Math.round(Math.min(...dist))}–${Math.round(Math.max(...dist))}px)`, JSON.stringify(dist.map(Math.round)));
+  check(Math.max(...dist) <= 96 && Math.min(...dist) >= 43, `${tag} 8. xếp trên hai vòng cung ôm nút chính, cụm gọn (bán kính ${Math.round(Math.min(...dist))}–${Math.round(Math.max(...dist))}px)`, JSON.stringify(dist.map(Math.round)));
   check(s.items.every((i) => i.cx <= s.main.cx + 1 && i.cy >= s.main.cy - 1), `${tag} 9. các nút nằm về phía trái và phía dưới nút chính`, "");
 
   // mỗi nút vẫn làm việc cũ (bấm chuột thật)

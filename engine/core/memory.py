@@ -495,52 +495,6 @@ def get_messages(limit: int = 100, session_id: str = "") -> list[dict]:
     return result
 
 
-def build_unified_routing_history(
-    current_text: str,
-    fallback_history: list[dict] | None = None,
-    limit: int = 12,
-    max_chars: int = 4800,
-) -> list[dict]:
-    safe_limit = max(1, min(int(limit), 30))
-    try:
-        history = get_messages(limit=safe_limit, session_id=get_session())
-    except Exception as exc:
-        log.warning("Routing history DB fallback: %s", exc)
-        history = list(fallback_history or [])[-safe_limit:]
-
-    normalized: list[dict] = []
-    for item in history:
-        role = str(item.get("role", "")).strip()
-        content = str(item.get("content", "")).strip()
-        if not role or not content:
-            continue
-        # Chỉ gộp bản ghi trùng liền kề; "ừ" lặp lại ở lượt khác vẫn là một lượt thật.
-        if normalized and (normalized[-1]["role"], normalized[-1]["content"]) == (role, content):
-            continue
-        entry = {"role": role, "content": content}
-        normalized.append(entry)
-
-    clean_current = str(current_text or "").strip()
-    if clean_current and (not normalized or (normalized[-1]["role"], normalized[-1]["content"]) != ("user", clean_current)):
-        normalized.append({"role": "user", "content": clean_current})
-
-    bounded: list[dict] = []
-    remaining = max(256, int(max_chars))
-    for item in reversed(normalized[-safe_limit:]):
-        content = item["content"]
-        if remaining <= 0:
-            break
-        if len(content) > remaining:
-            content = content[:remaining]
-        bounded.append({**item, "content": content})
-        remaining -= len(content)
-    bounded.reverse()
-    return bounded
-
-
-
-
-
 # ---------------------------------------------------------------------------
 # Semantic Memory — Vector search with turbovec
 # ---------------------------------------------------------------------------
@@ -803,9 +757,6 @@ class SemanticMemoryEngine:
         if results:
             log.info("🔮 Semantic recall")
         return results
-
-
-
 
 
 # ---------------------------------------------------------------------------

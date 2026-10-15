@@ -40,7 +40,7 @@ async function run(browser, bootSeconds) {
 (async () => {
   const browser = await chromium.launch();
   const r = await run(browser, 45);
-  check(r.restartCalls === 1 && /khởi động lại/i.test(r.before), "1. bấm Restart → gọi /api/restart, hiện 'Đang khởi động lại…'", r.before);
+  check(r.restartCalls === 1 && /khởi động lại/i.test(r.before), "1. bấm Restart → gọi /api/restart, hiện 'Đang khởi động lại…'", `${r.before} · gọi ${r.restartCalls} lần`);
   check(!/thất bại/.test(r.mid), "2. server còn đang khởi động (45s) → chưa báo thất bại", r.mid);
   check(!/khởi động lại|thất bại/i.test(r.after), "3. server lên rồi → giao diện tự nối lại và xóa trạng thái restart", r.after);
   const f = await run(browser, 140);

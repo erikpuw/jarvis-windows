@@ -43,12 +43,13 @@ async function open(browser, opts = {}) {
   const [lo, lt] = await page.evaluate(() => [document.getElementById("status-orb").dataset.orb, document.getElementById("status-text").textContent]);
   check(lo === "listening" && lt === "Đang nghe…", '2. mở mic → orb listening, nhãn "Đang nghe…"', `${lo} / ${lt}`);
   await page.waitForTimeout(2000); // hẹn giờ khởi động của trang (chuyển sang listening) có thể chạy muộn và ghi đè trạng thái
-  const cases = [["thinking", "connecting", "Đang nghĩ…"], ["working", "solving", "Đang làm việc…"], ["speaking", "composing", "Đang trả lời…"]];
+  const cases = [["thinking", "connecting", "Đang nghĩ…"], ["working", "solving", "Đang làm việc…"], ["speaking", "composing", "Đang đọc…"]];
   for (const [jarvis, orbState, label] of cases) {
     const [o, t] = await st(jarvis);
     check(o === orbState && t === label, `2. ${jarvis} → orb ${orbState}, nhãn "${label}"`, `${o} / ${t}`);
   }
   await page.evaluate(() => document.getElementById("btn-mute").click()); // tắt mic lại → idle không chuyển thành listening
+  send({ type: "status", state: "idle", source: "tts" }); // the reading label ends with the TTS's own idle (644cc2b), as the backend always sends it
   const [io, it] = await st("idle");
   check(io === "working" && it === "Sẵn sàng", "2e. idle → orb working (chậm), nhãn 'Sẵn sàng'", `${io} / ${it}`);
   const slow = await page.$eval("#status-orb", (e) => e.dataset.speed);
@@ -97,24 +98,12 @@ async function open(browser, opts = {}) {
   await page.evaluate(() => document.getElementById("command-container").classList.add("visible"));
   await page.waitForTimeout(500);
 
-  // 3. viền sáng của thanh lệnh chỉ có MỘT hiệu ứng: aura (canvas, src/edge-aura.ts). Beam CSS cũ đã bỏ, không chồng lên nhau.
-  const auraSum = () => page.$eval("#command-bar-inner .cmd-aura-canvas", (c) => { const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data; let a = 0; for (let i = 3; i < d.length; i += 4) a += d[i]; return a; });
-  const two = await page.evaluate(() => ({ beam: !!document.querySelector(".cmd-beam"), aura: document.querySelectorAll("#command-bar-inner .cmd-aura-canvas").length, beamCss: [...document.styleSheets].some((sh) => { try { return [...sh.cssRules].some((r) => /cmd-beam|beam-a/.test(r.cssText)); } catch { return false; } }) }));
-  check(!two.beam && two.aura === 1 && !two.beamCss, "3a. chỉ còn aura (1 canvas), không còn beam CSS chồng lên", JSON.stringify(two));
-  await st("thinking");
-  await page.waitForTimeout(900); // aura làm sáng dần (nội suy)
-  const bright = await auraSum();
-  await st("idle"); // still muted, so idle stays idle
-  await page.waitForTimeout(1500);
-  const faint = await auraSum();
-  check(faint > 0 && bright > faint * 1.25, "3b. nghĩ → aura sáng hơn rảnh (và rảnh vẫn còn mờ)", `rảnh=${faint} nghĩ=${bright}`);
-
-  // 3c. viền thanh lệnh vẫn còn rõ (aura chạy đè lên viền, không thay viền)
+  // 3c. viền thanh lệnh tĩnh vẫn rõ (aura src/edge-aura.ts đã gỡ ở e03e276)
   const border = await page.evaluate(() => {
     const cs = getComputedStyle(document.getElementById("command-bar-inner"));
     return { w: cs.borderTopWidth, a: (cs.borderTopColor.match(/rgba?\(([^)]+)\)/)?.[1].split(",").map(Number)[3]) ?? 1 };
   });
-  check(border.w === "1px" && border.a >= 0.2, "3c. viền thanh lệnh vẫn còn rõ", JSON.stringify(border));
+  check(border.w === "1px" && border.a >= 0.15, "3c. viền thanh lệnh vẫn còn rõ (0,15 lúc nghỉ, 0,25 khi gõ)", JSON.stringify(border));
 
   // 4. nút mới
   check(!(await page.$("#btn-slash")) && !(await page.$("#btn-mention")), "4a. đã bỏ nút / và @ (gõ thẳng vào ô lệnh)");
@@ -139,11 +128,8 @@ async function open(browser, opts = {}) {
   }
   await page.evaluate(() => document.getElementById("btn-mute").click()); // trả lại
 
-  // 6. giảm chuyển động → aura và orb đứng yên
+  // 6. giảm chuyển động → orb đứng yên
   const rm = await open(browser, { reducedMotion: "reduce" });
-  const frame = () => rm.page.$eval("#command-bar-inner .cmd-aura-canvas", (c) => c.toDataURL());
-  const f1 = await frame(); await rm.page.waitForTimeout(600); const f2 = await frame();
-  check(f1 === f2, "6. giảm chuyển động → aura đứng yên (hai khung cách 0,6s giống hệt)");
   rm.send({ type: "status", state: "working" }); await rm.page.waitForTimeout(150);
   check((await rm.page.$eval("#status-orb", (e) => e.dataset.morph || "")) === "", "6b. giảm chuyển động → orb đổi trạng thái tức thì, không biến hình");
   await rm.page.close();

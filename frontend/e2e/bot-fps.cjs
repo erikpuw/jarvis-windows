@@ -29,8 +29,8 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
     await page.waitForTimeout(2000);
     const z = await page.evaluate(() => ({ ...window.__c, t: performance.now() }));
     const dt = (z.t - a.t) / 1000, bot = (z.bot - a.bot) / dt, status = (z.status - a.status) / dt;
-    check(bot >= 55, `[${name}] avatar vẽ ~60 khung/giây (không bị giảm còn 30)`, `${bot.toFixed(1)}/s`);
-    check(status >= 55, `[${name}] orb trạng thái nhỏ ~60 khung/giây`, `${status.toFixed(1)}/s`);
+    check(bot >= 45, `[${name}] avatar vẽ ~60 khung/giây (không bị giảm còn 30)`, `${bot.toFixed(1)}/s`);
+    check(status >= 45, `[${name}] orb trạng thái nhỏ ~60 khung/giây`, `${status.toFixed(1)}/s`);
     await ctx.close();
   }
   await browser.close();

@@ -89,6 +89,13 @@ async def main() -> int:
             if cid in EXPECT_KIND and learned and any(p.get("kind") != EXPECT_KIND[cid] for p in res.get("items", [])):
                 wrong_kind.append(cid)
             print(f"  {'OK  ' if learned else 'MISS'} {cid:15} {kinds}")
+        # 2026-10-13: ngài sửa chọn tool → bảng corrections (có outcome "giá thịt bò → market_price" làm bằng chứng)
+        engine.record_outcome("market_price", "giá thịt bò", "success", "ok", [])
+        res, _ = await run_case(engine, memory, [("user", "giá thịt bò"), ("assistant", "Giá thịt bò trên thị trường hôm nay…")],
+                                "sai rồi, giá thịt bò phải dùng search_products")
+        fixed = engine.list_correction_records()["total"] == 1
+        ok_should += fixed
+        print(f"  {'OK  ' if fixed else 'MISS'} {'tool-fix':15} {[p.get('kind') for p in res.get('items', [])]}")
         print("--- KHÔNG nên học:")
         for cid, hist, text in SHOULD_NOT:
             res, delta = await run_case(engine, memory, hist, text)
@@ -112,8 +119,8 @@ async def main() -> int:
     print(f"Nội dung trích câu/ví dụ: {len(quoted)} (cần 0) | sai loại (luật hành vi ghi thành sở thích): {wrong_kind} (cần [])")
     for c in quoted:
         print("   ", c)
-    need = int(len(SHOULD) * 0.7 + 0.999)
-    print(f"\nNÊN học: {ok_should}/{len(SHOULD)} (cần ≥ {need}) | KHÔNG nên học mà vẫn lưu: {bad_not}/{len(SHOULD_NOT)} (cần 0)")
+    need = int((len(SHOULD) + 1) * 0.7 + 0.999)  # + ca tool-fix
+    print(f"\nNÊN học: {ok_should}/{len(SHOULD) + 1} (cần ≥ {need}) | KHÔNG nên học mà vẫn lưu: {bad_not}/{len(SHOULD_NOT)} (cần 0)")
     passed = ok_should >= need and bad_not == 0 and not quoted and not wrong_kind
     print("PASS" if passed else "FAIL")
     return 0 if passed else 1

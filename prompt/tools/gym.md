@@ -1,6 +1,6 @@
-Ghi buổi tập, tra bài tập, theo dõi cân nặng, thói quen và chỉ số gym.
+Sổ gym của ngài: ghi buổi tập, ghi cân nặng, tra bài tập, xem lịch sử và thống kê tiến độ, thói quen, hướng dẫn dinh dưỡng. Dùng khi ngài kể vừa tập gì, cân được bao nhiêu, hỏi bài tập cho nhóm cơ, hoặc muốn xem tiến độ tập. Không dùng cho tra giá thực phẩm (search_products) hay tài liệu thực đơn đã lưu (search_documents).
 
-action: việc cần làm với sổ gym
+action: log_workout = ghi buổi tập (bài, hiệp, số lần, kg); record_bodyweight = ghi cân nặng; search_exercises = tìm bài tập theo nhóm cơ/tên; history = xem các buổi tập đã ghi; stats = thống kê, tổng kết tiến độ; log_habit / habit_summary = ghi / xem thói quen; nutrition_guide = hướng dẫn dinh dưỡng; list_profiles / create_profile / select_profile = xem / tạo / chọn hồ sơ
 profile_id: ID hồ sơ (tùy chọn)
 name: tên hồ sơ mới (tùy chọn)
 query: từ khóa bài tập (tùy chọn)

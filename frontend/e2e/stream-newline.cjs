@@ -70,7 +70,7 @@ async function run(label, opts) {
   check(gapBr === 0, `${tag} 3c. không có khung hình nào chữ đang kết thúc bằng dấu xuống dòng treo`, `${gapBr} khung`);
 
   const end = await page.evaluate(() => { const b = [...document.querySelectorAll(".chat-bubble.assistant")].pop(), t = b.querySelector(".bubble-text"); return { html: t.innerHTML, gap: window.__f.at(-1).gap, text: t.textContent }; });
-  check(/đây!<br><br>Vì ngài/.test(end.html) && /Gòn\.<br><br>Ví dụ/.test(end.html), `${tag} 4a. kết quả cuối vẫn có dòng trống giữa các đoạn như cũ`, JSON.stringify(end.html.slice(end.html.indexOf("đây!") , end.html.indexOf("đây!") + 40)));
+  check(/đây!<\/p>\s*<p>Vì ngài/.test(end.html) && /Gòn\.<\/p>\s*<p>Ví dụ/.test(end.html), `${tag} 4a. kết quả cuối tách đoạn bằng <p> (thay <br><br> cũ, đỡ nhảy trang)`, JSON.stringify(end.html.slice(end.html.indexOf("đây!") , end.html.indexOf("đây!") + 40)));
   check(end.text.includes("ngẫu nhiên đâu.") && end.gap <= 6, `${tag} 4b. kết quả cuối ôm vừa chữ, đủ chữ`, `gap ${end.gap}`);
   await browser.close();
 }

@@ -158,3 +158,4 @@ def test_failed_batch_does_not_deliver_any_file(monkeypatch, tmp_path):
     ws = FakeWs()
     h.run(tmp_path / "a.docx", ws=ws)
     assert [m for m in ws.sent if m.get("type") == "output_file"] == []
+

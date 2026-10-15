@@ -1,7 +1,6 @@
 import pytest
 from engine import prompts
 
-# Gate/classifier giống từng ký tự bản cũ: xem tests/test_prompts_wired.py (so với tests/golden/).
 
 
 def test_load_missing_placeholder_raises_key_error():

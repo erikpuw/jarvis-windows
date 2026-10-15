@@ -34,6 +34,8 @@ async def main(name: str):
             continue
         t0 = time.time()
         d = await loop.step(it["text"], it["history"])
+        if loop._off_target(d["tool"], it["text"]):  # cùng cổng chặn code như run_loop (ngài kể việc đang xem/theo dõi)
+            d = {"tool": "none", "say": "", "args": {}}
         lat.append((time.time() - t0) * 1000)
         kind, tool = it["kind"], d["tool"]
         if kind == "chat":

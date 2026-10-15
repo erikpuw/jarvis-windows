@@ -1,13 +1,22 @@
-Bạn là bộ nhớ 'Dream' của Jarvis, nén 1 ghi chú Obsidian cũ để tiết kiệm dung lượng trước khi lưu trữ bản gốc.
-Tiêu đề: {title}
-Nội dung:
-"""
-{content}
-"""
+Bạn là bộ nhớ Dream của Jarvis: nén một ghi chú cũ trước khi lưu trữ bản gốc.
 
-Chỉ giữ thông tin/quyết định/sự kiện thật sự đáng nhớ, bỏ qua chào hỏi và thao tác vặt một lần.
-TUYỆT ĐỐI không thêm lời chào, không hỏi lại người dùng, không viết ghi chú/footer, không lặp lại toàn văn gốc.
-Mỗi bullet PHẢI là một câu trần thuật khách quan nêu sự kiện/thông tin — không phải câu hỏi, không phải lời đề nghị hỗ trợ thêm, không xưng hô 'thưa ngài'/'bạn'.
-Trả về DUY NHẤT 1 dòng JSON, không kèm văn bản nào khác trước/sau, theo đúng format:
-{{"bullets": ["<gạch đầu dòng tiếng Việt 1>", "<tối đa 3 dòng>"]}}
-Nếu không có gì đáng giữ: {{"bullets": []}}
+<nhiem_vu>
+- Chỉ giữ thông tin, quyết định, sự kiện thật sự đáng nhớ; bỏ chào hỏi và thao tác vặt một lần.
+- Mỗi gạch đầu dòng là một câu trần thuật khách quan, không phải câu hỏi hay lời mời, không xưng hô.
+- Tối đa 3 gạch đầu dòng, không lặp lại toàn văn. Không có gì đáng giữ thì "bullets" rỗng.
+</nhiem_vu>
+
+<vi_du>
+Ghi chú: "Ngài hỏi thời tiết. Ngài quyết định mua xe điện VinFast VF5 vào tháng 9. Ngài nhờ mở nhạc."
+→ {{"bullets": ["Ngài quyết định mua xe điện VinFast VF5 vào tháng 9."]}}
+</vi_du>
+
+<tieu_de>
+{title}
+</tieu_de>
+
+<ghi_chu>
+{content}
+</ghi_chu>
+
+Đọc <ghi_chu> và trả về JSON gồm bullets.

@@ -160,84 +160,50 @@ def _split_log_entries(content: str) -> tuple[str, list[tuple[Optional[date], st
 # LLM-driven summarization
 # ---------------------------------------------------------------------------
 
-def _extract_json(raw: str) -> dict:
-    """Best-effort JSON extraction. Local/quantized models don't always follow
-    'return only JSON' — they wrap it in a greeting, a code fence, or a trailing
-    question. Try the raw text first, then a ```-fenced block, then the first
-    {...} span, before giving up."""
-    candidates = [raw]
-    fenced = re.search(r"```(?:json)?\s*(.*?)\s*```", raw, re.DOTALL)
-    if fenced:
-        candidates.append(fenced.group(1))
-    brace = re.search(r"\{.*\}", raw, re.DOTALL)
-    if brace:
-        candidates.append(brace.group(0))
-    for candidate in candidates:
-        try:
-            data = json.loads(candidate.strip())
-            if isinstance(data, dict):
-                return data
-        except Exception:
-            continue
-    return {}
+async def _ask_json(prompt: str, name: str, schema: dict, what: str) -> Optional[dict]:
+    """Grammar JSON + think 128 (cách chung cho model nhỏ, 2026-10-14). None = không có phán đoán dùng được
+    (rỗng, JSON hỏng, transport trả tool call của Headroom…): caller coi là 'thử lại chu kỳ sau', không phải 'trivial'."""
+    from engine.prompts.learning import json_format
+    response = await call_llm(messages=[{"role": "user", "content": prompt}], temperature=0.0, thinking=True,
+                              thinking_budget=128, max_tokens=800, response_format=json_format(name, schema))
+    choice = response.choices[0]
+    raw = (choice.message.content or "").strip()
+    try:
+        data = json.loads(raw)
+    except Exception:
+        data = None
+    if not isinstance(data, dict):
+        log.warning("Dream: no usable JSON for %s (finish_reason=%s, raw=%r) — will retry next cycle",
+                    what, choice.finish_reason, raw[:200])
+        return None
+    return data
 
 
 async def _summarize_message_chunk(chunk: list[dict]) -> Optional[dict]:
-    """Returns None when no usable judgment was obtained this cycle (e.g. the LLM
-    transport returned a tool call — Headroom's context compression sometimes
-    substitutes a large/repeated prompt span with a retrieval hash and the model
-    asks to fetch it instead of answering directly — or unparsable content).
-    Callers MUST treat None as 'try again next cycle', never as 'trivial'."""
     transcript = "\n".join(f"{m['role']}: {m['content']}" for m in chunk)[:6000]
-    from engine.prompts.learning import build_dream_message_prompt
-    prompt = build_dream_message_prompt(transcript)
-    response = await call_llm(messages=[{"role": "user", "content": prompt}], temperature=0.1, thinking=False)
-    choice = response.choices[0]
-    raw = (choice.message.content or "").strip()
-    if not raw:
-        log.warning(
-            "Dream: empty LLM content while judging a message chunk (finish_reason=%s) — will retry next cycle",
-            choice.finish_reason,
-        )
+    from engine.prompts.learning import DREAM_MESSAGE_SCHEMA, build_dream_message_prompt
+    data = await _ask_json(build_dream_message_prompt(transcript), "dream_message", DREAM_MESSAGE_SCHEMA,
+                           "a message chunk")
+    if data is None or not isinstance(data.get("trivial"), bool):
         return None
-    data = _extract_json(raw)
-    if "trivial" not in data:
-        log.warning("Dream: unparsable judgment for a message chunk, raw=%r — will retry next cycle", raw[:200])
-        return None
-    summary = (data.get("summary") or "").strip()
+    summary = str(data.get("summary") or "").strip()
     if summary and _is_junk_bullet(summary):
         summary = ""
-    return {"trivial": bool(data.get("trivial", True)), "summary": summary}
+    return {"trivial": data["trivial"], "summary": summary}
 
 
 async def _summarize_wiki_note(content: str, title: str) -> Optional[str]:
-    """Returns "" when the LLM judged nothing worth keeping (safe to archive),
-    None when no usable judgment was obtained this cycle — see docstring on
-    _summarize_message_chunk for why that distinction matters."""
+    """Returns "" when the LLM judged nothing worth keeping (safe to archive), None when no usable judgment."""
     text = content.strip()
     if not text:
         return ""
-    from engine.prompts.learning import build_dream_wiki_prompt
-    prompt = build_dream_wiki_prompt(title, text[:6000])
-    response = await call_llm(messages=[{"role": "user", "content": prompt}], temperature=0.1, thinking=False)
-    choice = response.choices[0]
-    raw = (choice.message.content or "").strip()
-    if not raw:
-        log.warning(
-            "Dream: empty LLM content while summarizing '%s' (finish_reason=%s) — will retry next cycle",
-            title, choice.finish_reason,
-        )
-        return None
-    data = _extract_json(raw)
-    bullets = data.get("bullets")
+    from engine.prompts.learning import DREAM_WIKI_SCHEMA, build_dream_wiki_prompt
+    data = await _ask_json(build_dream_wiki_prompt(title, text[:6000]), "dream_wiki", DREAM_WIKI_SCHEMA, f"'{title}'")
+    bullets = None if data is None else data.get("bullets")
     if not isinstance(bullets, list):
-        log.warning("Dream: unparsable bullets JSON for '%s', raw=%r — will retry next cycle", title, raw[:200])
         return None
-    if not bullets:
-        return ""
     clean_bullets = [str(b).strip() for b in bullets if str(b).strip() and not _is_junk_bullet(str(b))]
-    lines = [f"- {b}" for b in clean_bullets]
-    return "\n".join(lines[:5])
+    return "\n".join(f"- {b}" for b in clean_bullets)
 
 
 # ---------------------------------------------------------------------------

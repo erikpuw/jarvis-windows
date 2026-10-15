@@ -44,6 +44,7 @@ def env(monkeypatch):
     monkeypatch.setattr("engine.turn.prompt.system_prompt", lambda names, answer=False: ("ANS" if answer else "SYS ") + ",".join(names))
     monkeypatch.setattr("engine.turn.outcome.save_turn",
                         lambda *a, **k: state.setdefault("saved", []).append((a, k)))
+    monkeypatch.setattr("engine.turn.corrections.lookup", lambda text: [])
 
     async def fake_llm(**kw):
         state["calls"].append(kw)
@@ -198,8 +199,29 @@ def test_attachment_none_with_file_tool_asks_user(env, monkeypatch):
     monkeypatch.setattr("engine.main.ask_verifi.ask_user_selection", fake_select)
     env["script"] = [{"tool": "none"}, {"tool": "none"}, "Tệp nói về X."]
     asyncio.run(L.run_loop("xem file này", _ctx(env, att=att)))
-    assert [o["id"] for o in picked["options"]] == ["read_doc", "cancel"]
+    assert [o["id"] for o in picked["options"]] == ["read_doc", "rag_save", "cancel"]
     assert "Tệp nói về X." in _text(env) and _ends(env) == 1
+
+
+def test_attachment_pick_save_to_library_shows_save_result(env, monkeypatch):
+    """2026-10-14: bảng hỏi có "Lưu vào kho tài liệu" → lưu + tổng hợp, không vòng trả lời bịa thêm."""
+    async def read_doc(question: str, ctx=None) -> str:
+        return "nội dung"
+    R._register_for_test(read_doc, doc="Đọc tài liệu.\n\nquestion: câu hỏi\n", needs_attachment=True,
+                         extensions=lambda: {".pdf"})
+    att = SimpleNamespace(extension=".pdf", filename="a.pdf", router_metadata=lambda: {"filename": "a.pdf"})
+
+    async def fake_select(ws, send, action, message, options, **kw):
+        return "rag_save"
+
+    async def fake_save(a):
+        return "Đã lưu a.pdf vào kho: 3 đoạn.\n\n**a.pdf**: Thực đơn"
+    monkeypatch.setattr("engine.main.ask_verifi.ask_user_selection", fake_select)
+    monkeypatch.setattr("engine.rag.runner.save_document", fake_save)
+    env["script"] = [{"tool": "none"}]
+    out = asyncio.run(L.run_loop("", _ctx(env, att=att)))
+    assert "Đã lưu a.pdf vào kho: 3 đoạn." in out and "**a.pdf**: Thực đơn" in out
+    assert len(env["calls"]) == 1 and _ends(env) == 1
 
 
 def _thinking_stream(n_chars):
@@ -284,7 +306,7 @@ def test_flow_steps_follow_the_loop(env):
     ctx.flow_tracker = _Tracker()
     asyncio.run(L.run_loop("giá vàng", ctx))
     # ngài 2026-10-12 (ảnh flow): vòng kiểm tra sau tool không phải bước "Chọn công cụ" thứ hai → gộp vào tổng hợp
-    assert ctx.flow_tracker.done == [("Chọn công cụ → market_price", "completed"), ("Chạy market_price", "completed"),
+    assert ctx.flow_tracker.done == [("Chọn công cụ → Giá thị trường", "completed"), ("Chạy Giá thị trường", "completed"),
                                      ("Tổng hợp & trả lời", "completed"), ("Hoàn thành", "completed")]
 
 
@@ -300,8 +322,8 @@ def test_flow_steps_chat_and_multi_tool(env):
     ctx = _ctx(env)
     ctx.flow_tracker = _Tracker()
     asyncio.run(L.run_loop("mở word rồi paint", ctx))
-    assert [d[0] for d in ctx.flow_tracker.done] == ["Chọn công cụ → open_app", "Chạy open_app", "Chọn công cụ → open_app",
-                                                     "Chạy open_app", "Tổng hợp & trả lời", "Hoàn thành"]
+    assert [d[0] for d in ctx.flow_tracker.done] == ["Chọn công cụ → Mở ứng dụng", "Chạy Mở ứng dụng", "Chọn công cụ → Mở ứng dụng",
+                                                     "Chạy Mở ứng dụng", "Tổng hợp & trả lời", "Hoàn thành"]
 
 
 def test_tool_say_has_icon_and_status_working_then_thinking(env):
@@ -313,7 +335,8 @@ def test_tool_say_has_icon_and_status_working_then_thinking(env):
     assert _text(env).startswith(L.TOOL_ICON + "Tôi mở Word.")
     assert not any(L.TOOL_ICON.strip() in s for s in env.get("tts", []))
     st = [e for e in env["sent"] if e["type"] == "status"]
-    assert [e["state"] for e in st] == ["working", "thinking"] and "open_app" in st[0]["message"]
+    assert [e["state"] for e in st] == ["working", "thinking", "thinking", "idle"]
+    assert st[0]["message"] == "Công cụ: Mở ứng dụng" and st[2]["message"] == "Đang trả lời…"
     i = env["sent"].index(st[0])
     assert "Tôi mở Word." in "".join(e["text"] for e in env["sent"][:i] if e["type"] == "text_chunk")
 
@@ -321,7 +344,50 @@ def test_tool_say_has_icon_and_status_working_then_thinking(env):
 def test_chat_has_no_icon_and_no_working(env):
     env["script"] = [{"tool": "none"}, "Chào ngài!"]
     asyncio.run(L.run_loop("chào", _ctx(env)))
-    assert _text(env) == "Chào ngài!" and not any(e["type"] == "status" for e in env["sent"])
+    assert _text(env) == "Chào ngài!"
+    assert [e["state"] for e in env["sent"] if e["type"] == "status"] == ["thinking", "idle"]
+
+
+def test_status_idle_as_soon_as_llm_is_done_before_tts(env, monkeypatch):
+    """Ngài 2026-10-15: LLM trả đủ chữ là status phải tắt (thinking → idle) ngay; gõ chữ là việc của bong bóng, đọc là
+    status của TTS. Cũ: idle cuối lượt chỉ tới sau khi TTS tổng hợp hết + lưu DB (server.py) → kẹt "Đang nghĩ…"."""
+    order = []
+
+    class _VS:
+        def __init__(self, ws): pass
+        def start(self): return None
+        async def put(self, s): pass
+        async def stop(self, clear_queue=False): order.append("tts_stop")
+    monkeypatch.setattr("engine.server.voice_streamer.VoiceStreamer", _VS)
+    env["script"] = [{"tool": "market_price", "say": "Tôi xem giá.", "args": {"item": "vàng"}}, {"tool": "none"}, "Vàng 144 triệu."]
+    ctx = _ctx(env)
+    send = ctx.send_json
+
+    async def spy(ws, data):
+        if data.get("type") == "status":
+            order.append(data["state"])
+        elif data.get("type") == "stream_end":
+            order.append("stream_end")
+        return await send(ws, data)
+    ctx.send_json = spy
+    asyncio.run(L.run_loop("giá vàng", ctx))
+    # ngài 2026-10-15: idle là trạng thái LLM, không gắn với bộ gõ chữ (stream_start/text_chunk/stream_end): LLM xong là idle
+    assert order == ["working", "thinking", "thinking", "idle", "stream_end", "tts_stop"]
+
+
+def test_answering_status_once_when_first_sentence_is_emitted(env):
+    """Ngài chốt B 2026-10-15 (log iPhone 02:15: model viết 8,4 giây, chữ hiện dần mà nhãn vẫn "Đang nghĩ…"):
+    câu đầu của vòng trả lời ra → thinking "Đang trả lời…" một lần, trước chữ câu đó; trả lời trống thì không gửi."""
+    env["script"] = [{"tool": "none"}, "Dạ ngài. Hôm nay trời đẹp. Ngài cần gì nữa không?"]
+    asyncio.run(L.run_loop("chào", _ctx(env)))
+    sent = env["sent"]
+    answering = [i for i, e in enumerate(sent) if e.get("message") == "Đang trả lời…"]
+    first_text = next(i for i, e in enumerate(sent) if e["type"] == "text_chunk" and "Dạ ngài" in e["text"])
+    assert len(answering) == 1 and answering[0] < first_text and sent[answering[0]]["state"] == "thinking"
+    sent.clear()
+    env["script"] = [{"tool": "none"}, ""]
+    asyncio.run(L.run_loop("chào", _ctx(env)))
+    assert not any(e.get("message") == "Đang trả lời…" for e in sent)
 
 
 def test_flow_done_is_sent_before_waiting_for_tts(env, monkeypatch):
@@ -343,8 +409,16 @@ def test_flow_done_is_sent_before_waiting_for_tts(env, monkeypatch):
         order.append(label)
         await orig(label, status)
     ctx.flow_tracker.track = track
+    send = ctx.send_json
+
+    async def spy(ws, data):
+        if data.get("type") == "stream_end":
+            order.append("stream_end")
+        return await send(ws, data)
+    ctx.send_json = spy
     asyncio.run(L.run_loop("chào", ctx))
-    assert order == ["Hoàn thành", "tts_stop"]
+    # log 2026-10-15 00:12: chờ TTS tổng hợp hết (22 giây) rồi mới stream_end → chữ đã xong mà vẫn "Đang nghĩ…"
+    assert order == ["Hoàn thành", "stream_end", "tts_stop"]
 
 
 def test_promise_without_tool_is_dropped_and_told_honestly(env):
@@ -354,6 +428,15 @@ def test_promise_without_tool_is_dropped_and_told_honestly(env):
     out = asyncio.run(L.run_loop("nhắc tôi uống nước", _ctx(env)))
     assert "tôi sẽ nhắc" not in out and "Ngài cứ làm việc đi." in out and L._NO_PROMISE in out
     assert not any("tôi sẽ nhắc" in s for s in env.get("tts", []))
+
+
+def test_fake_tool_result_without_tool_is_cut(env):
+    """log 2026-10-14 01:19: system_status bị chặn → vòng chat chép khuôn lịch sử, bịa '[kết quả system_status] CPU: 15%…'."""
+    env["script"] = [{"tool": "none"}, "[kết quả system_status]\nCPU: 15% (Idle)\nRAM: 8.5 GB\n[kết quả system_status]\n\n"
+                                       "Hệ thống ổn, CPU còn dư."]
+    out = asyncio.run(L.run_loop("kiểm tra hệ thống", _ctx(env)))
+    assert "kết quả" not in out and "CPU" not in out and L._NO_PROMISE in out
+    assert not any("CPU" in s or "kết quả" in s for s in env.get("tts", []))
 
 
 def test_offer_questions_and_plain_answers_are_kept(env):
@@ -531,3 +614,64 @@ def test_explicit_screen_and_system_requests_still_run(env):
     env["script"] = [{"tool": "system_status", "say": "Tôi xem.", "args": {}}, "20%."]
     asyncio.run(L.run_loop("tôi đang xem", _ctx(env), only="system_status"))  # @tool: ngài chọn rõ, không chặn
     assert env["ran"] == [("read_screen",), ("system_status",), ("system_status",)]
+
+
+def test_status_and_flow_show_tool_label_not_raw_name(env, monkeypatch):
+    monkeypatch.setattr(R, "label", lambda n: {"open_app": "Mở ứng dụng"}.get(n, n))
+    env["script"] = [{"tool": "open_app", "say": "Tôi mở Word.", "args": {"app_name": "word"}}, {"tool": "none"}, "Xong."]
+    ctx = _ctx(env)
+    ctx.flow_tracker = _Tracker()
+    asyncio.run(L.run_loop("mở word", ctx))
+    working = [e["message"] for e in env["sent"] if e.get("type") == "status" and e.get("state") == "working"]
+    assert working == ["Công cụ: Mở ứng dụng"]
+    labels = [d[0] for d in ctx.flow_tracker.done]
+    assert "Chạy Mở ứng dụng" in labels and "Chọn công cụ → Mở ứng dụng" in labels
+
+
+def test_system_gate_lets_explicit_check_through():
+    """log 2026-10-14 01:19: "kiểm tra hệ thống" bị chặn → vòng chat bịa số CPU/RAM."""
+    for t in ("kiểm tra hệ thống", "check hệ thống giúp tôi", "kiểm tra máy tính xem sao", "xem tình trạng máy"):
+        assert not L._off_target("system_status", t), t
+    assert L._off_target("system_status", "tôi đang xem hệ thống hoạt động ra sao")
+
+
+def test_webcam_gate():
+    """held_out 2026-10-13: "để tôi xem lại cái trang web…" → read_webcam."""
+    assert L._off_target("read_webcam", "để tôi xem lại cái trang web load có nhanh không đã")
+    for t in ("nhìn qua webcam xem có ai không", "camera đang thấy gì", "bật cam xem tôi cầm gì"):
+        assert not L._off_target("read_webcam", t), t
+
+
+FIX = {"id": 7, "query": "giá thịt bò", "wrong_tool": "market_price", "right_tool": "open_app", "count": 1, "sim": 0.9}
+
+
+def test_corrections_become_examples(env, monkeypatch):
+    monkeypatch.setattr("engine.turn.corrections.lookup", lambda text: [FIX])
+    env["script"] = [{"tool": "none"}, "Dạ."]
+    asyncio.run(L.run_loop("giá thịt heo", _ctx(env)))
+    system = env["calls"][0]["messages"][0]["content"]
+    assert "<vi_du>" in system and '"giá thịt bò"' in system and "dùng open_app" in system
+
+
+def test_force_needs_count_and_same_wrong_tool(env, monkeypatch):
+    strong = {**FIX, "count": 2, "sim": 0.97}
+    monkeypatch.setattr("engine.turn.corrections.lookup", lambda text: [strong])
+    env["script"] = [{"tool": "market_price", "say": "Tôi xem giá thị trường.", "args": {"item": "bò"}},
+                     {"tool": "open_app", "say": "Tôi mở.", "args": {"app_name": "shop"}}, {"tool": "none"}, "Xong."]
+    out = asyncio.run(L.run_loop("giá thịt bò", _ctx(env)))
+    assert env["ran"] == [("open_app", "shop")] and "Tôi xem giá thị trường" not in out
+    forced = env["calls"][1]["response_format"]["json_schema"]["schema"]["anyOf"]
+    assert [b["properties"]["tool"]["const"] for b in forced] == ["open_app"]
+    from engine.turn import corrections as C
+    assert C.forced_tool([{**FIX, "count": 1, "sim": 0.97}], "market_price", ["market_price", "open_app"]) is None
+    assert C.forced_tool([{**FIX, "count": 2, "sim": 0.94}], "market_price", ["market_price", "open_app"]) is None
+    assert C.forced_tool([strong], "weather", ["weather", "open_app"]) is None
+    assert C.forced_tool([strong], "market_price", ["market_price"]) is None  # tool đúng không có trong lượt này
+
+
+def test_tool_mention_skips_corrections(env, monkeypatch):
+    called = []
+    monkeypatch.setattr("engine.turn.corrections.lookup", lambda text: called.append(text) or [])
+    env["script"] = [{"tool": "market_price", "say": "Tôi xem.", "args": {"item": "vàng"}}, "Xong."]
+    asyncio.run(L.run_loop("vàng", _ctx(env), only="market_price"))
+    assert called == []

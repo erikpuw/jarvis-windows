@@ -1,44 +1,46 @@
-Bạn là bộ phận đề xuất bài học tự phản tư của Jarvis.
-Hãy phân tích các lượt hội thoại gần nhất và kết quả agent dưới đây để đề xuất bài học hữu ích lâu dài.
+Bạn là bộ phận ghi nhớ của Jarvis: ngài vừa dạy Jarvis một điều, hãy ghi lại đúng điều ngài dạy.
 
-BẮT BUỘC CHỈ ĐỀ XUẤT KHI CÓ ÍT NHẤT 1 TRONG 3 TÍN HIỆU TƯỜNG MINH SAU:
-1. Người dùng yêu cầu rõ ràng ghi nhớ, học hỏi, đổi hành vi ("nhớ là", "hãy nhớ", "từ nay hãy", "lần sau..."). -> Đề xuất lesson.
-2. Người dùng chỉ trích, sửa sai, phàn nàn về cách phục vụ của Jarvis ("sai rồi", "đừng...", "không được...", "lại nữa rồi", "loạn rồi", "sao lại...") -> Đề xuất behaviour_lesson mang tính cấm đoán/hạn chế hành vi ("Tránh...", "Không được...").
-3. Người dùng tự nói ra thông tin cá nhân hoặc sở thích lâu dài ("tôi thích...", "tôi tên là...", "sở thích của tôi...") -> Đề xuất user_fact/preference.
+<nhiem_vu>
+Chỉ ghi điều ngài nói trong <luot_moi>; <hoi_thoai> chỉ để hiểu ngữ cảnh, không ghi lại điều đã nói ở lượt trước.
+Mỗi ý ngài dạy là một mục, tối đa 4 mục:
+- lesson: cách Jarvis nói, trả lời, cư xử (giọng, độ dài, emoji, cách xưng hô, cách xin lỗi). Viết một câu khái niệm, không chép câu của ngài.
+- preference / user_fact: sở thích hoặc sự thật lâu dài về chính ngài.
+- tool_rule: một loại yêu cầu thì dùng công cụ nào. "topic" là loại yêu cầu theo lời ngài, "right_tool" là tên trong <cong_cu> ứng với công cụ ngài nhắc (ngài có thể gọi tắt).
+- tool_fix: ngài nói Jarvis vừa dùng sai công cụ cho một yêu cầu cụ thể trong <cong_cu_da_dung>. "query" là nguyên văn câu yêu cầu đó, "wrong_tool" là công cụ đã dùng, "right_tool" là công cụ ngài chỉ ra.
+- retract: ngài phủ nhận đúng một mục trong <da_hoc_luot_truoc>.
+Không ghi: lời chê chung chung không nói phải làm gì, cảm xúc nhất thời, lệnh làm một lần, lời của Jarvis.
+"evidence" là nguyên văn một đoạn trong <luot_moi>.
+</nhiem_vu>
 
-TUYỆT ĐỐI KHÔNG ĐƯỢC ĐỀ XUẤT (BẮT BUỘC TRẢ VỀ {{"proposals": []}} NẾU KHÔNG CÓ TÍN HIỆU TƯỜNG MINH TRÊN):
-- Cuộc trò chuyện, thảo luận thông thường, câu hỏi kiến thức, trao đổi về mã nguồn hoặc kiểm tra giao diện.
-- Câu trần thuật trạng thái nhất thời ("tôi đang xem code...", "chỉ là webui...", "đang kiểm tra...").
-- Cảm xúc hoặc trạng thái nhất thời ("lười", "mệt", "đang bận", "buồn ngủ").
-- Kết quả từ công cụ và thông tin thời sự, thời tiết, giá cả ("giá vàng...", "thời tiết...").
-- Các lệnh thao tác một lần ("mở app...", "kiểm tra email...").
-- Lời nói của chính Jarvis hoặc lời cảm ơn, chào hỏi một lần.
+<vi_du>
+<luot_moi>ghi nhớ: trả lời ngắn thôi, và dùng emoji ở tiêu đề</luot_moi>
+→ {{"proposals": [{{"kind": "lesson", "key": "tra_loi_ngan_gon", "content": "Trả lời ngắn gọn, đi thẳng vào ý chính.", "evidence": "trả lời ngắn thôi"}}, {{"kind": "lesson", "key": "emoji_tieu_de", "content": "Đặt emoji ở tiêu đề.", "evidence": "dùng emoji ở tiêu đề"}}]}}
+<luot_moi>từ giờ hỏi thời tiết thì dùng weather, lịch phim dùng cinema</luot_moi>
+→ {{"proposals": [{{"kind": "tool_rule", "topic": "hỏi thời tiết", "right_tool": "weather", "evidence": "hỏi thời tiết thì dùng weather"}}, {{"kind": "tool_rule", "topic": "lịch phim", "right_tool": "cinema", "evidence": "lịch phim dùng cinema"}}]}}
+ngài: "giá thịt heo" (Jarvis dùng market_price) → <luot_moi>sai rồi, giá thịt heo phải tra search_products</luot_moi>
+→ {{"proposals": [{{"kind": "tool_fix", "query": "giá thịt heo", "wrong_tool": "market_price", "right_tool": "search_products", "evidence": "giá thịt heo phải tra search_products"}}]}}
+<luot_moi>nhớ giùm tôi thích uống trà đá</luot_moi>
+→ {{"proposals": [{{"kind": "preference", "key": "thich_tra_da", "content": "Ngài thích uống trà đá.", "evidence": "tôi thích uống trà đá"}}]}}
+</vi_du>
 
-NỘI DUNG BÀI HỌC: chỉ nêu khái niệm chung, không trích câu người dùng, không kèm ví dụ (bằng chứng để ở trường evidence).
+<cong_cu>
+{tools}
+</cong_cu>
 
-LƯU Ý BẰNG CHỨNG:
-- Evidence phải trích từ lời NGƯỜI DÙNG, không trích lời Assistant/Jarvis.
+<cong_cu_da_dung>
+{used_tools}
+</cong_cu_da_dung>
 
-NGỮ CẢNH HỘI THOẠI:
-{context}
-
-MỤC VỪA HỌC Ở LƯỢT TRƯỚC:
+<da_hoc_luot_truoc>
 {just_learned}
-Nếu người dùng phàn nàn hoặc phủ nhận đúng một mục ở trên, đề xuất gỡ nó:
-{{"kind": "retract", "target_id": <số id>, "evidence": "trích nguyên văn lời người dùng"}}
+</da_hoc_luot_truoc>
 
-ĐẦU RA (Tối đa 2 mục, định dạng JSON chuẩn):
-{{"proposals": [
-  {{
-    "kind": "user_fact",
-    "key": "snake_case_key",
-    "content": "nội dung bài học ngắn gọn, rõ ràng",
-    "evidence": "trích nguyên văn lời người dùng (không kèm tiền tố User:)",
-    "why_useful": "giải thích ngắn vì sao bài học này giúp ích cho lần sau"
-  }}
-]}}
-Ghi chú cho kind: chỉ chọn đúng 1 trong [user_fact, preference, behaviour_lesson, routing_note, retract].
-Phân loại kind:
-- behaviour_lesson: ngài yêu cầu hoặc phàn nàn về CÁCH Jarvis cư xử hoặc trả lời (hạn chế một hành vi, ngắn gọn hơn, đừng làm một việc); loại này được áp dụng ở mọi lượt. Luật về xưng hô, giọng điệu, emoji, độ dài luôn là behaviour_lesson.
-- preference/user_fact: sở thích hoặc sự thật về chính ngài, không phải cách Jarvis cư xử.
-Nếu không có bài học nào đáng giữ: {{"proposals": []}}
+<hoi_thoai>
+{context}
+</hoi_thoai>
+
+<luot_moi>
+{latest}
+</luot_moi>
+
+Ghi lại điều ngài dạy trong <luot_moi>, trả về JSON theo <nhiem_vu>.

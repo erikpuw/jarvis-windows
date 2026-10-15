@@ -78,12 +78,12 @@ async function run(label, opts, hasHover) {
   s = await st();
   check(s.state === "pill" && s.vis === "visible" && s.cardH < 4, `${tag} 2. có thông báo mới: chỉ hiện viên thuốc, KHÔNG tự bung popup`, JSON.stringify([s.state, s.vis, Math.round(s.cardH)]));
   check(s.flowBubbles === 0, `${tag} 3. không còn bong bóng flow trong chat`, `flow ${s.flowBubbles}`);
-  check(s.rows === "completed:Nhận: xin chào jarvis|completed:Định tuyến|active:Đang gọi LLM" && s.label === "Đang gọi LLM" && s.count === "2/3", `${tag} 4. viên thuốc: bước hiện tại và số đếm; đủ các bước theo trạng thái`, `${s.label} · ${s.count} · ${s.rows}`);
+  check(s.rows === "completed:Nhận: xin chào jarvis|completed:Định tuyến|active:Đang gọi LLM" && s.label === "Đang xử lý" && s.count === "", `${tag} 4. viên thuốc: nhãn "Đang xử lý", không số đếm (8786c87); đủ các bước theo trạng thái`, `${s.label} · ${s.count} · ${s.rows}`);
   check(Math.abs(s.pillCx - s.vw / 2) <= 2 && Math.abs(s.cx - s.vw / 2) <= 2 && s.top >= 0 && s.top <= 24, `${tag} 5. top-center mặc định: viên thuốc nằm giữa mép trên màn hình`, `giữa ${Math.round(s.pillCx)}/${s.vw / 2} · cách mép ${Math.round(s.top)}px`);
-  { // nền đảo sáng hơn nền trang (tối) một chút để tách ra, nhưng chữ trắng vẫn đọc rõ (tương phản ≥ 7:1)
+  { // nền đảo #161a24 (style.css) sáng hơn nền trang #050508 (độ sáng ~0.0016) để tách ra, chữ trắng vẫn đọc rõ (tương phản ≥ 7:1)
     const rgb = (s.fillColor.match(/\d+/g) || []).map(Number), lum = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
     const L = 0.2126 * lum(rgb[0]) + 0.7152 * lum(rgb[1]) + 0.0722 * lum(rgb[2]), contrast = 1.05 / (L + 0.05);
-    check(L >= 0.02 && contrast >= 7 && parseFloat(s.canvasOp) >= 0.85 && s.canvasFilter.includes("island-goo"), `${tag} 6. nền đảo sáng hơn nền trang (không chìm vào nền tối) mà chữ trắng vẫn rõ, dựng như Sileo (hai rect dưới bộ lọc goo)`, `${s.fillColor} · độ sáng ${L.toFixed(3)} · tương phản chữ trắng ${contrast.toFixed(1)}:1 · độ đậm ${s.canvasOp}`);
+    check(L >= 0.008 && contrast >= 7 && parseFloat(s.canvasOp) >= 0.85 && s.canvasFilter.includes("island-goo"), `${tag} 6. nền đảo sáng hơn nền trang (không chìm vào nền tối) mà chữ trắng vẫn rõ, dựng như Sileo (hai rect dưới bộ lọc goo)`, `${s.fillColor} · độ sáng ${L.toFixed(3)} · tương phản chữ trắng ${contrast.toFixed(1)}:1 · độ đậm ${s.canvasOp}`);
   }
   const zl = await page.evaluate(() => Object.fromEntries(["jarvis-clock", "command-container", "controls", "webcam-hud", "media-player", "settings-container"].map((id) => [id, +getComputedStyle(document.getElementById(id) || document.body).zIndex || 0])));
   check(s.z > Math.max(zl["jarvis-clock"], zl["command-container"], zl["controls"], zl["webcam-hud"], zl["media-player"]) && (!zl["settings-container"] || s.z < zl["settings-container"]) && await islandOnTop(page), `${tag} 7. z-index che được đồng hồ/chat/hàng nút/webcam/media nhưng dưới Cài đặt`, `z ${s.z} · ${JSON.stringify(zl)}`);
@@ -213,7 +213,7 @@ async function run(label, opts, hasHover) {
   finish(send);
   await page.waitForTimeout(1300);
   s = await st();
-  check(s.state !== "hidden" && s.count === "3/3", `${tag} 15. xong 3/3: viên thuốc báo hoàn thành (chưa biến mất ngay)`, `${s.state} · ${s.count}`);
+  check(s.state !== "hidden" && s.label === "Hoàn thành", `${tag} 15. xong hết bước: viên thuốc báo "Hoàn thành" (chưa biến mất ngay)`, `${s.state} · ${s.label}`);
   await page.waitForTimeout(8200);
   s = await st();
   const g = await page.evaluate(() => window.__g), leaving = g.filter((f) => f.state === "leaving"), natural = Math.max(...g.map((f) => f.w));

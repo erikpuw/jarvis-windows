@@ -43,21 +43,10 @@ def test_repeat_inside_one_session_is_still_skipped():
     assert len(memory.get_messages(limit=10)) == 1
 
 
-
-
 def test_get_messages_filters_by_session_and_unfiltered_returns_all():
     _say("web-a", "user", "một")
     _say("tg-5", "user", "hai")
     assert [m["content"] for m in memory.get_messages(limit=10, session_id="tg-5")] == ["hai"]
     assert len(memory.get_messages(limit=10)) == 2
-
-
-def test_routing_history_only_current_session():
-    _say("web-a", "user", "chuyện của A")
-    _say("web-b", "user", "chuyện của B")
-    set_session("web-b")
-    texts = [m["content"] for m in memory.build_unified_routing_history("xin chào")]
-    assert "chuyện của B" in texts
-    assert "chuyện của A" not in texts
 
 

@@ -7,7 +7,7 @@ import logging
 import re
 
 from engine.tools import registry
-from engine.turn import history, schema
+from engine.turn import corrections, history, schema
 from engine.turn.say import SayReader, parse_turn
 
 log = logging.getLogger("jarvis.turn")
@@ -34,14 +34,22 @@ _SILENT = "Xin lỗi ngài, tôi chưa trả lời được câu này, ngài th�
 # cụm 1-6 từ lặp liên tiếp ≥ 7 lần ở cuối → giữ một lần, dừng stream.
 _REPEAT = re.compile(r"(\S+(?:\s+\S+){0,5}?)(?:\s+\1){6,}\s*$")
 _REPEAT_TAIL = 800
+# Lượt không chạy tool mà model chép khuôn kết quả trong lịch sử (history.result_message) → số liệu bịa
+# (log 2026-10-14 01:19: "[kết quả system_status] CPU: 15%…"). Bỏ từ đó tới hết câu trả lời, báo chưa làm.
+_FAKE_RESULT = re.compile(r"\[kết quả \w+")
 # Ngài 2026-10-13: "tôi đang xem…" (ngài kể việc mình làm) bị gọi read_screen/system_status; sửa prompt, nạp bài học
 # đều không chặn được (spike tuning 0/2) → code: tool này chỉ chạy khi câu nói tới đúng đối tượng của nó.
 # ponytail: theo từ khoá; câu nhờ thật mà không có các từ này ("máy chậm quá, kiểm tra giúp") cũng bị chặn → dùng @tool.
 _NEEDS_WORD = {
     "read_screen": re.compile(r"màn hình|screen", re.I),
-    "system_status": re.compile(r"\b(cpu|gpu|ram|ổ|disk|tiến trình|process|bộ nhớ|dung lượng|nhiệt độ)\b", re.I),
+    "read_webcam": re.compile(r"webcam|camera|\bcam\b", re.I),
+    # "kiểm tra/check hệ thống|máy", "tình trạng máy" là hỏi máy; "đang xem hệ thống hoạt động" là ngài kể việc mình làm
+    "system_status": re.compile(r"\b(cpu|gpu|ram|ổ|disk|tiến trình|process|bộ nhớ|dung lượng|nhiệt độ)\b"
+                                r"|(kiểm tra|check|tình trạng)\s+(hệ thống|máy)", re.I),
 }
 _TOOL_IN_RAW = re.compile(r'"tool"\s*:\s*"(\w+)"')
+_RAG_SAVE = "rag_save"
+ANSWERING = {"type": "status", "state": "thinking", "message": "Đang trả lời…"}
 
 
 def _off_target(tool: str, text: str) -> bool:
@@ -58,9 +66,10 @@ def _user_message(text: str, attachment_context) -> dict:
     return {"role": "user", "content": f"{text}\n\n[tệp đính kèm: {meta}]"}
 
 
-def _messages(text, conversation_history, attachment_context, turn_msgs, names) -> list[dict]:
+def _messages(text, conversation_history, attachment_context, turn_msgs, names, examples: str = "") -> list[dict]:
     from engine.turn import prompt
-    return [{"role": "system", "content": prompt.system_prompt(names)},
+    system = prompt.system_prompt(names) + (f"\n\n{examples}" if examples else "")
+    return [{"role": "system", "content": system},
             *history.for_model(conversation_history), _user_message(text, attachment_context), *(turn_msgs or [])]
 
 
@@ -75,14 +84,21 @@ async def _call(messages, sch, stream: bool):
 async def step(text, conversation_history, attachment_context=None, turn_msgs=None, only=None) -> dict:
     """Một vòng không stream (probe, vòng 1 khi có tệp)."""
     names = [only] if only else registry.chat_names(attachment_context)
-    messages = _messages(text, conversation_history, attachment_context, turn_msgs, names)
+    fixes = [] if only else await asyncio.to_thread(corrections.lookup, text)
+    messages = _messages(text, conversation_history, attachment_context, turn_msgs, names,
+                         corrections.examples_block(fixes))
     for attempt in (1, 2):
         r = await _call(messages, schema.build(attachment_context, only=only), stream=False)
         content = r.choices[0].message.content or ""
         if content.strip() or getattr(r.choices[0], "finish_reason", "") != "length":
             break
         log.warning("[TURN] suy nghĩ lan man (length, không có JSON), gọi lại lần %d", attempt)
-    return parse_turn(content)
+    turn = parse_turn(content)
+    fix = corrections.forced_tool(fixes, turn["tool"], names) if not turn_msgs else None
+    if fix:
+        r = await _call(messages, schema.build(attachment_context, only=fix["right_tool"]), stream=False)
+        turn = parse_turn(r.choices[0].message.content or "")
+    return turn
 
 
 class _Output:
@@ -124,9 +140,11 @@ class _Output:
         await self._send(text)
 
     async def finish(self):
+        # chữ đã đủ → stream_end ngay; audio vẫn gửi tiếp sau đó. Đợi TTS tổng hợp hết rồi mới stream_end làm chữ đã
+        # xong mà trạng thái kẹt "Đang nghĩ…" (log 2026-10-15 00:12: trễ 22 giây)
+        await self.ctx.send_json(self.ctx.ws, {"type": "stream_end"})
         if self.streamer is not None:
             await self.streamer.stop()
-        await self.ctx.send_json(self.ctx.ws, {"type": "stream_end"})
 
     async def abort(self):
         if self.streamer is not None:
@@ -141,8 +159,8 @@ def _cancelled(ctx) -> bool:
     return bool(getattr(ctx.ws, "cancel_requested", False))
 
 
-async def _stream_round(ctx, out: _Output, messages, sch, text: str = "", gate: bool = False) -> dict | None:
-    """Stream một vòng; None = bị huỷ. gate: tool bị _off_target chặn thì không hiện câu báo."""
+async def _stream_round(ctx, out: _Output, messages, sch, hide=None) -> dict | None:
+    """Stream một vòng; None = bị huỷ. hide(tool) = True: không hiện câu báo của tool đó."""
     stream = await _call(messages, sch, stream=True)
     reader, raw, started, hidden = SayReader(), "", False, False
     await out.gap()
@@ -158,7 +176,7 @@ async def _stream_round(ctx, out: _Output, messages, sch, text: str = "", gate: 
             if not started:  # chỉ nhánh tool có "say"; "tool" đứng trước "say" nên đã biết tên tool
                 started = True
                 m = _TOOL_IN_RAW.search(raw)
-                hidden = gate and bool(m) and _off_target(m.group(1), text)
+                hidden = bool(hide and m and hide(m.group(1)))
                 if not hidden:
                     await out.show(TOOL_ICON)
             if not hidden:
@@ -182,15 +200,21 @@ async def _stream_answer(ctx, out: _Output, text, answer_msgs, names, ran_tool=F
                 *history.for_model(ctx.conversation_history, plain=True),
                 _user_message(text, ctx.attachment_context), *answer_msgs]
     stream = await _call(messages, None, stream=True)
-    raw, pending, dropped = "", "", False
+    raw, pending, dropped, fake = "", "", False, False
     await out.gap()
 
     async def emit(sentence: str):
-        nonlocal raw, dropped
+        nonlocal raw, dropped, fake
+        if not ran_tool and _FAKE_RESULT.search(sentence):
+            log.warning("[TURN] bịa kết quả tool khi không chạy tool: %r, cắt và dừng", sentence.strip()[:80])
+            dropped = fake = True
+            return
         if _breaks_promise(sentence, ran_tool):
             log.info("[TURN] bỏ câu hứa: %r", sentence.strip()[:120])
             dropped = True
             return
+        if not raw:  # câu đầu ra: model đang viết câu trả lời (ngài chốt 2026-10-15; log iPhone 02:15 viết 8,4 giây)
+            await ctx.send_json(ctx.ws, ANSWERING)
         raw += sentence
         await out.say(sentence)
     async for chunk in stream:
@@ -206,10 +230,14 @@ async def _stream_answer(ctx, out: _Output, text, answer_msgs, names, ran_tool=F
             if hasattr(stream, "aclose"):  # đóng kết nối: llama-server ngừng sinh tiếp
                 await stream.aclose()
             break
-        while m := _SENTENCE_END.search(pending):
+        while not fake and (m := _SENTENCE_END.search(pending)):
             sentence, pending = pending[:m.end()], pending[m.end():]
             await emit(sentence)
-    if pending:
+        if fake:
+            if hasattr(stream, "aclose"):
+                await stream.aclose()
+            break
+    if pending and not fake:
         await emit(pending)
     if dropped:
         note = (" " if raw.strip() else "") + _NO_PROMISE
@@ -230,6 +258,9 @@ async def _pick_file_tool(ctx) -> str | None:
     from engine.main.ask_verifi import ask_user_selection
     att = ctx.attachment_context
     options = [{"id": t, "label": registry.description(t)} for t in registry.file_tools_for(att)]
+    from engine.core.rag_watcher import SUPPORTED_EXTENSIONS
+    if (att.extension or "").lower() in SUPPORTED_EXTENSIONS:  # 2026-10-14: lưu hẳn vào kho (= @rag lưu) + tổng hợp
+        options.append({"id": _RAG_SAVE, "label": "Lưu vào kho tài liệu"})
     options.append({"id": "cancel", "label": "Không xử lý tệp"})
     selected = await ask_user_selection(ctx.ws, ctx.send_json, "attachment_route",
                                         f"Ngài muốn xử lý tệp {att.filename} theo cách nào?", options)
@@ -237,11 +268,11 @@ async def _pick_file_tool(ctx) -> str | None:
 
 
 async def _run_tool(ctx, out, tool_ctx, tool: str, args: dict, say: str, cua_replay=None) -> tuple[dict, dict] | None:
-    """Chạy một tool đã validate: status working → tool → thinking → hiện bảng display. None = bị huỷ."""
-    await ctx.send_json(ctx.ws, {"type": "status", "state": "working", "message": f"Đang dùng công cụ {tool}"})
+    """Chạy một tool đã validate: status working → tool → thinking → hiện bảng display. None = bị huỷ. thay đổi trạng thái status-label tại đây"""
+    await ctx.send_json(ctx.ws, {"type": "status", "state": "working", "message": f"Công cụ: {registry.label(tool)}"}) 
     tool_ctx.trace = [] if tool == "win_control" else None
     tool_ctx.replay_steps = cua_replay if tool == "win_control" else None
-    async with ctx.flow_tracker.step(f"Chạy {tool}"):
+    async with ctx.flow_tracker.step(f"Chạy {registry.label(tool)}"):
         res = await registry.run(tool, args, tool_ctx)
     await ctx.send_json(ctx.ws, {"type": "status", "state": "thinking"})
     if _cancelled(ctx):
@@ -263,6 +294,11 @@ async def run_loop(text: str, ctx, only: str | None = None, replay: dict | None 
     steps, turn_msgs, answer_msgs, ran, final_say = [], [], [], set(), ""
     tool_ctx = registry.ToolContext(ws=ctx.ws, send_json=ctx.send_json, attachment_context=att,
                                     conversation_history=list(ctx.conversation_history or []), user_text=text)
+    fixes = [] if (only or replay) else await asyncio.to_thread(corrections.lookup, text)
+    examples = corrections.examples_block(fixes)
+
+    def _hide(tool: str) -> bool:
+        return not only and (_off_target(tool, text) or corrections.forced_tool(fixes, tool, names) is not None)
 
     def _stop() -> str:
         ctx.ws.last_turn = {"steps": steps, "final_say": ""}
@@ -296,7 +332,7 @@ async def run_loop(text: str, ctx, only: str | None = None, replay: dict | None 
     while not replay and round_no < MAX_ROUNDS and not (only and round_no):  # @tool: chỉ một vòng chọn tool
         round_no += 1
         sch = schema.build(att, only=only if round_no == 1 else None)
-        messages = _messages(text, ctx.conversation_history, att, turn_msgs, names)
+        messages = _messages(text, ctx.conversation_history, att, turn_msgs, names, examples)
         flow = ctx.flow_tracker.step("Chọn công cụ" if round_no == 1 else _SUMMARY)
         await flow.__aenter__()
         try:
@@ -309,12 +345,23 @@ async def run_loop(text: str, ctx, only: str | None = None, replay: dict | None 
                         await out.show("Đã huỷ xử lý tệp vì chưa có lựa chọn phù hợp.")
                         answer = False
                         break
+                    if picked == _RAG_SAVE:  # kết quả lưu + tổng hợp hiện thẳng, không vòng trả lời kể thêm
+                        from engine.rag import runner
+                        flow.label = "Lưu vào kho tài liệu"
+                        await out.show(await runner.save_document(att))
+                        await flow.__aexit__(None, None, None)
+                        answer = False
+                        break
                     first = registry.params(picked)[:1]
                     turn = {"say": "", "tool": picked, "args": {first[0]: text} if first else {}}
                 elif turn["say"]:
                     await out.show(TOOL_ICON + turn["say"])
             else:
-                turn = await _stream_round(ctx, out, messages, sch, text, gate=not only)
+                turn = await _stream_round(ctx, out, messages, sch, _hide)
+                fix = corrections.forced_tool(fixes, turn["tool"], names) if turn and round_no == 1 else None
+                if fix:
+                    log.info("[TURN] sửa theo corrections #%s: %s → %s", fix["id"], fix["wrong_tool"], fix["right_tool"])
+                    turn = await _stream_round(ctx, out, messages, schema.build(att, only=fix["right_tool"]))
         except Exception as exc:
             await flow.__aexit__(type(exc), exc, None)
             log.warning("[TURN] LLM failed round=%d: %s", round_no, exc)
@@ -331,7 +378,7 @@ async def run_loop(text: str, ctx, only: str | None = None, replay: dict | None 
         if turn["tool"] == "none" and round_no > 1:
             summary = flow  # vòng trả lời chạy tiếp trong bước này
             break
-        flow.label = f"Chọn công cụ → {'không cần' if turn['tool'] == 'none' else turn['tool']}"
+        flow.label = f"Chọn công cụ → {'không cần' if turn['tool'] == 'none' else registry.label(turn['tool'])}"
         await flow.__aexit__(None, None, None)
         if turn["tool"] == "none":
             break
@@ -374,6 +421,9 @@ async def run_loop(text: str, ctx, only: str | None = None, replay: dict | None 
         log.info("[TURN] answer=%r", final_say[:80])
         if not final_say and not steps:  # không bao giờ im lặng (e2e 2026-10-12: "tăng âm lượng" rỗng)
             await out.show(_SILENT)
+    # LLM xong, không còn gửi gì: status về idle ngay (ngài 2026-10-15). Status là trạng thái LLM, không gắn với bộ gõ chữ
+    # (stream_start/text_chunk/stream_end); đọc là status riêng của TTS (speaking/idle source=tts)
+    await ctx.send_json(ctx.ws, {"type": "status", "state": "idle"})
     # trước khi chờ TTS (out.finish chờ tổng hợp hết): gửi sau thì island đã thu lại rồi bật lên giữa lúc đọc
     await ctx.flow_tracker.track("Hoàn thành", "completed")
     await out.finish()

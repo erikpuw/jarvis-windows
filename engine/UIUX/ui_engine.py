@@ -1243,6 +1243,30 @@ async def api_logs_tts(lines: int = 300):
     return _tail_log("stream_tts.log", lines)
 
 
+PERF_LOG_MAX_BYTES = 5 * 1024 * 1024  # ~5 phút x 1 mẫu/giây chỉ vài trăm KB; quá ngưỡng thì bắt đầu file mới
+PERF_LOG_MAX_BODY = 64 * 1024
+
+
+@router.post("/api/perf-log")
+async def api_perf_log(request: Request):
+    """Mẫu số liệu của bảng ?debug=1 (frontend/src/perf-debug.ts), ghi nối vào logs/perf.jsonl: đọc lại sau một phiên trên iPhone
+    (Safari không có DevTools). `reset` = trang vừa mở, bắt đầu file mới. Chỉ ghi, không đọc nên không nằm sau khóa Memory."""
+    body = await request.body()
+    if len(body) > PERF_LOG_MAX_BODY:
+        return JSONResponse({"success": False, "error": "too large"}, status_code=413)
+    try:
+        data = json.loads(body)
+        samples = [s for s in data.get("samples", []) if isinstance(s, dict)]
+    except Exception:
+        return JSONResponse({"success": False, "error": "bad json"}, status_code=400)
+    path = _log_dir() / "perf.jsonl"
+    fresh = data.get("reset") or (path.exists() and path.stat().st_size > PERF_LOG_MAX_BYTES)
+    with open(path, "w" if fresh else "a", encoding="utf-8") as f:
+        for s in samples:
+            f.write(json.dumps(s, ensure_ascii=False) + "\n")
+    return {"success": True}
+
+
 @router.post("/api/upload")
 async def api_upload(file: UploadFile = File(...)):
     try:
@@ -1711,6 +1735,16 @@ async def api_workflows_delete(id: int):
         return {"success": success}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+@router.get("/api/corrections/list")
+async def api_corrections_list(q: str = "", limit: int = 50, offset: int = 0):
+    try:
+        from engine.core.learning import get_learning_engine
+        page = await asyncio.to_thread(get_learning_engine().list_correction_records, q, limit, offset)
+        return {"success": True, "corrections": page["items"], **page}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 
 @router.get("/api/outcomes/list")
 async def api_outcomes_list(

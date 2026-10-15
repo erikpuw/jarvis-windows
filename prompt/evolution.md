@@ -1,46 +1,19 @@
-Bạn phân tích Learning.md/Preferences.md của Jarvis và cập nhật 2 khối:
+Bạn bảo trì bộ nhớ hành vi của Jarvis: dọn danh sách bài học.
 
-1. ROUTING: agent nào nên xử lý loại yêu cầu nào. Đây CHỈ là đề xuất cho người duyệt, không tự áp dụng.
-2. STYLE: bộ luật Jarvis nói và cư xử khi trò chuyện (xưng hô, giọng điệu, emoji, độ dài, cách xin lỗi, cách đáp khi bị chỉ trích), để sửa lỗi giao tiếp mà ngài đã yêu cầu hoặc chỉ trích.
-   Cách cập nhật STYLE:
-   - Bắt đầu từ STYLE.MD HIỆN TẠI và trả về TOÀN BỘ bộ luật sau khi cập nhật, không chỉ luật mới.
-   - Mỗi luật cũ phải có mặt lại trong kết quả (nguyên văn hoặc đã sửa), trừ khi bị một bài học mới phủ định.
-   - Bài học cùng ý với một luật cũ: gộp vào luật đó, không thêm dòng.
-   - Bài học trái với một luật cũ: viết lại luật đó theo bài học mới; bài học mới thắng, không giữ cả hai.
-   - Bài học về cách nói hoặc cư xử chưa có luật nào: thêm một luật.
-   - Sở thích của ngài về cách Jarvis nói (giọng, xưng hô, emoji, độ dài) là luật. Sự thật hay sở thích đời sống của ngài (đồ ăn, thói quen, công việc, thiết bị) không phải luật.
-   - Tối đa 20 luật; mỗi luật một câu khái niệm, không ví dụ, không trích câu, không ghi nguồn hay nhãn.
-   TUYỆT ĐỐI KHÔNG viết luật STYLE liên quan đến công cụ, hỏi lại, xin phép, agent hay thẻ. Các luật này do persona và <soul_rules> quản lý độc quyền.
+<nhiem_vu>
+Xem <bai_hoc> (mỗi dòng: #id [loại, ngày] nội dung) và đề xuất:
+- "trùng": hai bài cùng ý → gỡ một bài, "keep_id" là bài giữ lại.
+- "merge": nhiều bài cùng chủ đề gộp thành một câu.
+Hai bài khác chủ đề hoặc trái ý nhau thì không phải trùng. Không chắc thì không gỡ. Tối đa 5 mục.
+</nhiem_vu>
 
-PREFERENCES.MD:
-"""
-{pref_content}
-"""
+<vi_du>
+#3 [lesson, 2026-09-01] Tránh trả lời lan man. #9 [lesson, 2026-10-01] Trả lời ngắn gọn, không dài dòng. #7 [lesson, 2026-09-12] Xin lỗi ngắn một câu.
+→ {{"remove": [{{"id": 3, "why": "trùng", "keep_id": 9}}], "merge": []}}
+</vi_du>
 
-LEARNING.MD:
-"""
-{learning_content}
-"""
+<bai_hoc>
+{items}
+</bai_hoc>
 
-ĐỀ XUẤT ROUTING ĐÃ CÓ (chưa duyệt):
-"""
-{current_routing_proposals}
-"""
-
-STYLE.MD HIỆN TẠI:
-"""
-{current_style}
-"""
-
-Nếu không có gì mới, set need_evolution=false. Trả lời tiếng Việt, đúng khuôn:
-
-DECISION_JSON:
-{{"need_evolution": true/false, "reason": "lý do ngắn"}}
-
-ROUTING_RULES:
-# Self Evolution Routing Rules
-[bullet mới, hoặc để trống]
-
-STYLE_RULES:
-# Self Evolution Style Rules
-[toàn bộ luật sau khi cập nhật, mỗi luật một dòng bắt đầu bằng "- "]
+Trả về JSON gồm remove, merge.

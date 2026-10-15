@@ -49,10 +49,10 @@ def _ids(le):
 
 def test_forbidden_style_rules_blocked():
     sources = ["người dùng thích emoji", "hướng dẫn phong cách"]
-    assert _bad_rule("- Khi người dùng cần, hãy hỏi xem có muốn mở app không", sources, routing=False) is not None
-    assert _bad_rule("- Xin phép người dùng trước khi gọi công cụ", sources, routing=False) is not None
-    assert _bad_rule("- Dùng agent_desktop để xử lý yêu cầu", sources, routing=False) is not None
-    assert _bad_rule("- Bọc lệnh trong thẻ <ask_user>", sources, routing=False) is not None
+    assert _bad_rule("- Khi người dùng cần, hãy hỏi xem có muốn mở app không", sources) is not None
+    assert _bad_rule("- Xin phép người dùng trước khi gọi công cụ", sources) is not None
+    assert _bad_rule("- Dùng agent_desktop để xử lý yêu cầu", sources) is not None
+    assert _bad_rule("- Bọc lệnh trong thẻ <ask_user>", sources) is not None
 
 
 def test_evidence_verbatim_guard(engine):
@@ -90,13 +90,6 @@ def test_forbidden_topics_do_not_block_user_facts(engine):
     assert engine._is_forbidden_topic("Ngài muốn khỏi phải nhắc lại tên mình", "preference") is False
 
 
-def test_routing_note_goes_to_evolution_only(engine, tmp_path):
-    proposal = {"kind": "routing_note", "key": "route_doc", "content": "Tài liệu nên chuyển cho office", "evidence": "tài liệu"}
-    assert engine._handle_routing_note_proposal(proposal) is True
-    assert "[ĐỀ XUẤT]" in (tmp_path / "data" / "wiki" / "System" / "Evolution.md").read_text(encoding="utf-8")
-    assert _ids(engine) == {}
-
-
 def test_critique_merge_replace_limited_to_context_item(engine):
     res = engine._apply_critique_decision(
         decision="merge",
@@ -115,7 +108,7 @@ def test_retract_deletes_item_learned_last_run(engine, monkeypatch):
                         "evidence": "thích trả lời thật ngắn"}]},
         {"decision": "new"},
     ], seen)
-    asyncio.run(engine.process_conversation_learning("tôi thích trả lời thật ngắn", "Vâng."))
+    asyncio.run(engine.process_conversation_learning("ghi nhớ: tôi thích trả lời thật ngắn", "Vâng."))
     learned_id = next(iter(_ids(engine)))
 
     memory.save_message("user", "không, tôi đâu có thích ngắn")
@@ -145,7 +138,7 @@ def test_retract_of_merge_restores_previous_content(engine, monkeypatch):
                         "evidence": "thích emoji và hài hước"}]},
         {"decision": "merge", "merged_content": "Ngài thích emoji và sự hài hước"},
     ], [])
-    asyncio.run(engine.process_conversation_learning("tôi thích emoji và hài hước", "Vâng."))
+    asyncio.run(engine.process_conversation_learning("ghi nhớ: tôi thích emoji và hài hước", "Vâng."))
     assert _ids(engine)[old_id] == "Ngài thích emoji và sự hài hước"
 
     memory.save_message("user", "không đúng, bỏ cái hài hước đi")
@@ -172,7 +165,7 @@ def test_duplicate_learning_overwrites_existing_instead_of_inserting_new(engine,
         {"decision": "new", "reason": "chưa có bài này"},
     ], [])
 
-    asyncio.run(engine.process_conversation_learning("tôi thích nghe nhạc Sơn Tùng bài Making My Way", "Vâng ạ."))
+    asyncio.run(engine.process_conversation_learning("nhớ giùm tôi thích nghe nhạc Sơn Tùng bài Making My Way", "Vâng ạ."))
     new_ids = _ids(engine)
     assert len(new_ids) == 1, f"Kỳ vọng 1 bản ghi duy nhất nhưng có {len(new_ids)}: {new_ids}"
     assert old_id in new_ids, f"ID cũ {old_id} phải được giữ nguyên"

@@ -1,4 +1,4 @@
-// E2E: trang Thông tin (README) — chữ trong dấu ` ` (code nội tuyến) ngắn như `vi-VN`, `.env`, `@rag` KHÔNG được bị ngắt xuống dòng giữa chừng
+// E2E: trang Thông tin (README) — chữ trong dấu ` ` (code nội tuyến) ngắn như `vi-VN`, `.env`, `@plans` KHÔNG được bị ngắt xuống dòng giữa chừng
 //  (trước đây overflow-wrap:anywhere + dấu gạch làm "vi-" ở cuối dòng, "VN" nhảy xuống dòng sau). Code nội tuyến rất dài (đường dẫn, chuỗi liền không dấu cách)
 //  vẫn phải tự ngắt để trang không bị kéo ngang. Bảng cuộn trong khối của nó.
 // WebSocket và /api bị mock. Chạy: PW=<module playwright> node frontend/e2e/info-wrap.cjs   (cần `npm run dev` ở :5173)
@@ -10,7 +10,7 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
 
 const LONG = "engine/router/" + "rat_dai_khong_co_dau_cach_".repeat(8) + ".py";
 const README = fs.readFileSync(path.join(__dirname, "..", "..", "README.md"), "utf8")
-  + `\n\n## Thử ngắt dòng\n\nMã ngắn \`vi-VN\` và \`.env\` và \`@rag\` giữa câu dài dài dài dài dài dài dài dài dài dài dài dài. Mã dài \`${LONG}\` nằm trong đoạn.\n\n- mục: \`${LONG}\`\n`;
+  + `\n\n## Thử ngắt dòng\n\nMã ngắn \`vi-VN\` và \`.env\` và \`@plans\` giữa câu dài dài dài dài dài dài dài dài dài dài dài dài. Mã dài \`${LONG}\` nằm trong đoạn.\n\n- mục: \`${LONG}\`\n`;
 
 async function run(label, opts) {
   const browser = await chromium.launch();

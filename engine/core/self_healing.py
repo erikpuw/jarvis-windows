@@ -4,10 +4,12 @@ JARVIS Self-Healing Engine — Quản lý việc tự động phát hiện lỗi
 Tách biệt hoàn toàn phần logic kỹ thuật ra khỏi Learning và Evolution.
 """
 
+import json
 import logging
 import re
 import time
 import asyncio
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from engine.server.llm_server import call_llm
@@ -15,6 +17,7 @@ from engine.server.llm_server import call_llm
 log = logging.getLogger("jarvis.self_healing")
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
+ERRORS_FILE = PROJECT_ROOT / "data" / "wiki" / "System" / "Errors.md"
 _last_fix_self_time: float = 0
 _FIX_SELF_COOLDOWN = 120.0  # 2 phút giữa các lần tự sửa code
 _last_log_position: int = 0
@@ -34,6 +37,20 @@ def is_known_transient_log_error(entry: str) -> bool:
     )):
         return True
     return False
+
+
+def _error_blocks(entries: list[str]) -> list[str]:
+    """Dòng log có lỗi, bỏ lỗi tạm thời đã biết. Lọc lỗi trước rồi mới xét tạm thời: log 2026-10-14 22:15 dòng khởi
+    động "stream_tts… port 8082" (không phải lỗi) bị báo "skipped transient Telegram polling timeout"."""
+    blocks = []
+    for entry in entries:
+        if not any(kw in entry.lower() for kw in ("error", "failed", "exception", "traceback")):
+            continue
+        if is_known_transient_log_error(entry):
+            log.info("Self-Healing skipped transient error: %s", " ".join(entry.split())[:160])
+            continue
+        blocks.append(entry)
+    return blocks
 
 
 def _find_project_file_in_error(error_message: str) -> Optional[str]:
@@ -62,39 +79,33 @@ async def _assess_and_log_error(error_message: str, project_file: str) -> bool:
     - Đồng thời tạo và ghi entry vào data/wiki/System/Errors.md theo contract nội bộ của Jarvis
     """
     try:
-        err_snippet = error_message[:2000] if len(error_message) > 2000 else error_message
-        from engine.prompts.learning import build_self_healing_prompt
-        prompt = build_self_healing_prompt(project_file, err_snippet)
+        err_snippet = error_message[:2000]
+        from engine.prompts.learning import SELF_HEALING_SCHEMA, build_self_healing_prompt, json_format
         response = await call_llm(
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            thinking=False
+            messages=[{"role": "user", "content": build_self_healing_prompt(project_file, err_snippet)}],
+            temperature=0.0, thinking=True, thinking_budget=128, max_tokens=600,
+            response_format=json_format("self_healing", SELF_HEALING_SCHEMA),
         )
-        raw = response.choices[0].message.content.strip()
-
-        import json as _json
-        try:
-            data = _json.loads(raw)
-        except Exception:
-            # Fallback: trích classification từ text thô
-            data = {"classification": raw.upper(), "errors_md_entry": ""}
-
-        classification = data.get("classification", "").upper()
-        is_code_bug = "CODE_BUG" in classification
+        # grammar JSON: hỏng là bỏ qua lượt này (trước: lấy chữ thô có "CODE_BUG" làm lỗi code → hỏi ngài gửi Goose)
+        data = json.loads((response.choices[0].message.content or "").strip())
+        classification = data["classification"]
+        if classification not in SELF_HEALING_SCHEMA["properties"]["classification"]["enum"]:
+            raise ValueError(f"classification lạ: {classification!r}")
+        is_code_bug = classification == "CODE_BUG"
         log.info(f"🛡️ Self-Healing assessment for {Path(project_file).name}: {classification} → {'FIX' if is_code_bug else 'SKIP'}")
 
-        # Ghi vào data/wiki/System/Errors.md
-        entry = data.get("errors_md_entry", "").strip()
-        if entry:
-            errors_dir = PROJECT_ROOT / "data" / "wiki" / "System"
-            errors_dir.mkdir(parents=True, exist_ok=True)
-            errors_file = errors_dir / "Errors.md"
-            if not errors_file.exists():
-                errors_file.write_text("# Errors\n\nCommand failures and integration errors.\n\n---\n", encoding="utf-8")
-            with open(errors_file, "a", encoding="utf-8") as f:
-                f.write(f"\n{entry}\n")
-            log.info("🛡️ Self-Healing: Đã ghi nhận lỗi vào data/wiki/System/Errors.md")
-
+        # Errors.md: code ghép giờ/tệp/lỗi đã biết, model chỉ góp phân loại + tóm tắt + bước xử lý
+        now = datetime.now()
+        last_line = (error_message.strip().splitlines() or [""])[-1][:300]
+        entry = (f"## [ERR-{now:%Y%m%d-%H%M%S}] {data['summary']}\n- Time: {now.isoformat(timespec='seconds')}\n"
+                 f"- Classification: {classification}\n- File: {project_file}\n- Error: {last_line}\n"
+                 f"- Suggested action: {data['action']}")
+        ERRORS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        if not ERRORS_FILE.exists():
+            ERRORS_FILE.write_text("# Errors\n\nCommand failures and integration errors.\n\n---\n", encoding="utf-8")
+        with open(ERRORS_FILE, "a", encoding="utf-8") as f:
+            f.write(f"\n{entry}\n")
+        log.info("🛡️ Self-Healing: Đã ghi nhận lỗi vào data/wiki/System/Errors.md")
         return is_code_bug
     except Exception as e:
         log.warning(f"Failed to assess/log error: {e}")
@@ -183,15 +194,7 @@ async def trigger_self_healing_from_logs():
         if current_entry:
             log_entries.append("".join(current_entry))
 
-        error_blocks = []
-        for entry in log_entries:
-            if is_known_transient_log_error(entry):
-                log.info("Self-Healing skipped transient Telegram polling timeout")
-                continue
-            el = entry.lower()
-            if any(kw in el for kw in ["error", "failed", "exception", "traceback"]):
-                error_blocks.append(entry)
-
+        error_blocks = _error_blocks(log_entries)
         if not error_blocks:
             return
 

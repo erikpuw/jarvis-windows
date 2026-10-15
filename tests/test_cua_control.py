@@ -767,3 +767,22 @@ def test_replay_keeps_preview_install_block(monkeypatch):
     out = asyncio.run(wc.run_cua_task("cập nhật", None, None, session_factory=lambda: cua,
                                       ask_llm=_say({"finish": "x"}), confirm=None, replay=step))
     assert "Preview" in out and not any(c[0] == "click" for c in cua.calls)
+
+
+def test_session_sends_element_token_for_new_driver():
+    """cua-driver-rs 0.34 (2026-10-13): bỏ element_index/snapshot_id, nhận element_token "<snapshot_id>:<index>"
+    (log: "click: unknown argument element_index" lặp 12 bước)."""
+    from types import SimpleNamespace
+    from engine.tools.desktop_control.cua_runner import CuaSession
+    sent = []
+
+    class _S:
+        async def call_tool(self, tool, args):
+            sent.append((tool, dict(args)))
+            return SimpleNamespace(content=[], isError=False, structuredContent={})
+    s = CuaSession()
+    s._session = _S()
+    asyncio.run(s.call("click", {"pid": 1, "window_id": 2, "element_index": 30, "snapshot_id": "s00000007"}))
+    asyncio.run(s.call("get_window_state", {"pid": 1, "window_id": 2, "query": "x"}))
+    assert sent[0] == ("click", {"pid": 1, "window_id": 2, "element_token": "s00000007:30"})
+    assert sent[1] == ("get_window_state", {"pid": 1, "window_id": 2, "query": "x"})

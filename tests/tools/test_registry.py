@@ -90,3 +90,12 @@ def test_run_passes_ctx(monkeypatch):
     monkeypatch.setattr("engine.core.guardrails.verify_output", lambda n, a: (True, ""))
     res = asyncio.run(R.run("open_thing", {"app_name": "word"}, R.ToolContext(user_text="hi")))
     assert res == R.ToolResult("opened word a 7 hi", "success")
+
+
+def test_every_real_tool_has_a_human_label():
+    """Ngài 2026-10-13: status/island hiện tên phần đang dùng, không hiện lệnh thô (check_mail, read_screen…)."""
+    R._reset_for_test()
+    for name in R.names():
+        label = R.label(name)
+        assert label and label != name and "_" not in label, name
+    R._reset_for_test()

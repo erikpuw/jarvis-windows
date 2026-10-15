@@ -104,3 +104,23 @@ def test_save_rejects_types_the_watcher_cannot_index(env):
 def test_save_strips_directories_from_filename(env):
     _save(_att(env, "../../evil.pdf"))
     assert [p.name for p in env.watch.iterdir()] == ["evil.pdf"]
+
+
+def test_save_returns_document_summary_after_indexing(env):
+    """2026-10-14: lưu xong chỉ nói "Đã lưu X: N đoạn" → kèm tài liệu nói về gì (đọc đoạn của đúng tệp đó)."""
+    import engine.rag.summary as summary_mod
+    env.mp.setattr(watcher_mod, "get_rag_watcher", lambda *a, **k: object())
+    att = _att(env, "Food.pdf")
+    dest = str((env.watch / "Food.pdf").resolve())
+    env.mp.setattr(watcher_mod, "get_watch_stats", lambda: {"files": [{"file_path": dest, "chunks": 2}]})
+    env.rag.chunks = [{"file_path": dest.lower(), "content": "thực đơn"}, {"file_path": "khac.pdf", "content": "khác"},
+                      {"file_path": dest, "content": "ngày 2"}]
+    seen = {}
+
+    async def fake_summarize(name, chunks):
+        seen["args"] = (name, [c["content"] for c in chunks])
+        return "**Food.pdf**: Thực đơn"
+    env.mp.setattr(summary_mod, "summarize", fake_summarize)
+    out = _save(att)
+    assert "2 đoạn" in out and "**Food.pdf**: Thực đơn" in out
+    assert seen["args"] == ("Food.pdf", ["thực đơn", "ngày 2"])

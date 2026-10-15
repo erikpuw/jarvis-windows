@@ -121,6 +121,9 @@ class CuaSession:
         return False
 
     async def call(self, tool: str, args: dict) -> dict:
+        if "element_index" in args:  # cua-driver-rs 0.34: element_token "<snapshot_id>:<index>" thay element_index
+            args = dict(args)
+            args["element_token"] = f"{args.pop('snapshot_id', '')}:{args.pop('element_index')}"
         res = await asyncio.wait_for(self._session.call_tool(tool, args), _CUA_CALL_TIMEOUT)
         text = "".join(getattr(c, "text", "") for c in res.content if getattr(c, "type", "") == "text")
         return {"is_error": bool(res.isError), "text": text, "data": res.structuredContent or {}}
@@ -351,10 +354,43 @@ def _describe(tool: str, args: dict, label: str) -> str:
     return f"Tôi sẽ {_CUA_VERBS.get(tool, tool)} {detail}. Bạn có đồng ý không?"
 
 
+# Kiểu tham số theo inputSchema của cua-driver v0.34 (list_tools 2026-10-14); element_index là số của bảng
+# get_window_state/shell_state (CuaSession.call đổi sang element_token). shell_* là của ShellUia.
+_ARG_TYPES = {
+    "pid": {"type": "integer"}, "window_id": {"type": "integer"}, "element_index": {"type": "integer"},
+    "amount": {"type": "integer"}, "on_screen_only": {"type": "boolean"},
+    "direction": {"enum": ["up", "down", "left", "right"]},
+    "name": {"type": "string", "minLength": 1}, "text": {"type": "string"}, "value": {"type": "string"},
+    "key": {"type": "string", "minLength": 1}, "query": {"type": "string"},
+    "modifiers": {"type": "array", "items": {"type": "string"}},
+    "keys": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "path": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+}
+
+
+def _action_schema() -> dict:
+    """Grammar một bước: {"tool", "args"} đúng tool + kiểu, hoặc {"finish"}. window_id không bắt buộc vì code tự
+    điền từ cửa sổ đã biết; các chốt còn lại (thiếu tham số, snapshot, xác nhận) vẫn ở _cua_loop."""
+    branches = [{"type": "object", "properties": {
+        "tool": {"const": tool},
+        "args": {"type": "object", "properties": {k: _ARG_TYPES[k] for k in sorted(allowed)},
+                 "required": sorted(required - {"window_id"}), "additionalProperties": False}},
+        "required": ["tool", "args"], "additionalProperties": False}
+        for tool, (allowed, required, _) in _CUA_TOOLS.items()]
+    finish = {"type": "object", "properties": {"finish": {"type": "string", "minLength": 1}},
+              "required": ["finish"], "additionalProperties": False}
+    return {"anyOf": [*branches, finish]}
+
+
+ACTION_SCHEMA = _action_schema()
+
+
 async def _cua_llm(messages: list) -> str:
+    from engine.prompts.learning import json_format
     from engine.server.llm_server import call_llm
 
-    resp = await call_llm(messages=messages, temperature=0.0, thinking=False, max_tokens=400)
+    resp = await call_llm(messages=messages, temperature=0.0, thinking=True, thinking_budget=128, max_tokens=600,
+                          response_format=json_format("cua_action", ACTION_SCHEMA))
     return (resp.choices[0].message.content or "").strip()
 
 

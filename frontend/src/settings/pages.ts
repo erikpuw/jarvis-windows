@@ -670,7 +670,6 @@ export function buildSettingsHTML(): string {
         <span class="sd-page-title" id="settings-page-title"></span>
         <button type="button" class="sd-icon-btn" id="settings-close" aria-label="Đóng cài đặt"></button>
       </header>
-      <div class="settings-welcome" id="settings-welcome" hidden>Chào mừng đến với JARVIS — hãy nhập Server API Key để bắt đầu.</div>
       <div class="sd-body">
         <nav class="sd-nav" id="settings-nav" aria-label="Danh mục cài đặt">
           <div class="sd-nav-list">${nav}</div>

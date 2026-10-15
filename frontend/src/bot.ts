@@ -447,6 +447,6 @@ export function mountBot(parent: HTMLElement): void {
   apply(reduced ? "sleeping" : "default");
   if (!reduced) { startDoze(); setLooks(LOOK_AROUND, PROFILE.idle.everyMs!); }
   paint();
-  if (!reduced) gatedLoop((now, dt) => { lastNow = now; pointerPlay(); sim.update(Math.min(dt / 1000, 0.05)); if (talking) { open = talk(now, dt); const m = open.toFixed(1); if (host.dataset.mouth !== m) host.dataset.mouth = m; } paint(); }, 1000 / 60); // 60 fps on phones too: a 32px sprite is cheap, and 30 fps looked choppy
+  if (!reduced) gatedLoop((now, dt) => { lastNow = now; pointerPlay(); sim.update(Math.min(dt / 1000, 0.05)); if (talking) { open = talk(now, dt); const m = open.toFixed(1); if (host.dataset.mouth !== m) host.dataset.mouth = m; } paint(); }, 1000 / 60, true); // 60 fps on phones too (stops while the command bar is hidden): a 32px sprite is cheap, and 30 fps looked choppy
   window.addEventListener("jarvis:bot-shape", (e) => setBotShape(String((e as CustomEvent).detail)));
 }

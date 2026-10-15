@@ -9,12 +9,25 @@ from pathlib import Path
 log = logging.getLogger("jarvis.media_search")
 
 
-async def search_media(query: str, source: str = "auto") -> list[dict]:
+# "mở/bật/phát/nghe/xem (cho tôi) bài/bài hát/nhạc/video/phim <tên>" → <tên> nguyên văn (ngài 2026-10-15: model cắt
+# "mở bài see tình" còn "Tình", "mở bài em của ngày hôm qua" còn "Em"; lọc từ đệm còn bỏ "của/em/đi" giữa tên)
+_TITLE_IN_REQUEST = re.compile(
+    r"(?:^|\s)(?:mở|bật|phát|nghe|xem)\s+(?:bài\s+hát|bài\s+nhạc|bản\s+nhạc|bài|nhạc|video|phim)\s+(.+?)[\s.!?]*$",
+    re.IGNORECASE)
+_TRAILING_POLITE = re.compile(r"(?:\s+(?:nhé|nha|nhá|giúp tôi|giùm tôi|cho tôi))+$", re.IGNORECASE)
+
+
+def title_from_user(text: str) -> str:
+    m = _TITLE_IN_REQUEST.search((text or "").strip())
+    return _TRAILING_POLITE.sub("", m.group(1)).strip().lower() if m else ""
+
+
+async def search_media(query: str, source: str = "auto", verbatim: bool = False) -> list[dict]:
     if source == "local":
         results = search_local(query)
         if results:
             return results
-    return await search_youtube(query)
+    return await search_youtube(query, verbatim=verbatim)
 
 
 def _strip_noise(text: str) -> str:
@@ -47,9 +60,10 @@ def no_accent(text: str) -> str:
     return "".join(c for c in text if not unicodedata.combining(c))
 
 
-async def search_youtube(query: str, max_results: int = 4) -> list[dict]:
+async def search_youtube(query: str, max_results: int = 4, verbatim: bool = False) -> list[dict]:
     try:
-        query = _strip_request_words(_strip_noise(query)) or query
+        if not verbatim:  # tên lấy nguyên văn từ câu ngài: không lọc từ đệm (sẽ cắt "của/em/đi" trong tên)
+            query = _strip_request_words(_strip_noise(query)) or query
         # Tìm nhiều hơn 10 video để lọc Shorts, sau đó cắt lấy tối đa 4 video
         result = await asyncio.to_thread(_yt_search, query, max_results=12)
         # Lọc bỏ các video ngắn (Shorts) có thời lượng dưới 60 giây (giữ lại None vì Live Stream có duration là None)
@@ -269,8 +283,12 @@ async def execute_media_search(arguments: dict, ws=None, safe_ws_send_json=None)
         except Exception:
             pass
 
-    query = _strip_noise(query)
-    results = await search_media(query, source)
+    title = title_from_user(arguments.get("user_text", ""))
+    if title:
+        query = title
+    else:
+        query = _strip_noise(query)
+    results = await search_media(query, source, verbatim=bool(title))
     if not results:
         return f"Không tìm thấy nội dung cho '{query}'."
 
