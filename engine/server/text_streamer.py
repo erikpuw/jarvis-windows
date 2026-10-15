@@ -5,7 +5,6 @@ Supports smooth word-by-word streaming for static texts/agent results,
 and direct streaming for real-time LLM chunks to prevent latency.
 """
 
-import asyncio
 import logging
 
 log = logging.getLogger("jarvis.text_streamer")
@@ -211,27 +210,3 @@ class StreamCueFilter:
     def flush(self) -> str:
         rest, self.pending = self.pending, ""
         return rest
-
-
-async def stream_text_smoothly(ws, safe_ws_send_json, text: str, word_delay: float = 0.04, **kwargs):
-    if not ws or not text:
-        return
-    # 1. Làm sạch LaTeX trên toàn bộ văn bản trước để tránh bị cắt đứt tag LaTeX
-    cleaned_text = clean_latex_math(text)
-    
-    # 2. Tách thành các từ để stream mượt mà (word-by-word)
-    words = cleaned_text.split(" ")
-    for idx, word in enumerate(words):
-        # Thêm khoảng trắng giữa các từ (trừ từ cuối cùng)
-        chunk = word + (" " if idx < len(words) - 1 else "")
-        if chunk:
-            await safe_ws_send_json(ws, {"type": "text_chunk", "text": chunk})
-        if word_delay > 0:
-            await asyncio.sleep(word_delay)
-
-
-async def stream_chunk_smoothly(ws, safe_ws_send_json, chunk: str, char_delay: float = 0.005, **kwargs):
-    if not chunk or not ws:
-        return
-    chunk = clean_latex_math(chunk)
-    await safe_ws_send_json(ws, {"type": "text_chunk", "text": chunk})
