@@ -7,6 +7,8 @@ import re
 import sys
 import unicodedata
 from pathlib import Path
+
+import numpy as np
 from engine.core.db_ids import insert_with_lowest_free_id
 from typing import Optional, Any
 
@@ -40,6 +42,21 @@ _QUERY_PUNCT = re.compile(r"[.,!?;:\"'“”‘’…()\[\]]")
 def normalize_query(text: str) -> str:
     """Khoá khớp workflow: chữ thường, bỏ dấu câu, gộp khoảng trắng."""
     return " ".join(_QUERY_PUNCT.sub(" ", text or "").casefold().split())
+
+
+def _cosine(a, b) -> float | None:
+    """Cosine hai vector; thiếu hoặc khác số chiều (đổi embedder) → None, không lỗi."""
+    if not a or not b or len(a) != len(b):
+        return None
+    va, vb = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
+    n = float(np.linalg.norm(va) * np.linalg.norm(vb))
+    return float(va @ vb / n) if n else None
+
+
+_CORRECTION_WINDOW = 86400  # lời sửa phải đến trong 24 giờ sau lượt dùng sai tool (spec 2026-10-13 §1)
+MAX_PROPOSALS = 4  # một lượt dạy 3-4 luật (log 2026-10-14 19:30: tối đa 2 làm rơi luật thứ 3)
+_CORRECTION = re.compile(r"sai rồi|nhầm rồi|phải dùng|phải tra|dùng \S+ (?:đi|mới đúng)")
+DEDUPE_SIM = 0.90  # embed_probe 2026-10-13: cùng ý ≥ 0.86, khác ý ≤ 0.82 (EmbeddingGemma 2)
 
 
 def _sync_learning_hub() -> None:
@@ -301,6 +318,19 @@ class LearningEngine:
                 updated_at REAL NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_workflows_tools ON workflows(tools);
+
+            CREATE TABLE IF NOT EXISTS corrections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query TEXT NOT NULL,
+                query_norm TEXT NOT NULL,
+                wrong_tool TEXT NOT NULL,
+                right_tool TEXT NOT NULL,
+                count INTEGER NOT NULL DEFAULT 1,
+                embedding TEXT NOT NULL DEFAULT '',
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                UNIQUE(query_norm, wrong_tool, right_tool)
+            );
         """)
         learning_columns = {
             row[1] for row in conn.execute("PRAGMA table_info(learnings)").fetchall()
@@ -438,6 +468,11 @@ class LearningEngine:
         self._sync_managed_wiki_entries(
             PREFERENCES_WIKI_PATH, "User preferences", preferences
         )
+        conn = self._get_learning_db()
+        fixes = conn.execute("SELECT id, query, wrong_tool, right_tool, count FROM corrections ORDER BY id").fetchall()
+        conn.close()
+        lessons += [(f"sua_cong_cu_{r['id']}", f"\"{r['query']}\": không dùng {r['wrong_tool']}, dùng {r['right_tool']} "
+                     f"({r['count']} lần)" if r["wrong_tool"] else f"{r['query']}: dùng {r['right_tool']}") for r in fixes]
         self._sync_managed_wiki_entries(
             LESSONS_WIKI_PATH, "Jarvis learning", lessons
         )
@@ -629,8 +664,6 @@ class LearningEngine:
         norm_all = self._norm_evidence(all_text)
         return evidence in norm_all
 
-    _TEMPORARY_WORDS = ("lười", "mệt", "buồn ngủ", "đang bận", "thời tiết", "giá vàng", "xổ số", "mấy giờ")
-
     @staticmethod
     def _is_explicit_learning_request(text: str) -> bool:
         """Kiểm tra xem tin nhắn có yêu cầu học rõ ràng không (ghi nhớ, học, hạn chế, đổi hành vi)."""
@@ -643,6 +676,8 @@ class LearningEngine:
             r"nhớ\s+(?:giùm|giúp|nhé|lại)",
             r"học hỏi",
             r"hãy học",
+            r"học\s+(?:đi|lấy|nhé)",
+            r"nhớ\s+(?:lấy|kỹ|là)",
             r"lần sau",
             r"từ giờ",
             r"từ nay",
@@ -656,67 +691,6 @@ class LearningEngine:
                 return True
         return False
 
-    @staticmethod
-    def _is_explicit_complaint(text: str) -> bool:
-        """Kiểm tra xem người dùng có phàn nàn, chỉ trích, sửa sai hoặc cấm đoán hành vi không."""
-        if not text:
-            return False
-        t_low = text.lower()
-        patterns = [
-            r"sai\s+(?:rồi|bét|quá|nhé)",
-            r"không\s+phải(?:\s+vậy|\s+thế)?",
-            r"đừng\s+",
-            r"không\s+được\s+",
-            r"lại\s+nữa\s+rồi",
-            r"loạn\s+rồi",
-            r"sao\s+lại\s+",
-            r"tại\s+sao\s+lại\s+",
-            r"nhầm\s+rồi",
-            r"bậy\s+bạ",
-            r"vô\s+lý",
-            r"lung\s+tung",
-            r"tùm\s+lum",
-            r"đâu\s+có\s+(?:kêu|bảo|nói)",
-            r"không\s+có\s+(?:kêu|bảo|nói)",
-        ]
-        return any(re.search(p, t_low) for p in patterns)
-
-    def _has_explicit_signal(self, user_text: str, evidence: str, kind: str) -> bool:
-        """Chỉ cho phép đề xuất học khi có tín hiệu tường minh rõ ràng:
-        1. Yêu cầu học/ghi nhớ rõ ràng (_is_explicit_learning_request)
-        2. Phàn nàn/chỉ trích/sửa sai rõ ràng (_is_explicit_complaint)
-        3. Tự nói sự thật/sở thích cá nhân lâu dài ("tôi thích", "sở thích", "tên tôi là")
-        Mọi cuộc trò chuyện thông thường, trần thuật tạm thời bị loại bỏ 100%.
-        """
-        norm_combined = f"{user_text} {evidence}".lower()
-        if self._is_explicit_learning_request(user_text) or self._is_explicit_learning_request(evidence):
-            return True
-        if self._is_explicit_complaint(user_text) or self._is_explicit_complaint(evidence):
-            return True
-        if kind in ("user_fact", "preference"):
-            personal_patterns = [
-                r"\btôi\s+thích\b",
-                r"\bmình\s+thích\b",
-                r"\bsở\s+thích\b",
-                r"\btên\s+tôi\s+là\b",
-                r"\btôi\s+tên\s+là\b",
-                r"\bnghề\s+của\s+tôi\b",
-                r"\btôi\s+làm\s+(?:nghề|việc)\b",
-                r"\btôi\s+thường\s+(?:uống|ăn|tập|nghe)\b",
-            ]
-            if any(re.search(p, norm_combined) for p in personal_patterns):
-                return True
-        return False
-
-    def _is_temporary_state_or_tool_query(self, evidence: str, content: str) -> bool:
-        ev_low = evidence.lower()
-        if any(w in ev_low for w in ("lười", "mệt", "buồn ngủ", "bận", "thời tiết", "giá vàng", "xổ số", "mấy giờ")):
-            return True
-        cnt_low = content.lower()
-        if any(w in cnt_low for w in ("khi lười", "cảm thấy lười", "mệt mỏi", "buồn ngủ", "thời tiết", "giá vàng", "xổ số")):
-            return True
-        return False
-
     def _is_forbidden_topic(self, text: str, kind: str = "behaviour_lesson") -> bool:
         """Luật hành vi/sở thích không được bàn chuyện hỏi, xin phép, công cụ, agent, thẻ.
         Sự thật về ngài (user_fact) không phải luật hành vi nên không lọc."""
@@ -725,27 +699,22 @@ class LearningEngine:
         t_low = text.lower()
         return any(re.search(rf"(?<!\w){re.escape(kw)}(?!\w)", t_low) for kw in self._FORBIDDEN_KEYWORDS)
 
-    def _handle_routing_note_proposal(self, proposal: dict) -> bool:
-        """routing_note chỉ được ghi thành đề xuất trong Evolution.md, không bao giờ tự áp dụng (spec §4)."""
-        evo_path = PROJECT_ROOT / "data" / "wiki" / "System" / "Evolution.md"
-        evo_path.parent.mkdir(parents=True, exist_ok=True)
-        content = proposal.get("content", "").strip()
-        evidence = proposal.get("evidence", "").strip()
-        if not content:
-            return False
-        line = f"- [ĐỀ XUẤT] {content} (Bằng chứng: {evidence})\n" if evidence else f"- [ĐỀ XUẤT] {content}\n"
+    def _embedding_duplicate(self, kind: str, content: str) -> int | None:
+        """id mục cùng loại có cosine ≥ DEDUPE_SIM; embedder lỗi/khác chiều → None (để critique quyết)."""
+        vec = self._embed_text(content)
+        if not vec:
+            return None
+        learn_type = {"behaviour_lesson": "lesson", "user_fact": "user_fact", "preference": "preference"}.get(kind, "lesson")
+        conn = self._get_learning_db()
         try:
-            existing = evo_path.read_text(encoding="utf-8") if evo_path.exists() else ""
-            if line.strip() not in existing:
-                with open(evo_path, "a", encoding="utf-8") as f:
-                    if "# Proposed Routing Notes" not in existing:
-                        f.write("\n\n# Proposed Routing Notes\n")
-                    f.write(line)
-            log.info("🧭 Ghi nhận đề xuất routing_note vào Evolution.md: %s", content)
-            return True
-        except Exception as e:
-            log.warning("Ghi đề xuất routing_note vào Evolution.md thất bại: %s", e)
-            return False
+            rows = conn.execute("SELECT id, embedding FROM learnings WHERE type=?", (learn_type,)).fetchall()
+        finally:
+            conn.close()
+        for r in rows:
+            sim = _cosine(vec, json.loads(r["embedding"]) if r["embedding"] else None)
+            if sim is not None and sim >= DEDUPE_SIM:
+                return r["id"]
+        return None
 
     def _find_closest_existing_learning(self, kind: str, key: str, content: str) -> dict | None:
         """Tìm mục học hiện có gần nhất (khớp semantic_key, tương đồng key, sau đó tương đồng văn bản)."""
@@ -932,6 +901,12 @@ class LearningEngine:
         if not user_message or not user_message.strip():
             return {"stored": 0, "discarded": True, "items": []}
 
+        # Ngài 2026-10-14: chỉ học khi ngài dạy rõ (ghi nhớ, học đi, từ giờ…) hoặc sửa tool; trò chuyện, chê trách → không học.
+        # Lượt trước vừa học: cho qua để ngài rút lại (retract) điều vừa ghi.
+        if not (self._is_explicit_learning_request(user_message) or _CORRECTION.search(user_message.lower())
+                or self._just_learned):
+            return {"stored": 0, "discarded": True, "items": []}
+
         # 3–5 lượt gần nhất từ DB (cùng nguồn với chat), lượt hiện tại luôn ở cuối
         turns: list[dict] = []
         try:
@@ -964,8 +939,15 @@ class LearningEngine:
             just_learned_str = "\n".join(f"#{r['id']}: {r['content']}" for r in rows)
 
         from engine.prompts.learning import build_learning_propose_prompt, build_learning_critique_prompt
+        from engine.prompts.learning import json_format, propose_schema
+        from engine.tools import registry
+        names = registry.names()
+        used = self.list_outcome_records(limit=5)["items"]
+        user_last_message = next((t["content"] for t in reversed(turns) if t.get("role") == "user"), user_message)
         propose_prompt = build_learning_propose_prompt(
-            context=transcript, just_learned=just_learned_str
+            context=transcript, latest=user_last_message, just_learned=just_learned_str,
+            tools="\n".join(f"- {n}: {registry.description(n)}" for n in names),
+            used_tools="\n".join(f"{o['query']} → {o['tools']}" for o in used),
         )
 
         try:
@@ -973,9 +955,8 @@ class LearningEngine:
             from engine.core.json_parser import safe_json_loads
             response = await call_llm(
                 messages=[{"role": "user", "content": propose_prompt}],
-                temperature=0.0,
-                thinking=False,
-                response_format={"type": "json_object"},
+                temperature=0.0, thinking=True, thinking_budget=128, max_tokens=1200,
+                response_format=json_format("learning_propose", propose_schema(names)),
             )
             parsed = safe_json_loads(response.choices[0].message.content.strip())
         except Exception as exc:
@@ -989,10 +970,9 @@ class LearningEngine:
         stored = 0
         accepted: list[dict] = []
 
-        # Lấy tin nhắn cuối của người dùng để kiểm tra yêu cầu học tường minh
-        user_last_message = next((t["content"] for t in reversed(turns) if t.get("role") == "user"), user_text)
+        is_explicit = self._is_explicit_learning_request(user_last_message)
 
-        for proposal in raw_proposals[:2]:
+        for proposal in raw_proposals[:MAX_PROPOSALS]:
             if not isinstance(proposal, dict):
                 continue
             kind = proposal.get("kind", "")
@@ -1005,48 +985,57 @@ class LearningEngine:
                     stored += 1
                     accepted.append(proposal)
                 continue
-            if kind not in {"user_fact", "preference", "behaviour_lesson", "routing_note"}:
+            if kind == "tool_fix":
+                # evidence phải là lời ngài nói SAU câu yêu cầu gốc (review 2026-10-14: model bịa tool_fix lấy chính câu hỏi
+                # làm evidence); kind user_fact để _validate_proposal_evidence chỉ so lời ngài
+                users = [t["content"] for t in turns if t.get("role") == "user"]
+                q = normalize_query(str(proposal.get("query", "")))
+                at = next((i for i, u in enumerate(users) if normalize_query(u) == q), None)
+                later = " ".join(users[at + 1:]) if at is not None else ""
+                if later and self._validate_proposal_evidence({**proposal, "kind": "user_fact"}, later) and await asyncio.to_thread(
+                        self.record_correction, str(proposal.get("query", "")),
+                        str(proposal.get("wrong_tool", "")), str(proposal.get("right_tool", ""))):
+                    stored += 1
+                    accepted.append(proposal)
+                continue
+            if kind == "tool_rule":
+                if self._validate_proposal_evidence({**proposal, "kind": "user_fact"}, user_last_message) and \
+                        await asyncio.to_thread(self.record_tool_rule, str(proposal.get("topic", "")),
+                                                str(proposal.get("right_tool", ""))):
+                    stored += 1
+                    accepted.append(proposal)
+                continue
+            kind = self._normalize_kind(kind)
+            proposal = {**proposal, "kind": kind}
+            if kind not in {"user_fact", "preference", "behaviour_lesson"}:
                 continue
             if not key or not content:
                 continue
 
-            if not self._validate_proposal_evidence(proposal, user_text, transcript):
+            # bằng chứng phải nằm trong lượt mới nhất: lượt trước chỉ là ngữ cảnh (log 19:33 đề xuất lại bài cũ)
+            if not self._validate_proposal_evidence(proposal, user_last_message):
                 log.info("⏭️ Learning rejected: evidence not verbatim in text: %s", evidence)
-                continue
-
-            if kind == "routing_note":
-                if self._handle_routing_note_proposal(proposal):
-                    accepted.append(proposal)
                 continue
 
             if self._is_forbidden_topic(content, kind):
                 log.info("⏭️ Learning rejected: forbidden topic: %s", content)
                 continue
 
-            # Phản tư tường minh: Bắt buộc phải có tín hiệu rõ rệt (yêu cầu học, phàn nàn/cấm đoán, hoặc thông tin cá nhân)
-            if not self._has_explicit_signal(user_last_message, evidence, kind):
-                log.info("⏭️ Learning rejected: no explicit learning/complaint/personal signal in '%s'", evidence[:60])
+            dup = await asyncio.to_thread(self._embedding_duplicate, kind, content)
+            if dup is not None:
+                log.info("⏭️ Bài học trùng ý id=%s (cosine ≥ %.2f): %s", dup, DEDUPE_SIM, content)
                 continue
-
-            # Người dùng nói thẳng muốn học/ghi nhớ (khác với tín hiệu gián tiếp như phàn nàn): dùng ở bước phản biện bên dưới
-            is_explicit = self._is_explicit_learning_request(user_last_message)
-
-            # Kiểm tra trạng thái tạm thời hoặc truy vấn công cụ
-            if self._is_temporary_state_or_tool_query(evidence, content):
-                log.info("⏭️ Learning rejected: temporary state: %s", content)
-                continue
-
             closest = await asyncio.to_thread(self._find_closest_existing_learning, kind, key, content)
             proposal_str = json.dumps(proposal, ensure_ascii=False)
             existing_str = json.dumps(closest, ensure_ascii=False) if closest else "Không có mục nào tương tự."
 
             critique_prompt = build_learning_critique_prompt(proposal=proposal_str, existing_item=existing_str)
             try:
+                from engine.prompts.learning import CRITIQUE_SCHEMA, json_format
                 c_resp = await call_llm(
                     messages=[{"role": "user", "content": critique_prompt}],
-                    temperature=0.0,
-                    thinking=False,
-                    response_format={"type": "json_object"},
+                    temperature=0.0, thinking=True, thinking_budget=128, max_tokens=800,
+                    response_format=json_format("learning_critique", CRITIQUE_SCHEMA),
                 )
                 c_parsed = safe_json_loads(c_resp.choices[0].message.content.strip())
             except Exception as c_exc:
@@ -1058,10 +1047,10 @@ class LearningEngine:
 
             # Xử lý quyết định phản biện & chống trùng lặp:
             if decision == "skip":
-                if is_explicit and not closest:
+                if is_explicit:
                     # Người dùng yêu cầu ghi nhớ rõ ràng và trong DB chưa có bài nào tương tự ⇒ vẫn ghi nhận
                     decision = "new"
-                    log.info("Critique skip bị bỏ qua: ngài yêu cầu học rõ ràng và chưa có bài học nào trong bộ nhớ")
+                    log.info("Critique skip bị bỏ qua: ngài yêu cầu học rõ ràng (trùng ý đã loại bằng cosine)")
                 else:
                     log.info("⏭️ Critique bỏ qua bài học trùng lặp/không bền vững: %s", content)
             elif decision == "new" and closest:
@@ -1235,7 +1224,7 @@ class LearningEngine:
         limit: int,
         offset: int,
     ) -> dict:
-        if table not in {"learnings", "workflows", "outcomes"}:
+        if table not in {"learnings", "workflows", "outcomes", "corrections"}:
             raise ValueError("Unsupported learning table")
         page_limit, page_offset = self._bounded_page(limit, offset)
         query = (q or "").strip().lower()
@@ -1402,12 +1391,120 @@ class LearningEngine:
         try:
             rows = conn.execute("SELECT id, tools, tool_chain, sample_queries FROM workflows "
                                 "ORDER BY updated_at DESC").fetchall()
+            # log 2026-10-14: câu ngài đã sửa tool vẫn phát lại workflow cũ (bỏ qua model + corrections) → sai mãi
+            wrong = {r["wrong_tool"] for r in conn.execute("SELECT wrong_tool FROM corrections WHERE query_norm=?", (q,))}
         finally:
             conn.close()
         for row in rows:
             if q in json.loads(row["sample_queries"] or "[]"):
+                if wrong & set(row["tools"].split("+")):
+                    log.info("⏭️ không phát lại workflow #%s cho '%s': ngài đã sửa %s", row["id"], q, sorted(wrong))
+                    return None
                 return {"id": row["id"], "tools": row["tools"], "tool_chain": json.loads(row["tool_chain"])}
         return None
+
+    def record_correction(self, query: str, wrong_tool: str, right_tool: str) -> bool:
+        """Ngài sửa chọn tool (spec 2026-10-13 §1): chỉ lưu khi outcomes 24 giờ qua có đúng câu đó chạy wrong_tool."""
+        from engine.tools import registry
+        q = normalize_query(query)
+        if not q or wrong_tool == right_tool or right_tool not in registry.names():
+            return False
+        conn = self._get_learning_db()
+        try:
+            recent = conn.execute("SELECT query, tools, created_at FROM outcomes WHERE created_at >= ?",
+                                  (time.time() - _CORRECTION_WINDOW,)).fetchall()
+            if not any(normalize_query(r["query"]) == q and wrong_tool in r["tools"].split("+") for r in recent):
+                log.info("⏭️ tool_fix bỏ: không có lượt '%s' dùng %s trong 24 giờ", q, wrong_tool)
+                return False
+            now = time.time()
+            row = conn.execute("SELECT id, updated_at FROM corrections WHERE query_norm=? AND wrong_tool=? AND right_tool=?",
+                               (q, wrong_tool, right_tool)).fetchone()
+            if row:
+                # count = số lần TÁI PHẠM: phải có lượt mới dùng tool sai sau lần sửa trước (review 2026-10-14: transcript học
+                # đọc lại lời sửa cũ → count 2 → ép tool dù ngài chỉ sửa một lần)
+                if not any(normalize_query(r["query"]) == q and wrong_tool in r["tools"].split("+")
+                           and r["created_at"] > row["updated_at"] for r in recent):
+                    return False
+                conn.execute("UPDATE corrections SET count=count+1, updated_at=? WHERE id=?", (now, row["id"]))
+            else:
+                emb = self._embed_text(q)
+                insert_with_lowest_free_id(
+                    conn, "corrections",
+                    ("query", "query_norm", "wrong_tool", "right_tool", "count", "embedding", "created_at", "updated_at"),
+                    (query.strip(), q, wrong_tool, right_tool, 1, json.dumps(emb) if emb else "", now, now))
+            conn.commit()
+        finally:
+            conn.close()
+        log.info("🔧 Ghi sửa công cụ: '%s' %s → %s", q, wrong_tool, right_tool)
+        self._sync_learning_wiki()
+        return True
+
+    def record_tool_rule(self, topic: str, right_tool: str) -> bool:
+        """Luật chung ngài dạy ("giá thực phẩm → search_products"): dòng corrections có wrong_tool rỗng, không ép tool
+        (similar_corrections bỏ qua), chỉ nạp vào mô tả tool ở vòng chọn tool (tool_rules)."""
+        from engine.tools import registry
+        q = normalize_query(topic)
+        if not q or right_tool not in registry.names():
+            return False
+        now = time.time()
+        conn = self._get_learning_db()
+        try:
+            if conn.execute("SELECT 1 FROM corrections WHERE query_norm=? AND wrong_tool='' AND right_tool=?",
+                            (q, right_tool)).fetchone():
+                return False
+            insert_with_lowest_free_id(
+                conn, "corrections",
+                ("query", "query_norm", "wrong_tool", "right_tool", "count", "embedding", "created_at", "updated_at"),
+                (topic.strip(), q, "", right_tool, 1, "", now, now))
+            conn.commit()
+        finally:
+            conn.close()
+        log.info("🔧 Ghi luật công cụ: '%s' → %s", q, right_tool)
+        self._sync_learning_wiki()
+        return True
+
+    def tool_rules(self) -> dict[str, list[str]]:
+        conn = self._get_learning_db()
+        try:
+            rows = conn.execute("SELECT query, right_tool FROM corrections WHERE wrong_tool='' ORDER BY id").fetchall()
+        finally:
+            conn.close()
+        out: dict[str, list[str]] = {}
+        for r in rows:
+            out.setdefault(r["right_tool"], []).append(r["query"])
+        return out
+
+    def similar_corrections(self, text: str, min_sim: float, limit: int) -> list[dict]:
+        vec = self._embed_text(normalize_query(text))
+        if not vec:
+            return []
+        conn = self._get_learning_db()
+        try:
+            rows = conn.execute("SELECT id, query, wrong_tool, right_tool, count, embedding FROM corrections "
+                                "WHERE wrong_tool<>''").fetchall()
+        finally:
+            conn.close()
+        hits = []
+        for r in rows:
+            sim = _cosine(vec, json.loads(r["embedding"]) if r["embedding"] else None)
+            if sim is not None and sim >= min_sim:
+                hits.append({"id": r["id"], "query": r["query"], "wrong_tool": r["wrong_tool"],
+                             "right_tool": r["right_tool"], "count": r["count"], "sim": sim})
+        return sorted(hits, key=lambda h: h["sim"], reverse=True)[:limit]
+
+    def list_correction_records(self, q: str = "", limit: int = 50, offset: int = 0) -> dict:
+        return self._list_learning_table(
+            "corrections", "id, query, wrong_tool, right_tool, count, created_at, updated_at",
+            ("query", "wrong_tool", "right_tool"), "updated_at", q, limit, offset)
+
+    def evolution_items(self) -> list[dict]:
+        conn = self._get_learning_db()
+        try:
+            rows = conn.execute("SELECT id, type, content, created_at, embedding FROM learnings "
+                                "WHERE type IN ('lesson', 'preference') ORDER BY id").fetchall()
+        finally:
+            conn.close()
+        return [dict(r) for r in rows]
 
     def get_memory_control_counts(self) -> dict[str, int]:
         conn = self._get_learning_db()
@@ -1422,6 +1519,7 @@ class LearningEngine:
                 "outcomes": conn.execute(
                     "SELECT COUNT(*) FROM outcomes"
                 ).fetchone()[0],
+                "corrections": conn.execute("SELECT COUNT(*) FROM corrections").fetchone()[0],
             }
         finally:
             conn.close()
@@ -1497,6 +1595,7 @@ class LearningEngine:
 
         # Xử lý embedding riêng biệt nếu có (chỉ cho learning)
         embedding_value = values.get("embedding")
+        embedding_model_value = values.get("embedding_model")
 
         # Nếu có embedding parameter, xử lý nó
         if kind == "learning" and "embedding" in values:
@@ -1758,6 +1857,13 @@ class LearningEngine:
                 "will_update": [],
                 "related_only": [],
             }
+        if kind == "correction":
+            row = conn.execute("SELECT * FROM corrections WHERE id=?", (record_id,)).fetchone()
+            conn.close()
+            if not row:
+                raise LookupError("not_found")
+            return {"will_delete": {"records": [dict(row)], "wiki_paths": [str(LESSONS_WIKI_PATH)]},
+                    "will_update": [], "related_only": []}
         conn.close()
         raise ValueError("unsupported_kind")
 
@@ -1817,6 +1923,7 @@ class LearningEngine:
         table = {
             "workflow": "workflows",
             "outcome": "outcomes",
+            "correction": "corrections",
         }.get(kind)
         if not table:
             raise ValueError("unsupported_kind")
@@ -1864,6 +1971,8 @@ class LearningEngine:
                     wiki_backup[1], encoding="utf-8"
                 )
             raise
+        if kind == "correction" and affected:
+            self._sync_learning_wiki()
         return affected > 0
 
     # Gate chỉ hiểu 3 bucket này. Từng có correction ghi expected_route là

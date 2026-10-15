@@ -29,7 +29,7 @@ def test_style_lines_filters_and_caps():
     assert got[0] == "- Giọng văn hài hước, dí dỏm kiểu miền Nam."
     assert "- Dùng emoji vừa phải." in got
     assert not any(re.search(r"ngài|agent|tác nhân|\[MỚI\]|Preferences", g) for g in got)
-    assert len(got) == 8 and len(set(got)) == 8
+    assert len(got) == len(set(got)) == 9  # trần 12 (cùng STYLE_SCHEMA); fixture có 9 luật hợp lệ
 
 
 def test_style_lines_keeps_first_person_rules_drops_only_honorific_rules():

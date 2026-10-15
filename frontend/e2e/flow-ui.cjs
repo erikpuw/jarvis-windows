@@ -47,7 +47,7 @@ const check = (ok, name, extra = "") => {
   check(f.ids === 0, "2. bỏ số thứ tự '1. 2. 3.'");
   check(f.statuses === "completed,completed,active", "3. mỗi bước có trạng thái (chấm dòng thời gian)", f.statuses);
   check(f.text === "Nhận: xin chào jarvis|Định tuyến|Đang gọi LLM" && f.detail === "general", "4. tách '→ chi tiết' thành chữ phụ, bỏ '...'", `${f.text} / ${f.detail}`);
-  check(f.pill === "2/3" && !f.hasBar && f.inChat === 0, "5. số đếm bước (đã bỏ thanh tiến độ), không còn bong bóng flow trong chat", `${f.pill} · trong chat ${f.inChat}`);
+  check(f.pill === "" && !f.hasBar && f.inChat === 0, "5. không số đếm, không thanh tiến độ (8786c87), không còn bong bóng flow trong chat", `${f.pill} · trong chat ${f.inChat}`);
 
   await browser.close();
   console.log(failed ? `\n${failed} FAIL` : "\nALL PASS");

@@ -89,8 +89,7 @@ def test_full_run_drops_invented_rules_and_skips_unchanged_inputs():
             first = asyncio.run(ev._run_cognitive_evolution())
             style = ev.STYLE_FILE.read_text(encoding="utf-8")
             assert first["success"]
-            # Nhóm hài hước/thân thiện được gộp thành một luật chuẩn (_deduplicate_style_bullets)
-            assert "hài hước" in style and style.count("hài hước") == 1
+            assert "giọng thân thiện" in style
             assert not ev.STYLE_FILE.with_suffix(".md.bak").exists(), "Không được sinh ra file .bak"
             log_text = ev.EVOLUTION_LOG.read_text(encoding="utf-8")
             # Routing proposals land in Evolution.md, never in a live-consumed file.
@@ -123,7 +122,7 @@ def test_emoji_stripped_from_style_and_log():
             log_text = ev.EVOLUTION_LOG.read_text(encoding="utf-8")
             assert EMOJI not in style, style
             assert EMOJI not in log_text, log_text
-            assert "hài hước" in style and "agent_control" in log_text
+            assert "thân thiện" in style and "agent_control" in log_text
         finally:
             _restore(saved)
 

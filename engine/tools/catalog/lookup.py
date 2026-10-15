@@ -68,3 +68,23 @@ async def lookup_knowledge(query: str) -> str:
     from engine.core.mcp_context import build_mcp_context
     text = await build_mcp_context(query, route="general_knowledge")
     return text or "Không tìm thấy dữ liệu bách khoa phù hợp."
+
+
+@tool(display=True)  # 2026-10-14: kho data/wiki/Documents chỉ hỏi được qua @rag → "dùng rag" vào gym, nói đại
+async def search_documents(query: str) -> str:
+    from engine.rag.runner import _ask
+    return await _ask(query)
+
+
+@tool()
+async def check_mail(query: str = "", message_id: str = "") -> str:
+    from engine.server.mcp_server import get_mcp_hub
+    hub = get_mcp_hub()
+    if hub.get_stats().get("servers", {}).get("gmail") != "connected":
+        return "Lỗi: Gmail chưa kết nối (config/mcp_config.json, server gmail)."
+    if message_id:  # hub chỉ cho search_emails/read_email, search tối đa 10 mail (mcp_server._read_only_guard)
+        res = await hub.call_tool("gmail", "read_email", {"messageId": message_id})
+    else:
+        res = await hub.call_tool("gmail", "search_emails", {"query": query or "in:inbox", "maxResults": 10})
+    text = "\n".join(c.text for c in (res.content or []) if getattr(c, "type", "") == "text")
+    return f"Lỗi: {text}" if res.isError else (text.strip() or "Không tìm thấy mail phù hợp.")

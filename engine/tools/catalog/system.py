@@ -68,7 +68,7 @@ async def read_webcam(question: str = "") -> str:
                                 is_vi=True)
 
 
-@tool()
+@tool(display=True)  # bảng đủ số liệu hiện thẳng; model chỉ nhận xét (outcome #28: tóm tắt bỏ tiến trình, pin)
 async def system_status() -> str:
     from engine.security.system_check import run_system_check
     return await asyncio.to_thread(run_system_check)

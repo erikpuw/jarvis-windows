@@ -427,5 +427,152 @@
   "history": [],
   "tool": "read_screen",
   "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "chạy quá tốc độ 20km/h thì bị phạt mấy tiền",
+  "history": [],
+  "tool": "legal_lookup",
+  "args": {
+   "query": [
+    "tốc độ"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "không đội mũ bảo hiểm bị xử phạt thế nào",
+  "history": [],
+  "tool": "legal_lookup",
+  "args": {
+   "query": [
+    "mũ bảo hiểm"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "độ tuổi kết hôn theo luật là bao nhiêu",
+  "history": [],
+  "tool": "legal_lookup",
+  "args": {
+   "query": [
+    "kết hôn"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "hợp đồng thử việc tối đa mấy tháng theo quy định",
+  "history": [],
+  "tool": "legal_lookup",
+  "args": {
+   "query": [
+    "thử việc"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "có tin gì về bão số 3 không",
+  "history": [],
+  "tool": "search_news",
+  "args": {
+   "topic": [
+    "bão"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "báo hôm nay viết gì về giá nhà đất",
+  "history": [],
+  "tool": "search_news",
+  "args": {
+   "topic": [
+    "nhà đất"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "tai nghe sony wh-1000xm6 bán giá bao nhiêu",
+  "history": [],
+  "tool": "search_products",
+  "args": {
+   "query": [
+    "sony"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "so sánh giá nồi chiên không dầu",
+  "history": [],
+  "tool": "search_products",
+  "args": {
+   "query": [
+    "nồi chiên"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "sáng nay cân được 71 ký",
+  "history": [],
+  "tool": "gym",
+  "args": {
+   "action": [
+    "record_bodyweight"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "hôm nay tập squat 4 hiệp 8 cái 80kg ghi lại giúp",
+  "history": [],
+  "tool": "gym",
+  "args": {
+   "action": [
+    "log_workout"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "xem tổng kết tập luyện tháng này",
+  "history": [],
+  "tool": "gym",
+  "args": {
+   "action": [
+    "stats",
+    "history"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "tìm bài tập cho cơ vai",
+  "history": [],
+  "tool": "gym",
+  "args": {
+   "action": [
+    "search_exercises"
+   ]
+  }
+ },
+ {
+  "kind": "know",
+  "text": "Đinh Bộ Lĩnh là ai",
+  "history": [],
+  "tool": "KNOW",
+  "args": {}
+ },
+ {
+  "kind": "know",
+  "text": "sông Mê Kông dài bao nhiêu km",
+  "history": [],
+  "tool": "KNOW",
+  "args": {}
  }
 ]

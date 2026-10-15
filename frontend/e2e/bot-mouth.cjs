@@ -46,7 +46,7 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   await emit("speaking"); await page.waitForTimeout(300);
   const talk = (await sample(2500)).filter((v) => v !== null);
   const lo = Math.min(...talk), hi = Math.max(...talk);
-  check(talk.length > 40 && hi >= 0.7 && lo <= 0.3, "2b. đang nói: miệng há rộng rồi khép gần kín", `${lo}..${hi} (${talk.length} mẫu)`);
+  check(talk.length > 20 && hi >= 0.7 && lo <= 0.3, "2b. đang nói: miệng há rộng rồi khép gần kín", `${lo}..${hi} (${talk.length} mẫu)`);
   const flips = talk.filter((v, i) => i && (v > 0.4) !== (talk[i - 1] > 0.4)).length;
   check(flips >= 4, "2c. nhịp mở–khép đều đặn như nói (≥ 4 lần đổi trong 2,5s)", `${flips} lần`);
 

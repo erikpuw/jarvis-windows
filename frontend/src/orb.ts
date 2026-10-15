@@ -2,7 +2,7 @@
  * JARVIS — Hệ thống mô phỏng hạt đa trạng thái (Multi-mode particle visualization).
  * 
  * KIẾN TRÚC CỐT LÕI:
- * - Sử dụng Three.js với BufferGeometry để tối ưu hiệu suất xử lý (N=1000 hạt).
+ * - Sử dụng Three.js WebGPURenderer (tự lùi về WebGL 2 khi máy không có WebGPU) để tối ưu hiệu suất xử lý (N=1000 hạt).
  * - Vật lý: Hệ thống dựa trên vận tốc (Velocity-based) với lực hướng tâm và chuyển động Brownian.
  * - Logic kết nối: Tạo các đoạn thẳng (lines) động giữa các hạt lân cận.
  * 
@@ -14,7 +14,8 @@
  * 3. Nhiễu Brownian (Brownian Noise): vel += sin(t * freq + phase) * amplitude
  */
 
-import * as THREE from "three";
+import type * as T from "three/webgpu";
+import { pageReady } from "./anim-gate";
 
 export type OrbState = "idle" | "listening" | "thinking" | "speaking" | "working";
 
@@ -23,19 +24,31 @@ export interface Orb {
   setAnalyser(a: AnalyserNode | null): void;
   pause(): void;
   resume(): void;
-  /** Off: stops drawing, hands the WebGL context back to the GPU and swaps the canvas for a flat 1x1 backdrop. On: builds it again on a fresh canvas. */
+  /** Off: stops drawing, hands the GPU device / WebGL context back and swaps the canvas for a flat 1x1 backdrop. On: builds it again on a fresh canvas. */
   setEnabled(on: boolean): void;
   destroy(): void;
 }
 
-/** The scene itself (one WebGL context). `Orb.setEnabled` builds and destroys it. */
-function buildOrb(canvas: HTMLCanvasElement): Omit<Orb, "setEnabled"> {
-  let destroyed = false;
+/** The scene itself (one WebGPU device, or a WebGL 2 context where WebGPU is missing). `Orb.setEnabled` builds and destroys it.
+ *  three is imported here, not at the top: main.ts never waits for it and a failed orb leaves the rest of the UI running. */
+async function buildOrb(canvas: HTMLCanvasElement, onLost: () => void): Promise<Omit<Orb, "setEnabled">> {
+  const THREE = await import("three/webgpu");
+  const { instancedBufferAttribute } = await import("three/tsl");
+  // Blend straight on the sRGB numbers like the old WebGLRenderer. With colour management on, WebGPURenderer adds faint additive lines
+  // in linear space in an extra half-float target and then converts to sRGB, which lifts them ~3x (and costs one more full-screen pass).
+  THREE.ColorManagement.enabled = false;
   let paused = false;
   const N = 1000;
   const MAX_RENDER_HEIGHT = 1080;
 
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, stencil: false, powerPreference: "high-performance", });
+  const renderer = new THREE.WebGPURenderer({ canvas, antialias: false, stencil: false }); // no powerPreference: Chrome on Windows ignores it and warns every load
+  // the GPU device / GL context was taken away (iOS does it to a page in the background): three only logs it, the orb rebuilds.
+  // Our own destroy() is reported as "destroyed", which three does not pass on.
+  renderer.onDeviceLost = () => onLost();
+  renderer.outputColorSpace = THREE.LinearSRGBColorSpace; // = working space: no framebuffer target, colours go to the canvas as given
+  await renderer.init();
+  // Which backend three picked, readable in DevTools: <canvas id="orb-canvas" data-backend="webgpu|webgl2">
+  canvas.dataset.backend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend ? "webgpu" : "webgl2";
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_RENDER_HEIGHT / window.innerHeight));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setClearColor(0x050508, 1);
@@ -45,7 +58,6 @@ function buildOrb(canvas: HTMLCanvasElement): Omit<Orb, "setEnabled"> {
   camera.position.z = 80;
 
   // ── Particles ──
-  const geo = new THREE.BufferGeometry();
   const pos = new Float32Array(N * 3);
   const vel = new Float32Array(N * 3);
   const phase = new Float32Array(N);
@@ -60,14 +72,17 @@ function buildOrb(canvas: HTMLCanvasElement): Omit<Orb, "setEnabled"> {
     phase[i] = Math.random() * 1000;
   }
 
-  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-
-  const mat = new THREE.PointsMaterial({
+  // WebGPU only draws 1px point primitives, so sized dots are instanced sprites: one quad per particle, placed by this attribute.
+  const posAttr = new THREE.InstancedBufferAttribute(pos, 3);
+  const mat = new THREE.PointsNodeMaterial({
     color: 0x4ca8e8, size: 0.4, transparent: true, opacity: 0.6,
     sizeAttenuation: true, blending: THREE.AdditiveBlending, depthWrite: false,
   });
+  mat.positionNode = instancedBufferAttribute(posAttr);
 
-  const points = new THREE.Points(geo, mat);
+  const points = new THREE.Sprite(mat);
+  points.count = N;
+  points.frustumCulled = false; // the sprite's own bounds are one quad at the origin, not the cloud
   scene.add(points);
 
   // ── Connection lines ──
@@ -100,19 +115,20 @@ function buildOrb(canvas: HTMLCanvasElement): Omit<Orb, "setEnabled"> {
 
   // ── Electrons — bright dots that travel along connections ──
   const MAX_ELECTRONS = 200;
-  const electronGeo = new THREE.BufferGeometry();
   const electronPos = new Float32Array(MAX_ELECTRONS * 3);
-  electronGeo.setAttribute("position", new THREE.BufferAttribute(electronPos, 3));
-  electronGeo.setDrawRange(0, 0);
+  const electronAttr = new THREE.InstancedBufferAttribute(electronPos, 3);
 
   // 0.8 từng gấp ~2.7 lần hạt thường → chấm trắng lẻ trông như vỡ hình.
   const ELECTRON_SIZE = 0.45;
-  const electronMat = new THREE.PointsMaterial({
+  const electronMat = new THREE.PointsNodeMaterial({
     color: 0xffffff, size: ELECTRON_SIZE, transparent: true, opacity: 1.0,
     sizeAttenuation: true, blending: THREE.AdditiveBlending, depthWrite: false,
   });
+  electronMat.positionNode = instancedBufferAttribute(electronAttr);
 
-  const electrons = new THREE.Points(electronGeo, electronMat);
+  const electrons = new THREE.Sprite(electronMat);
+  electrons.count = 0;
+  electrons.frustumCulled = false;
   scene.add(electrons);
 
   // Each electron: start point, end point, progress (0-1), speed
@@ -157,16 +173,15 @@ function buildOrb(canvas: HTMLCanvasElement): Omit<Orb, "setEnabled"> {
   const C_WORKING = new THREE.Color(0x818cf8), C_WORKING_LINE = new THREE.Color(0xffaa00);
   const C_THINKING = new THREE.Color(0x6ec4ff), C_SPEAKING = new THREE.Color(0x7ee8a8), C_LISTENING = new THREE.Color(0x4ca8e8);
 
-  // One loop only: pause() cancels the pending frame, otherwise pause()+resume() within a frame left
-  // two loops alive and every overlay open/close added another (the orb then drew 5x per frame).
-  let raf = 0;
+  // One loop only. WebGPURenderer runs its own requestAnimationFrame from init() on (it updates its node frame every frame,
+  // drawing or not), so the orb draws inside it (setAnimationLoop) instead of a second loop beside it: measured on the iPhone,
+  // the orb kept the main thread twice as busy as with it off. pause() stops three's loop outright (setAnimationLoop(null)
+  // alone leaves it ticking); start() is never called twice, otherwise each overlay open/close would add another loop.
+  const loop = (renderer as unknown as { _animation: { start(): void; stop(): void } })._animation;
   let lastFrame = 0;
   const FRAME_MS = 1000 / 60; // a 120 Hz screen no longer draws (and runs the physics) twice as often
 
-  function animate(now = performance.now()) {
-    raf = 0;
-    if (destroyed || paused) return;
-    raf = requestAnimationFrame(animate);
+  function animate(now: number) {
     if (now - lastFrame < FRAME_MS - 2) return;
     lastFrame = now;
     const t = (performance.now() - startedAt) / 1000;
@@ -237,7 +252,7 @@ function buildOrb(canvas: HTMLCanvasElement): Omit<Orb, "setEnabled"> {
     plexus.position.z = cloudZ;
 
     // ── Update particles ──
-    const p = geo.getAttribute("position") as THREE.BufferAttribute;
+    const p = posAttr;
     const a = p.array as Float32Array;
 
     for (let i = 0; i < N; i++) {
@@ -285,9 +300,9 @@ function buildOrb(canvas: HTMLCanvasElement): Omit<Orb, "setEnabled"> {
 
     // --- CẬP NHẬT CÁC ĐƯỜNG KẾT NỐI & HÌNH TAM GIÁC (Update Lines & Plexus) ---
     if (lineAmount > 0.01) {
-      const lp = lineGeo.getAttribute("position") as THREE.BufferAttribute;
+      const lp = lineGeo.getAttribute("position") as T.BufferAttribute;
       const la = lp.array as Float32Array;
-      const tp = triGeo.getAttribute("position") as THREE.BufferAttribute;
+      const tp = triGeo.getAttribute("position") as T.BufferAttribute;
       const ta = tp.array as Float32Array;
 
       let lineCount = 0;
@@ -479,7 +494,7 @@ function buildOrb(canvas: HTMLCanvasElement): Omit<Orb, "setEnabled"> {
     }
 
     // Update electron positions
-    const ep = electronGeo.getAttribute("position") as THREE.BufferAttribute;
+    const ep = electronAttr;
     const ea = ep.array as Float32Array;
     let aliveCount = 0;
 
@@ -497,7 +512,11 @@ function buildOrb(canvas: HTMLCanvasElement): Omit<Orb, "setEnabled"> {
       aliveCount++;
     }
 
-    electronGeo.setDrawRange(0, aliveCount);
+    electrons.count = aliveCount;
+    // WebGPU warns on every empty draw call: skip the objects that have nothing to draw this frame
+    electrons.visible = aliveCount > 0;
+    lines.visible = lineGeo.drawRange.count > 0;
+    plexus.visible = triGeo.drawRange.count > 0;
     ep.needsUpdate = true;
 
     // Electrons follow the same rotation/position as the main group
@@ -536,7 +555,7 @@ function buildOrb(canvas: HTMLCanvasElement): Omit<Orb, "setEnabled"> {
   }
 
   window.addEventListener("resize", onResize);
-  animate();
+  void renderer.setAnimationLoop(animate);
 
   return {
     setState(s: OrbState) { state = s; },
@@ -545,65 +564,124 @@ function buildOrb(canvas: HTMLCanvasElement): Omit<Orb, "setEnabled"> {
       if (a) freqData = new Uint8Array(a.frequencyBinCount);
     },
     pause() {
+      if (paused) return;
       paused = true;
-      cancelAnimationFrame(raf);
-      raf = 0;
+      loop.stop();
     },
     resume() {
-      if (paused) {
-        paused = false;
-        lastFrame = 0;
-        animate();
-      }
+      if (!paused) return;
+      paused = false;
+      lastFrame = 0;
+      loop.start();
     },
     destroy() {
-      destroyed = true;
-      cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
-      renderer.dispose();
-      renderer.forceContextLoss(); // a disposed renderer still holds its GL context until the canvas is collected
+      renderer.dispose(); // also stops three's loop
+      // dispose() keeps the GPU device / GL context until the canvas is collected: hand it back now
+      const backend = renderer.backend as { gl?: WebGL2RenderingContext; device?: { destroy(): void } };
+      backend.gl?.getExtension("WEBGL_lose_context")?.loseContext();
+      backend.device?.destroy();
     },
   };
 }
 
 export function createOrb(canvas: HTMLCanvasElement): Orb {
   let current: HTMLCanvasElement = canvas;
-  let scene: Omit<Orb, "setEnabled"> | null = buildOrb(canvas);
+  let scene: Omit<Orb, "setEnabled"> | null = null;
+  let enabled = true;
+  let build = 0; // a build still loading when the orb is turned off (or on again) is dropped when it lands
   let state: OrbState = "idle";
   let analyser: AnalyserNode | null = null;
   let paused = false; // pause()/resume() come from overlays; they must not wake an orb the user turned off
+
+  // The canvas of a lost context can never get a new one, so it is replaced. Not removed: a fixed full-screen canvas always sat behind
+  // the page, and without it iOS Safari in standalone mode (added to the home screen) blurs the top edge. A 1x1 flat canvas stretched by
+  // CSS keeps that layer at no cost (nothing is drawn again).
+  function toBackdrop() {
+    current.width = 0; // drop the drawing buffer first: no stale last frame left composited
+    current.height = 0;
+    const backdrop = current.cloneNode(false) as HTMLCanvasElement;
+    backdrop.dataset.backend = "off"; // cloned from the live canvas: do not carry its backend over
+    backdrop.width = 1;
+    backdrop.height = 1;
+    const g = backdrop.getContext("2d");
+    if (g) { g.fillStyle = "#050508"; g.fillRect(0, 0, 1, 1); }
+    current.replaceWith(backdrop);
+    current = backdrop;
+  }
+
+  /** A new build on a fresh canvas (a lost context can never get a new one): turning the orb on, a lost GPU, a failed first build. */
+  function rebuild() {
+    scene?.destroy();
+    scene = null;
+    const fresh = current.cloneNode(false) as HTMLCanvasElement; // same id, class and style
+    delete fresh.dataset.backend; // "loading" until the new build sets it
+    current.replaceWith(fresh);
+    current = fresh;
+    start(fresh);
+  }
+
+  // a GPU taken away in the background is rebuilt once the page is visible again (the GPU is not handed back before that)
+  const whenVisible = (f: () => void) => {
+    if (!document.hidden) { f(); return; }
+    const on = () => { if (document.hidden) return; document.removeEventListener("visibilitychange", on); f(); };
+    document.addEventListener("visibilitychange", on);
+  };
+
+  // A build that fails, or never answers (renderer.init() waiting forever for the GPU), is tried again on a fresh canvas, twice at
+  // most: a phone sometimes refuses or ignores the GPU request at page load, and only toggling the orb used to bring it back.
+  const BUILD_TIMEOUT_MS = 4000;
+  let retries = 0;
+  const retry = (id: number): boolean => {
+    if (id !== build || !enabled || retries >= 2) return false;
+    retries++;
+    rebuild();
+    return true;
+  };
+  function start(target: HTMLCanvasElement) {
+    const id = ++build;
+    const lost = () => whenVisible(() => { if (enabled && id === build) rebuild(); });
+    const stuck = window.setTimeout(() => {
+      if (id !== build || scene) return;
+      console.warn("[orb] dựng quá lâu, dựng lại");
+      if (!retry(id)) toBackdrop();
+    }, BUILD_TIMEOUT_MS);
+    buildOrb(target, lost).then((s) => {
+      window.clearTimeout(stuck);
+      if (id !== build) { s.destroy(); return; } // a late answer to a build that was given up or replaced
+      retries = 0;
+      scene = s;
+      s.setState(state);
+      s.setAnalyser(analyser);
+      if (paused) s.pause();
+    }).catch((e) => {
+      window.clearTimeout(stuck);
+      console.warn("[orb] không dựng được, giao diện vẫn chạy:", e);
+      if (id !== build) return;
+      toBackdrop();
+      window.setTimeout(() => retry(id), 1500);
+    });
+  }
+
+  // built once the page has loaded (anim-gate.ts pageReady), not while it is still arriving; a toggle before that builds at once
+  void pageReady.then(() => { if (enabled && build === 0) start(current); });
   return {
     setState(s) { state = s; scene?.setState(s); },
     setAnalyser(a) { analyser = a; scene?.setAnalyser(a); },
     pause() { paused = true; scene?.pause(); },
     resume() { paused = false; scene?.resume(); },
     setEnabled(on) {
-      if (on === (scene !== null)) return;
+      if (on === enabled) return;
+      enabled = on;
+      build++;
       if (!on) {
-        scene!.destroy();
+        scene?.destroy();
         scene = null;
-        current.width = 0; // drop the drawing buffer first: no stale last frame left composited
-        current.height = 0;
-        // The canvas of a lost context can never get a new one, so it is replaced. Not removed: a fixed full-screen canvas always sat behind
-        // the page, and without it iOS Safari in standalone mode (added to the home screen) blurs the top edge. A 1x1 flat canvas stretched by
-        // CSS keeps that layer at no cost (nothing is drawn again).
-        const backdrop = current.cloneNode(false) as HTMLCanvasElement;
-        backdrop.width = 1;
-        backdrop.height = 1;
-        const g = backdrop.getContext("2d");
-        if (g) { g.fillStyle = "#050508"; g.fillRect(0, 0, 1, 1); }
-        current.replaceWith(backdrop);
-        current = backdrop;
+        toBackdrop();
         return;
       }
-      const fresh = current.cloneNode(false) as HTMLCanvasElement; // same id, class and style; the flat backdrop has a 2d context, so WebGL needs a new canvas
-      current.replaceWith(fresh);
-      current = fresh;
-      scene = buildOrb(fresh);
-      scene.setState(state);
-      scene.setAnalyser(analyser);
-      if (paused) scene.pause();
+      rebuild(); // the flat backdrop has a 2d context, so the GPU needs a new canvas
     },
-    destroy() { scene?.destroy(); scene = null; },
+    destroy() { build++; scene?.destroy(); scene = null; },
   };
 }

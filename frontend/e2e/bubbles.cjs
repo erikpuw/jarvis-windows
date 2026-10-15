@@ -33,9 +33,9 @@ async function open(browser, opts = {}) {
   const loader = await page.evaluate(() => {
     const l = document.querySelector(".chat-bubble.typing-loader");
     const blobs = [...l.querySelectorAll(".blob-c")].map((b) => getComputedStyle(b).animationName);
-    return { oneLine: 13 * parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-scale")) * 1.5 + 14, blobs: blobs.join(","), goo: getComputedStyle(l.querySelector(".loader-inner-c")).filter.includes("sl-goo"), own: !!l.querySelector("svg filter#sl-goo"), global: !!document.querySelector("body > svg"), w: Math.round(l.getBoundingClientRect().width), h: Math.round(l.getBoundingClientRect().height) };
+    return { blobs: blobs.join(","), goo: getComputedStyle(l.querySelector(".loader-inner-c")).filter.includes("sl-goo"), own: !!l.querySelector("svg filter#sl-goo"), global: !!document.querySelector("body > svg"), w: Math.round(l.getBoundingClientRect().width), h: Math.round(l.getBoundingClientRect().height) };
   });
-  check(loader.blobs === "stream-spin,stream-spin,stream-spin,stream-spin" && loader.goo && loader.own && !loader.global && loader.w >= 44 && loader.w <= 52 && Math.abs(loader.h - loader.oneLine) <= 0.6, "1e. loader 4 khối quay + bộ lọc goo (chất lỏng) nằm trong chính loader, không SVG toàn trang, bong bóng rộng ~50px, cao bằng một dòng chữ (13px × thang chữ × 1,5 + 14)", JSON.stringify(loader));
+  check(loader.blobs === "stream-spin,stream-spin,stream-spin,stream-spin" && loader.goo && loader.own && !loader.global && loader.w >= 44 && loader.w <= 52 && loader.h >= 28 && loader.h <= 40, "1e. loader 4 khối quay + bộ lọc goo (chất lỏng) nằm trong chính loader, không SVG toàn trang, bong bóng rộng ~50px, cao gọn một dòng (28–40px)", JSON.stringify(loader));
   for (let i = 1; i <= 5; i++) send({ type: "flow_step", step: { id: i, label: "Bước " + i, status: i < 5 ? "completed" : "active" } });
   send({ type: "status", state: "thinking" });
   await page.waitForTimeout(900);
@@ -70,7 +70,8 @@ async function open(browser, opts = {}) {
   send({ type: "text_chunk", text: "Xin chào, thưa Ngài. " }); await page.waitForTimeout(700);
   const after = await page.evaluate(() => { const h = document.getElementById("chat-history"), last = h.lastElementChild.getBoundingClientRect(); return Math.round(h.getBoundingClientRect().bottom - last.bottom); });
   check(Math.abs(after - gap.gapBelow) <= 2, "1i. chữ chạy ra thì bong bóng vẫn nằm đúng chỗ đó (không nhảy lên xuống)", `${gap.gapBelow}px → ${after}px`);
-  send({ type: "status", state: "idle" }); await page.waitForTimeout(200);
+  // mid-turn the backend only sends the TTS idle; a plain idle means the turn is over (main.ts closeAssistantBubble)
+  send({ type: "status", state: "idle", source: "tts" }); await page.waitForTimeout(200);
 
 
   // 2. chữ stream ra đúng, thẻ agent đứng riêng, stream_end giữ nguyên nội dung

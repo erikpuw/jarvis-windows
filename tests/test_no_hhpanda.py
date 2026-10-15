@@ -17,7 +17,7 @@ def test_no_hhpanda_in_python_sources():
 
 
 def test_phim_query_falls_back_to_youtube(monkeypatch):
-    async def fake_yt(query, max_results=4):
+    async def fake_yt(query, max_results=4, verbatim=False):
         return [{"id": "abcdefghijk", "title": "T", "url": "u", "embed_url": "e", "source": "youtube"}]
     monkeypatch.setattr(m, "search_youtube", fake_yt)
     out = asyncio.run(m.execute_media_search({"query": "xem phim tiên nghịch tập 3"}))

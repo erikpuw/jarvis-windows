@@ -21,7 +21,7 @@ import { mountNotifyIsland } from "./notify-island";
 import { mountStatusOrb } from "./status-orb";
 import { mountStatusLabel, mountStatusRowFade } from "./status-label";
 import { mountMetalRing } from "./metal-ring";
-import { setAnimPaused } from "./anim-gate";
+import { setAnimPaused, setBarHidden } from "./anim-gate";
 
 const DEFAULT_FETCH_TIMEOUT_MS = 15000;
 const UPLOAD_FETCH_TIMEOUT_MS = 120000;
@@ -51,6 +51,23 @@ let isMuted = true;
 let isTtsDisabled = localStorage.getItem("jarvis_tts_disabled") === "true";
 let isBusy = false;
 let lastWorkState: "thinking" | "working" = "thinking";
+let lastWorkMessage: string | undefined; // e.g. "Công cụ: Tra giá", shown again when the speech in front of it ends
+// The turn's TTS (one VoiceStreamer per turn): open from its first "speaking" (source tts) to its idle, which comes after
+// stream_end once every sentence is synthesised (backend c541345). Audio keeps arriving after stream_end.
+let ttsOpen = false;
+// The TTS said "speaking" for a sentence but no sound is out yet ("Đang chuẩn bị…"): the turn loop keeps sending
+// working/thinking meanwhile (engine/turn/loop.py _run_tool), which must not cover it, nor "Đang đọc…" while sound plays.
+let speechPreparing = false;
+// The status label follows status packets only (user, 2026-10-15; backend 444477c): stream_start/text_chunk/stream_end are
+// for the typing bubble. The LLM's own idle (no source) ends working/thinking; the TTS's speaking/idle (source tts) drive the
+// reading label, which the LLM's idle and the tool's working/thinking never cover.
+
+/** The speech went quiet. Still busy (the LLM writing, a tool running): show that work. LLM done: idle, unless the TTS has
+ *  more to read (a pause between two sentences keeps "Đang đọc…" until its idle). */
+function afterSpeech(): void {
+  if (isBusy) transition(lastWorkState, lastWorkMessage);
+  else if (!ttsOpen) transition("idle");
+}
 let isSpeaking = false;
 let pendingQueriesQueue: { type: "voice" | "text", text: string, file?: File, bubbleElement?: HTMLElement }[] = [];
 
@@ -259,6 +276,10 @@ function renderStreamText(container: HTMLElement, chunk: string, now: number, fi
   streamTail = tailAtEnd(container);
 }
 
+let typeAcc = 0; // characters owed to the reader (fractional)
+let typePrev = 0;
+
+/** New turn: empty buffers. The loop itself only starts with the first text_chunk (wakeStreamTypewriter). */
 function startStreamTypewriter() {
   stopStreamTypewriter();
   streamTextBuffer = "";
@@ -267,47 +288,54 @@ function startStreamTypewriter() {
   streamTail = null;
   streamPendingFull = streamDirty = streamHeld = false;
   streamHoldUntil = 0;
-  let acc = 0; // characters owed to the reader (fractional)
-  let prev = performance.now();
+  typeAcc = 0;
+}
 
-  const step = (now: number) => {
-    streamTypewriterTimer = requestAnimationFrame(step);
-    const dt = Math.min((now - prev) / 1000, 0.1);
-    prev = now;
-    if (!activeAssistantBubble) return;
-    if (now < streamHoldUntil) return;
+/** Each text_chunk wakes the loop; it stops by itself once every letter is shown and the final render is done, so nothing runs
+ *  while the turn waits for a tool between two rounds of text (the next round's text_chunk wakes it again). */
+function wakeStreamTypewriter() {
+  if (streamTypewriterTimer || !activeAssistantBubble) return;
+  typePrev = performance.now();
+  streamTypewriterTimer = requestAnimationFrame(typeStep);
+}
 
-    // Nếu text đích bắt đầu bằng prefix của Interactive Card, ta không hiển thị text thô qua typewriter
-    if (streamTargetText.startsWith("[INTERACTIVE_CARD_JSON]:")) {
-      return;
-    }
+function typeStep(now: number) {
+  streamTypewriterTimer = null;
+  if (!activeAssistantBubble) return;
+  // Nếu text đích bắt đầu bằng prefix của Interactive Card, ta không hiển thị text thô qua typewriter
+  if (streamTargetText.startsWith("[INTERACTIVE_CARD_JSON]:")) return;
+  const dt = Math.min((now - typePrev) / 1000, 0.1);
+  typePrev = now;
+  const again = () => { streamTypewriterTimer = requestAnimationFrame(typeStep); };
+  if (now < streamHoldUntil) return again();
 
-    let textContainer = activeAssistantBubble.querySelector(".bubble-text") as HTMLElement;
-    if (!textContainer) {
-      textContainer = document.createElement("div");
-      textContainer.className = "bubble-text";
-      activeAssistantBubble.appendChild(textContainer);
-    }
+  let textContainer = activeAssistantBubble.querySelector(".bubble-text") as HTMLElement;
+  if (!textContainer) {
+    textContainer = document.createElement("div");
+    textContainer.className = "bubble-text";
+    activeAssistantBubble.appendChild(textContainer);
+  }
 
-    const backlog = streamTargetText.length - streamTextBuffer.length;
-    if (backlog <= 0) {
-      acc = 0;
-      // caught up and quiet for a moment: one full render fixes any markdown the plain appends skipped
-      if ((streamPendingFull || streamDirty) && now - streamLastAppendAt > 150) { renderStreamText(textContainer, "", now, true); scrollToBottomIfNeeded(); }
-      return;
-    }
+  const backlog = streamTargetText.length - streamTextBuffer.length;
+  if (backlog <= 0) {
+    typeAcc = 0;
+    if (!streamPendingFull && !streamDirty) return; // all shown and settled: stop
+    // caught up and quiet for a moment: one full render fixes any markdown the plain appends skipped, then stop
+    if (now - streamLastAppendAt > 150) { renderStreamText(textContainer, "", now, true); scrollToBottomIfNeeded(); return; }
+    return again();
+  }
 
-    acc += Math.max(STREAM_BASE_CPS, backlog / STREAM_CATCHUP_S) * dt;
-    const take = Math.min(backlog, Math.floor(acc));
-    if (take <= 0) return;
-    acc -= take;
+  typeAcc += Math.max(STREAM_BASE_CPS, backlog / STREAM_CATCHUP_S) * dt;
+  const take = Math.min(backlog, Math.floor(typeAcc));
+  if (take > 0) {
+    typeAcc -= take;
     const chunk = streamTargetText.slice(streamTextBuffer.length, streamTextBuffer.length + take);
     streamTextBuffer += chunk;
     streamLastAppendAt = now;
     renderStreamText(textContainer, chunk, now);
     scrollToBottomIfNeeded();
-  };
-  streamTypewriterTimer = requestAnimationFrame(step);
+  }
+  again();
 }
 
 function stopStreamTypewriter() {
@@ -331,6 +359,52 @@ function stopStreamTypewriter() {
       scrollToBottomIfNeeded();
     }
   }
+}
+
+/** server.py's error fallback sends one "audio"/"text" packet and no stream_end: a bubble still waiting for its first letter
+ *  would keep its loader forever, and the fallback text gets its own bubble anyway. */
+function dropEmptyAssistantBubble(): void {
+  if (!activeAssistantBubble || activeAssistantText) return;
+  stopStreamTypewriter();
+  activeAssistantBubble.remove();
+  activeAssistantBubble = null;
+}
+
+/** Ends the assistant bubble of the current turn: stops the typewriter, removes the loader, renders the full text.
+ *  stream_end calls it; so do our own cancel and the next stream_start, because a cancelled turn (engine/turn/loop.py out.abort())
+ *  gets neither stream_end nor idle, otherwise the goo loader and the typewriter loop kept running in the chat history. */
+function closeAssistantBubble(): void {
+  stopStreamTypewriter();
+  if (activeAssistantBubble) {
+    if (activeAssistantBubble.classList.contains("typing-loader")) {
+      clearStreamLoader(activeAssistantBubble, true);
+    }
+    activeAssistantBubble.querySelectorAll(".stream-bubble-host, .sl-defs").forEach((el) => el.remove());
+    [...activeAssistantBubble.childNodes].forEach((node) => {
+      if (node.nodeType === Node.TEXT_NODE) node.remove();
+    });
+    let textContainer = activeAssistantBubble.querySelector(".bubble-text") as HTMLElement;
+    if (!textContainer) {
+      textContainer = document.createElement("div");
+      textContainer.className = "bubble-text";
+      activeAssistantBubble.appendChild(textContainer);
+    }
+    textContainer.innerHTML = formatMarkdown(withoutTrailingNewlines(activeAssistantText), { isBubble: true });
+    // Nút icon ⬇ tải bản gốc upscale: gắn vào chính bong bóng phản hồi cuối
+    // lượt (câu trả lời đã ghi tên tệp), không vẽ rời gây trùng lặp.
+    if (pendingDownload) {
+      const download = document.createElement("a");
+      download.className = "icon-btn";
+      download.href = pendingDownload.url;
+      download.setAttribute("download", pendingDownload.name);
+      download.title = `Tải về ${pendingDownload.name}`;
+      download.textContent = "⬇";
+      textContainer.appendChild(download);
+      pendingDownload = null;
+    }
+    scrollToBottomIfNeeded();
+  }
+  activeAssistantBubble = null;
 }
 
 let pendingFile: File | null = null;
@@ -1174,6 +1248,7 @@ function updateStatus(state: State, message?: string) {
   // Track the type of work for the "speaking" state fallback
   if (state === "thinking" || state === "working") {
     lastWorkState = state;
+    lastWorkMessage = message;
   }
 
   if (statusEl.textContent !== newText) {
@@ -1251,6 +1326,8 @@ const voiceInput = createVoiceInput(
 
       // Notify backend to cancel current response stream
       socket.send({ type: "cancel" });
+      closeAssistantBubble(); // a cancelled turn gets neither stream_end nor idle from the backend
+      ttsOpen = speechPreparing = false; // nor, with the socket gone, its TTS idle
 
       // Immediately process user's new spoken query
       addChatMessage("user", text);
@@ -1304,13 +1381,18 @@ const interruptDetector = createInterruptDetector(() => {
   isSpeaking = false;
   isBusy = false;
   socket.send({ type: "cancel" });
+  closeAssistantBubble(); // a cancelled turn gets neither stream_end nor idle from the backend
+  ttsOpen = speechPreparing = false; // nor, with the socket gone, its TTS idle
   transition("listening");
 });
 
 audioPlayer.onStarted(() => {
   isSpeaking = true;
+  speechPreparing = false;
   if (currentState !== "speaking") {
     transition("speaking");
+  } else {
+    updateStatus("speaking"); // "Đang chuẩn bị…" (TTS still synthesising) → "Đang đọc…" now the sound is out
   }
   if (!isMuted) {
     interruptDetector.start();
@@ -1319,6 +1401,7 @@ audioPlayer.onStarted(() => {
 
 audioPlayer.onFinished(() => {
   isSpeaking = false;
+  speechPreparing = false;
   interruptDetector.stop();
 
   if (pendingQueriesQueue.length > 0) {
@@ -1338,11 +1421,7 @@ audioPlayer.onFinished(() => {
     isBusy = false;
     transition("idle");
   } else {
-    if (isBusy) {
-      transition(lastWorkState);
-    } else {
-      transition("idle");
-    }
+    afterSpeech();
   }
 });
 
@@ -1352,7 +1431,10 @@ audioPlayer.onFinished(() => {
 
 socket.onMessage((msg) => {
   const type = msg.type as string;
+  // ?debug=1 only (perf-debug.ts sets the array): every packet except audio data, with the wall clock, to compare with jarvis.log
+  (window as unknown as { __wsEvents?: object[] }).__wsEvents?.push({ at: Date.now(), type, state: msg.state, source: msg.source, message: msg.message });
 
+  if (type === "audio" || type === "text") dropEmptyAssistantBubble();
   if (type === "audio") {
     const audioData = msg.data as string;
     console.log("[audio] received", audioData ? `${audioData.length} chars` : "EMPTY", "state:", currentState);
@@ -1377,6 +1459,7 @@ socket.onMessage((msg) => {
       }
     }
   } else if (type === "stream_start") {
+    closeAssistantBubble(); // the previous turn was cancelled without a stream_end: do not leave its loader spinning
     wasStreamed = false;
     pendingDownload = null;
     activeAssistantText = "";
@@ -1393,10 +1476,8 @@ socket.onMessage((msg) => {
     showStreamLoader(activeAssistantBubble); // loader until the first text (stream-loader.ts)
     chatHistory.appendChild(activeAssistantBubble);
 
-    requestAnimationFrame(() => {
-      scrollToBottomIfNeeded(true); // Force scroll when new stream starts
-      startStreamTypewriter();
-    });
+    startStreamTypewriter();
+    requestAnimationFrame(() => scrollToBottomIfNeeded(true)); // Force scroll when new stream starts
   } else if (type === "text_chunk") {
     const chunkText = msg.text as string;
     if (chunkText && activeAssistantBubble) {
@@ -1411,6 +1492,7 @@ socket.onMessage((msg) => {
       }
       activeAssistantText += chunkText;
       streamTargetText = activeAssistantText; // Feed typewriter target buffer
+      wakeStreamTypewriter();
     }
   } else if (type === "audio_chunk") {
     const chunkBase64 = msg.data as string;
@@ -1448,39 +1530,7 @@ socket.onMessage((msg) => {
     }
   } else if (type === "stream_end") {
     wasStreamed = true;
-    stopStreamTypewriter();
-
-    // Đảm bảo xả toàn bộ chữ còn lại ra màn hình
-    if (activeAssistantBubble) {
-      if (activeAssistantBubble.classList.contains("typing-loader")) {
-        clearStreamLoader(activeAssistantBubble, true);
-      }
-      activeAssistantBubble.querySelectorAll(".stream-bubble-host, .sl-defs").forEach((el) => el.remove());
-      [...activeAssistantBubble.childNodes].forEach((node) => {
-        if (node.nodeType === Node.TEXT_NODE) node.remove();
-      });
-      let textContainer = activeAssistantBubble.querySelector(".bubble-text") as HTMLElement;
-      if (!textContainer) {
-        textContainer = document.createElement("div");
-        textContainer.className = "bubble-text";
-        activeAssistantBubble.appendChild(textContainer);
-      }
-      textContainer.innerHTML = formatMarkdown(withoutTrailingNewlines(activeAssistantText), { isBubble: true });
-      // Nút icon ⬇ tải bản gốc upscale: gắn vào chính bong bóng phản hồi cuối
-      // lượt (câu trả lời đã ghi tên tệp), không vẽ rời gây trùng lặp.
-      if (pendingDownload) {
-        const download = document.createElement("a");
-        download.className = "icon-btn";
-        download.href = pendingDownload.url;
-        download.setAttribute("download", pendingDownload.name);
-        download.title = `Tải về ${pendingDownload.name}`;
-        download.textContent = "⬇";
-        textContainer.appendChild(download);
-        pendingDownload = null;
-      }
-      scrollToBottomIfNeeded();
-    }
-    activeAssistantBubble = null;
+    closeAssistantBubble(); // the bubble only: the status label follows the status packets
     // The flow steps that arrive after stream_end still go to the island (island.flowStep).
   } else if (type === "status") {
     const state = msg.state as string;
@@ -1488,19 +1538,27 @@ socket.onMessage((msg) => {
     if (msg.source === "tts" && isTtsDisabled) return;
     if (state === "thinking" || state === "working") {
       isBusy = true;
+      if (speechPreparing || isSpeaking) { lastWorkState = state; lastWorkMessage = message; return; } // shown when the speech ends
       if (currentState !== state) {
         transition(state as State, message);
       } else {
         updateStatus(state as State, message);
       }
     } else if (state === "idle") {
-      isBusy = false;
-      // Don't transition to idle while audio is still playing —
-      // let audioPlayer.onFinished() handle the transition instead
-      if (!audioPlayer.isPlaying() && !isSpeaking) {
-        transition("idle");
+      if (msg.source === "tts") {
+        // the turn's VoiceStreamer stopped (one per turn; greeting and @rag have their own): the speech is over, not
+        // necessarily the turn, so only the LLM's idle (no source) clears isBusy
+        ttsOpen = speechPreparing = false;
+        if (!audioPlayer.isPlaying() && !isSpeaking) afterSpeech();
+        return;
       }
+      // the LLM is done and sends nothing more (loop.run_loop, before stream_end and the TTS; server.py sends it again at the
+      // end): its working/thinking end now, straight to idle. A reading label on screen is the TTS's own state, set by its own
+      // packets (sound playing, a sentence being prepared, a pause between two sentences): that stays until the TTS's idle
+      isBusy = false;
+      if (currentState !== "speaking") transition("idle");
     } else if (state === "speaking") {
+      if (msg.source === "tts") { ttsOpen = true; if (!isSpeaking) speechPreparing = true; } // voice_streamer.py, at each sentence
       if (currentState !== "speaking") {
         transition("speaking", message);
       } else {
@@ -1763,16 +1821,9 @@ export async function triggerRestart(): Promise<void> {
   }, RESTART_RETURN_TIMEOUT_MS);
 }
 
+// the Settings Restart button (settings/index.ts) dispatches this; a second document-level click handler used to restart twice
 window.addEventListener("jarvis:restart", () => {
   void triggerRestart();
-});
-
-document.addEventListener("click", (e) => {
-  const btn = (e.target as HTMLElement).closest("#btn-restart");
-  if (btn) {
-    e.stopPropagation();
-    void triggerRestart();
-  }
 });
 
 socket.onReconnect(() => {
@@ -1821,6 +1872,7 @@ function toggleCommandBar(forceShow?: boolean) {
 
   commandContainer.classList.toggle("visible", cmdBarVisible);
   btnCmdBar.classList.toggle("active", cmdBarVisible);
+  setBarHidden(!cmdBarVisible); // the bar only fades out: stop its bot, send-button shader and halo too
   if (cmdBarVisible) {
     setTimeout(() => commandInput.focus(), 50);
   } else {
@@ -2323,6 +2375,17 @@ window.addEventListener("jarvis:overlay", (event) => {
   if (mediaOpen) setAnimPaused(false); // a video is open: the big orb stays paused, the small orb and the avatar run again
   else resumeScene();
 });
+
+// Phones are portrait only: on its side a phone shows style.css's full-screen "Xoay dọc" cover, so everything behind it stops like
+// under Settings. Rotating back wakes the page only if nothing else (Settings, a video) still covers it.
+const sideways = matchMedia("(orientation: landscape) and (max-height: 500px) and (pointer: coarse)");
+sideways.addEventListener("change", () => {
+  if (sideways.matches) { pauseScene(); return; }
+  if (document.getElementById("settings-container")?.classList.contains("open")) return;
+  if (!mediaPlayer.classList.contains("hidden")) setAnimPaused(false);
+  else resumeScene();
+});
+if (sideways.matches) pauseScene();
 
 function openMediaPlayer(title: string, embedHtml: string) {
   document.body.classList.add("media-playing");

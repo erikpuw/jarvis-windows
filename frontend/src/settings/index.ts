@@ -1166,8 +1166,6 @@ let setupStep = 0;
 
 function enterSetupMode(): void {
   byId("settings-panel-inner")?.classList.add("setup-mode");
-  const welcome = byId("settings-welcome");
-  if (welcome) welcome.hidden = false;
   const nav = byId("setup-nav");
   if (nav) nav.hidden = false;
   setupStep = 0;
@@ -1176,8 +1174,6 @@ function enterSetupMode(): void {
 
 function exitSetupMode(): void {
   byId("settings-panel-inner")?.classList.remove("setup-mode");
-  const welcome = byId("settings-welcome");
-  if (welcome) welcome.hidden = true;
   const nav = byId("setup-nav");
   if (nav) nav.hidden = true;
 }

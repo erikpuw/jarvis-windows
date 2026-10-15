@@ -35,3 +35,28 @@ def test_request_words_removed_only_for_youtube_ranking():
     assert m._strip_request_words("chúng ta của hiện tại") == "chúng ta hiện tại"
 
 
+
+
+def test_title_taken_verbatim_from_user_sentence():
+    """Ngài 2026-10-15: "mở bài see tình" → model cắt còn "Tình"; "mở bài em của ngày hôm qua" → "Em"; code còn bỏ
+    "của/em/đi" ở giữa tên. Câu "mở/bật/phát/nghe/xem + bài/nhạc/video/phim + tên" → lấy nguyên văn tên."""
+    cases = {"mở bài see tình": "see tình", "mở bài nhạc see tình": "see tình",
+             "Mở bài em của ngày hôm qua": "em của ngày hôm qua", "mở bài nhạc chạy ngay đi": "chạy ngay đi",
+             "bật bài hát nơi này có anh nhé": "nơi này có anh", "nghe nhạc lạc trôi của sơn tùng": "lạc trôi của sơn tùng",
+             "xem phim đấu phá thương khung phần 5": "đấu phá thương khung phần 5",
+             "Jarvis ơi, mở bài cho tôi chút nắng.": "cho tôi chút nắng"}
+    for text, want in cases.items():
+        assert m.title_from_user(text) == want, text
+    for text in ("tôi muốn nghe gì đó vui vui", "mở notepad", ""):
+        assert m.title_from_user(text) == "", text
+
+
+def test_verbatim_title_is_searched_without_cutting_words(monkeypatch):
+    seen = []
+
+    def fake(query, max_results=12):
+        seen.append(query)
+        return []
+    monkeypatch.setattr(m, "_yt_search", fake)
+    asyncio.run(m.execute_media_search({"query": "Em", "source": "youtube", "user_text": "mở bài em của ngày hôm qua"}))
+    assert seen == ["em của ngày hôm qua"]

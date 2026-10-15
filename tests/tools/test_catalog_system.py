@@ -52,3 +52,8 @@ def test_play_media_passes_query_and_source(monkeypatch):
 def test_change_tools_kind():
     for name in ("open_app", "close_app", "win_control", "capture_screen", "play_media"):
         assert R.kind(name) == "change"
+
+
+def test_system_status_report_is_displayed_in_full():
+    """DB outcome #28 (2026-10-14): model tóm tắt báo cáo, bỏ tên tiến trình, giờ bật máy, pin → hiện nguyên bảng."""
+    assert R.display("system_status") is True

@@ -39,6 +39,16 @@ def _now() -> str:
     return f"Hôm nay là {_WEEKDAY[dt.weekday()]}, ngày {dt.day} tháng {dt.month} năm {dt.year}. Bây giờ là {dt:%H:%M}."
 
 
+def _tool_rules() -> dict[str, list[str]]:
+    """Luật chọn tool ngài dạy (bảng corrections, wrong_tool rỗng); lỗi DB không làm hỏng lượt."""
+    try:
+        from engine.core.learning import get_learning_engine
+        return get_learning_engine().tool_rules()
+    except Exception as exc:
+        log.warning("Không đọc được luật công cụ: %s", exc)
+        return {}
+
+
 def _preferences() -> str:
     lines = [ln for ln in _read(PREFERENCES_FILE).splitlines()
              if ln.lstrip().startswith("- ") and not _PREF_STYLE.search(ln)]
@@ -53,7 +63,8 @@ def system_prompt(tool_names: list[str], answer: bool = False) -> str:
         tools = "\n".join(f"- {n}: {registry.description(n)}" for n in tool_names)
         parts += [_read(PROMPT_DIR / "turn_answer.md"), f"<cong_cu>\n{tools}\n</cong_cu>"]
     else:
-        parts += [_read(PROMPT_DIR / "turn_tool.md"), f"<cong_cu>\n{registry.catalog_text(tool_names)}\n</cong_cu>"]
+        parts += [_read(PROMPT_DIR / "turn_tool.md"),
+                  f"<cong_cu>\n{registry.catalog_text(tool_names, _tool_rules())}\n</cong_cu>"]
     style = style_lines(_read(STYLE_FILE))
     if style:
         parts.append("<giong_dieu>\n" + "\n".join(style) + "\n</giong_dieu>")

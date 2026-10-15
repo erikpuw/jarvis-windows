@@ -43,6 +43,8 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
     const z = await page.evaluate(() => ({ ...window.__c }));
     return { orb: z.orb - a.orb, bot: z.bot - a.bot, status: z.status - a.status };
   };
+  // Escape (to close the video) also hides the command bar when its input has focus; a hidden bar stops the bot (anim-gate.ts), so show it again
+  const barBack = () => page.evaluate(() => { if (!document.getElementById("command-container").classList.contains("visible")) document.getElementById("btn-cmd-bar").click(); });
   const running = (r) => r.orb > 5 && r.bot > 5 && r.status > 5;
 
   let r = await rate(700);
@@ -65,7 +67,7 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   check(r.orb === 0 && r.status > 5 && r.bot > 5, "3b. đóng Settings khi video còn mở: vòng nhỏ chạy lại, orb lớn vẫn dừng", JSON.stringify(r));
 
   // 4. đóng video: orb lớn chạy lại
-  await page.keyboard.press("Escape"); await page.waitForTimeout(700);
+  await page.keyboard.press("Escape"); await page.waitForTimeout(700); await barBack();
   r = await rate(700);
   check(running(r) && (await page.evaluate(() => document.getElementById("media-player").classList.contains("hidden"))), "4. đóng video: orb lớn chạy lại cùng các vòng nhỏ", JSON.stringify(r));
 
@@ -80,7 +82,7 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   // 6. orb lớn đã tắt bằng nút: mở/đóng video không làm nó sống lại, vòng nhỏ vẫn chạy
   await page.evaluate(() => document.getElementById("btn-orb-toggle").click()); await page.waitForTimeout(500);
   sock.send(JSON.stringify({ type: "media_open", query: "thử", title: "Video thử", embed_url: "http://localhost:5173/blank-video.html?x=2" })); await page.waitForTimeout(600);
-  await page.keyboard.press("Escape"); await page.waitForTimeout(700);
+  await page.keyboard.press("Escape"); await page.waitForTimeout(700); await barBack();
   r = await rate(700);
   check(r.orb === 0 && r.status > 5 && r.bot > 5, "6. orb lớn đã tắt bằng nút: mở/đóng video không làm nó sống lại, vòng nhỏ vẫn chạy", JSON.stringify(r));
 

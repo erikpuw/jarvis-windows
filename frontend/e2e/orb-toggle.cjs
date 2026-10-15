@@ -92,6 +92,28 @@ const orbState = (page) => page.evaluate(() => {
 
   check(errors.length === 0, "6. không có lỗi console/trang trong cả quá trình", errors.slice(0, 2).join(" | "));
   await ctx.close();
+
+  // 7. orb không dựng được (máy không có GPU/WebGL): phần còn lại của giao diện vẫn nạp và chạy
+  const broken = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await broken.addInitScript(() => {
+    const gc = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (t, ...r) { return this.id === "orb-canvas" && t !== "2d" ? null : gc.call(this, t, ...r); };
+    Object.defineProperty(navigator, "gpu", { value: undefined });
+  });
+  const bp = await broken.newPage();
+  const pageErrors = [];
+  bp.on("pageerror", (e) => pageErrors.push(String(e)));
+  let bsock = null;
+  await bp.routeWebSocket(/\/ws/, (ws) => { bsock = ws; });
+  await bp.route("**/api/**", (r) => r.fulfill({ json: { success: true, env_keys_set: { llama: true } } }));
+  await bp.goto(BASE);
+  for (let i = 0; i < 50 && !bsock; i++) await bp.waitForTimeout(100);
+  await bp.evaluate(() => document.getElementById("btn-settings")?.click()); await bp.waitForTimeout(600);
+  const opened = await bp.$("#settings-container.open");
+  await bp.evaluate(() => { document.getElementById("settings-close")?.click(); document.getElementById("btn-orb-toggle")?.click(); document.getElementById("btn-orb-toggle")?.click(); });
+  await bp.waitForTimeout(300);
+  check(!!bsock && !!opened && pageErrors.length === 0, "7. orb hỏng: WebSocket vẫn kết nối, Settings vẫn mở, bấm nút orb không văng lỗi", JSON.stringify({ sock: !!bsock, settings: !!opened, pageErrors: pageErrors.slice(0, 2) }));
+  await broken.close();
   await browser.close();
   console.log(failed ? `\n${failed} FAIL` : "\nALL PASS");
   process.exit(failed ? 1 : 0);

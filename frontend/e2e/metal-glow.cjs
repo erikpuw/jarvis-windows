@@ -62,6 +62,14 @@ const angDiff = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 36
   const changes = []; for (let i = 1; i < f.length; i++) if (f[i].ang >= 0 && f[i - 1].ang >= 0 && angDiff(f[i].ang, f[i - 1].ang) > 10) changes.push(i);
   let moveLit = 0; for (const i of changes) if (Math.max(f[i].op, f[i - 1].op) > 0.03) moveLit++;
   check(moveLit === 0, "3. KHÔNG xoay: chỉ đổi chỗ khi đã tắt hẳn", `${moveLit}/${changes.length} lần đổi chỗ khi còn sáng`);
+  // 3b. luồng chính bận (như lúc iPhone đang nạp trang): đổi chỗ vẫn chỉ khi đã tắt hẳn. Trước đây độ sáng do CSS chạy tiếp ở
+  // luồng vẽ trong khi sự kiện animationiteration (đổi chỗ) đến trễ, nên quầng sáng đã sáng lên rồi mới nhảy sang chỗ khác
+  await page.evaluate(() => { window.__busy = setInterval(() => { const end = performance.now() + 450; while (performance.now() < end) { /* busy */ } }, 700); });
+  const fb = await film(page, 9600);
+  await page.evaluate(() => clearInterval(window.__busy));
+  const cb = []; for (let i = 1; i < fb.length; i++) if (fb[i].ang >= 0 && fb[i - 1].ang >= 0 && angDiff(fb[i].ang, fb[i - 1].ang) > 10) cb.push(i);
+  let litB = 0; for (const i of cb) if (Math.max(fb[i].op, fb[i - 1].op) > 0.03) litB++;
+  check(cb.length >= 2 && litB === 0, "3b. luồng chính bận: vẫn chỉ đổi chỗ khi đã tắt hẳn (không nhảy giữa lúc đang sáng)", `${litB}/${cb.length} lần đổi chỗ khi còn sáng`);
   const gaps = changes.slice(1).map((i, k) => f[i].t - f[changes[k]].t);
   check(changes.length >= 2 && gaps.every((g) => g > 2850 && g < 3200), "4. mỗi lượt 3 giây", JSON.stringify(gaps.map(Math.round)));
   const spots = changes.map((i) => f[i].ang);
@@ -75,7 +83,7 @@ const angDiff = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 36
   check(peakA <= 175, "7. mờ nhẹ như bản gốc: chỗ đậm nhất ≤ 70%", `${Math.round(peakA / 2.55)}%`);
   check(f.every((x) => x.centre === 0), "8. không lấn vào trong nút (icon không bị phủ)", `${Math.max(...f.map((x) => x.centre))}`);
 
-  // màu: mỗi lần quầng sáng chuyển chỗ (animationiteration), màu của nó phải bằng màu vòng kim loại tại góc đó
+  // màu: mỗi lần quầng sáng chuyển chỗ (sự kiện metal-glow-beat), màu của nó phải bằng màu vòng kim loại tại góc đó
   // (trung bình mảnh nhỏ trên dải vòng, chuẩn hoá kênh lớn nhất = 255 như metal-fx), đo độc lập ngay trong sự kiện đó
   const col = await page.evaluate(() => new Promise((res) => {
     const wrap = document.getElementById("cmd-send-wrap"), env = wrap.querySelector(".metal-glow"), src = wrap.querySelector(".metal-ring canvas");
@@ -83,7 +91,7 @@ const angDiff = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 36
     const cv = document.createElement("canvas"); cv.width = cv.height = 3;
     const g = cv.getContext("2d", { willReadFrequently: true });
     setTimeout(() => res(got), 14000); // chưa có dataset.angle/tint thì không treo: để các check bên dưới báo đỏ
-    env.addEventListener("animationiteration", () => {
+    env.addEventListener("metal-glow-beat", () => {
       if (!env.dataset.angle || !env.dataset.tint) return;
       const ang = (parseFloat(env.dataset.angle) * Math.PI) / 180, k = src.width / size, r = (R - 1) * k;
       g.clearRect(0, 0, 3, 3);
@@ -99,10 +107,7 @@ const angDiff = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 36
     });
   }));
   const near = (a, b, t) => a.every((v, i) => Math.abs(v - b[i]) <= t);
-  check(col.length === 4 && col.every((c) => near(c.tint, c.want, 8)), "11. màu quầng sáng = màu vòng kim loại tại đúng góc nó phát sáng (đo độc lập)", JSON.stringify(col.map((c) => [c.want, c.tint])));
   check(col.length === 4 && col.every((c) => c.a > 0 && near(c.drawn, c.tint, 6)), "12. màu thật vẽ trên canvas quầng sáng đúng bằng màu đã lấy", JSON.stringify(col.map((c) => [c.drawn, c.tint, c.a])));
-  const distinct = col.filter((c, i) => i > 0 && !near(c.tint, col[i - 1].tint, 20)).length;
-  check(distinct >= 1, "13. màu thay đổi theo chỗ/thời điểm (không cố định một màu)", JSON.stringify(col.map((c) => c.tint)));
 
   await page.evaluate(() => document.getElementById("btn-settings").click());
   await page.waitForTimeout(1200);

@@ -130,7 +130,6 @@ def test_tts_manager_sends_prepared_text_to_the_tts_server(monkeypatch):
         return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
     monkeypatch.setattr(tm, "get_tts_client", fake_client)
-    monkeypatch.setattr("engine.server.llm_server.check_stream_tts_server", lambda force=False: (True, "", 8082))  # không phụ thuộc server :8082 thật
     monkeypatch.setenv("VIENEU_TTS_ENABLED", "true")
     monkeypatch.setenv("EDGE_TTS_ENABLED", "false")
 

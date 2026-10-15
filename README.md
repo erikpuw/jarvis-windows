@@ -1,26 +1,20 @@
 # JARVIS
 
-**Tiếng Việt** | [English](README.en.md)
-
 **Just A Rather Very Intelligent System** — trợ lý AI giọng nói tiếng Việt, chạy local trên Windows.
 
-**Phiên bản:** xem file [`VERSION`](VERSION) (nguồn duy nhất) · [Nhật ký phiên bản](CHANGELOG.md) · **Dự án gốc:** [Ethan](https://ethanplus.ai)
-
-> [!IMPORTANT]
-> **Dự án do người Việt xây dựng cho người dùng tiếng Việt và chỉ hỗ trợ tiếng Việt.** Không có công tắc đổi ngôn ngữ. Prompt, nhận dạng giọng nói (`vi-VN`), giọng đọc, từ khoá khớp chuỗi trong code, test và chữ trên giao diện đều bằng tiếng Việt, nên nhập tiếng Anh thường không khớp. **Muốn dùng bằng tiếng Anh thì phải fork và chuyển đổi toàn bộ dự án**, không chỉ sửa `.env`: xem [Fork sang ngôn ngữ khác](#fork-sang-ngôn-ngữ-khác).
+**Phiên bản:** [v9.9.8](VERSION) · **Dự án gốc:** [Ethan](https://ethanplus.ai)
 
 JARVIS dùng mô hình ngôn ngữ local để trò chuyện, xử lý yêu cầu và gọi công cụ trên máy. Hệ thống có WebUI, giọng nói tiếng Việt, bộ nhớ hội thoại và hệ thống công cụ phẳng đa năng. Dữ liệu bộ nhớ chính được lưu local.
 
 ## Mục lục
 
 - [Tính năng](#tính-năng)
-- [Vòng lặp sinh có ràng buộc](#vòng-lặp-sinh-có-ràng-buộc-2026-10-12)
+- [Định tuyến tool phẳng](#định-tuyến-tool-phẳng-2026-10-12)
 - [Lối tắt và công cụ chuyên biệt](#lối-tắt-và-công-cụ-chuyên-biệt)
 - [Bộ nhớ và tự học](#bộ-nhớ-và-tự-học)
 - [Giao diện và tích hợp](#giao-diện-và-tích-hợp)
 - [Kiến trúc](#kiến-trúc)
 - [Cài đặt và cấu hình](#cài-đặt-và-cấu-hình)
-- [Fork sang ngôn ngữ khác](#fork-sang-ngôn-ngữ-khác)
 - [API, kiểm thử và bảo mật](#api-kiểm-thử-và-bảo-mật)
 - [Phiên bản và giấy phép](#phiên-bản-và-giấy-phép)
 
@@ -51,6 +45,10 @@ Mỗi lượt: lối tắt code (tệp nén, `/tên_tool`, `@tên_tool`, `@rag`)
 - Cổng chặn bằng code (`loop._NEEDS_WORD`): `read_screen` chỉ chạy khi câu nói tới "màn hình/screen",
   `system_status` khi hỏi CPU/RAM/ổ/tiến trình…; câu ngài kể việc mình đang xem/theo dõi thành trò chuyện, không
   hiện câu báo gọi tool. Nhờ thật mà không có các từ đó thì dùng `@read_screen` / `@system_status`.
+- `check_mail` (Gmail qua MCP `@gongrzhe/server-gmail-autoauth-mcp`): chỉ đọc, 10 mail gần nhất hoặc đọc một mail
+  theo ID. `MCPHub.call_tool` chặn bằng code mọi tool gmail ngoài `search_emails`/`read_email` (gửi, xoá, nhãn…)
+  và ép `maxResults` ≤ 10.
+- Status/island hiện tên phần đang dùng (`registry.label`: "Gmail", "Thời tiết"…), không hiện lệnh thô.
 - Vòng trả lời kẹt lặp một từ/cụm (≥ 7 lần) thì cắt và đóng kết nối để llama-server ngừng sinh.
 - Kết quả tool vào vòng trả lời tối đa 8.000 ký tự; `search_news` tự chia đều cho mỗi bài để không mất bài cuối.
   Lịch sử: lượt gần nhất giữ 3.000 ký tự (kết quả tool + câu trả lời) để hỏi tiếp không mất nội dung, lượt cũ 300.
@@ -97,6 +95,8 @@ Danh sách tool tệp được cấu hình trực tiếp qua thuộc tính `@too
 - **Quản lý kho tài liệu**:
   - `@rag danh sách`: Liệt kê tài liệu trong kho (đánh số) và số đoạn văn bản đã trích xuất.
   - `@rag lưu` (kèm tệp đính kèm): copy tệp vào `data/wiki/Documents/`; bộ theo dõi tự nạp. Không có tệp đính kèm thì "lưu…" được hiểu là câu hỏi.
+    Nạp xong trả lại luôn bản tổng hợp tài liệu (chủ đề, tóm tắt, 3–6 mục chính; `engine/rag/summary.py`, grammar JSON + think 128, đọc các đoạn rải đều cả tài liệu). Đính kèm tệp mà không nói làm gì thì bảng hỏi có thêm lựa chọn **Lưu vào kho tài liệu** (cùng đường `@rag lưu`).
+- **Không cần `@rag`**: tool `search_documents` cho router tự tra kho khi ngài hỏi nội dung trong tài liệu / kho / nhắc tới rag. Tệp đính kèm hỏi "tóm tắt / tổng hợp / nói về gì" (hoặc không hỏi gì) thì `rag_ask` tổng hợp cả tài liệu thay vì 5 đoạn khớp câu hỏi.
   - `@rag xóa <số thứ tự hoặc tên file>`: bỏ khỏi chỉ mục **và** chuyển tệp gốc vào `data/wiki/.trash/Documents/` (khôi phục bằng cách kéo lại). Chỉ xóa chỉ mục thì lần khởi động sau tệp bị nạp lại.
 - **Một nguồn duy nhất**: thư mục `data/wiki/Documents/` (đổi bằng `RAG_WATCH_FOLDER`) nằm trong vault Obsidian nên Obsidian đọc được tệp gốc. Chỉ mục (`data/rag_index/rag_vectors.tq` + `rag_metadata.json`) dựng lại được từ thư mục này. Đính kèm tệp rồi hỏi một lần thì chỉ dùng tạm, không lưu. Đổi model embedding thì phải xóa hai tệp chỉ mục và `data/rag_watch.db` để nạp lại từ đầu.
 - **Làm sạch dữ liệu tự động**: Tự động loại bỏ ký tự rác, null bytes (`\x00`), control characters và chuẩn hóa khoảng trắng/dấu gạch nối khi nạp tài liệu PDF/văn bản.
@@ -105,15 +105,16 @@ Danh sách tool tệp được cấu hình trực tiếp qua thuộc tính `@too
 
 - **Nguồn dữ liệu:** `data/jarvis.db` (SQLite + FTS5). Obsidian Vault trong `data/wiki/` là bản chiếu để đọc.
 - **Memory Center:** quản lý memories, learnings, workflow, kết quả công cụ và lịch sử. Đây là giao diện chính để xem/sửa dữ liệu bộ nhớ.
-- **Learning:** đề xuất bài học từ hội thoại và kết quả tác vụ, phản biện với dữ liệu cũ rồi mới thêm/gộp/thay thế. Áp dụng cổng tín hiệu tường minh (Explicit Signal Gate): chỉ học khi có yêu cầu ghi nhớ, phàn nàn/cấm đoán hành vi hoặc sở thích cá nhân; loại bỏ 100% việc tự suy diễn từ hội thoại thông thường để không ghi nhớ lung tung.
-- **Evolution:** lưu quy tắc phong cách đang áp dụng (`STYLE.md`) và nhật ký các đề xuất tiến hóa. Tự động khử trùng lặp theo chủ đề, loại bỏ luật nghiệp vụ lạc đề, gộp luật trùng ý và duy trì giới hạn tối đa 8 luật (không chứa luật xưng hô hay công cụ) để kiểm soát hành vi và chống phình context.
-- **Dream Cycle:** chạy khi rảnh để tổng hợp/dọn dữ liệu cũ; có sao lưu trước khi gộp.
-- **Self-Healing:** phân loại lỗi từ log và ghi nhận để xử lý; chỉ gọi quy trình sửa mã sau khi người dùng duyệt.
+- **Learning:** chỉ chạy khi ngài dạy rõ ("ghi nhớ", "học đi", "từ giờ", "lần sau", "nhớ giùm"…), sửa tool ("sai rồi… dùng X") hoặc rút lại điều vừa học; trò chuyện và chê trách chung chung không học. Model (grammar JSON + think 128, `prompt/learning_propose.md`) ghi tối đa 4 mục, chỉ từ lượt mới nhất (`<luot_moi>`; lịch sử chỉ là ngữ cảnh): bài học cách cư xử (`lesson`), sở thích/sự thật về ngài, luật chọn tool chung (`tool_rule`: "giá thực phẩm → search_products", lưu bảng `corrections` với wrong_tool rỗng, nạp vào mô tả tool ở vòng chọn tool), sửa một lần chọn sai (`tool_fix`). Code giữ rào chắn: bằng chứng phải là lời ngài nguyên văn trong lượt mới nhất, bài trùng ý (cosine ≥ 0.90) bị loại; đã dạy rõ thì phản biện không được bỏ.
+- **Evolution:** lần 1 model đề xuất gỡ/gộp bài trùng — code chỉ gỡ/gộp khi cosine ≥ 0.90; bài nhắc thứ Jarvis đã bỏ (agent, tác nhân, @control) do code gỡ; bài trái ý không xoá. Lần 2 viết `STYLE.md` (≤ 12 luật, nạp vào `<giong_dieu>` mỗi lượt) từ bài học còn lại xếp mới → cũ, bài mới hơn thắng. `Evolution.md` chỉ ghi mục đã gỡ/gộp (kèm nội dung cũ) để khôi phục; luật đang áp dụng xem ở `STYLE.md`.
+- **Sửa công cụ không tái phạm:** ngài sửa ("giá thịt bò phải dùng search_products") → bảng `corrections` (chỉ lưu khi `outcomes` 24 giờ có đúng câu đó dùng tool sai). Vòng chọn tool: câu giống (cosine ≥ 0.85) thành `<vi_du>`; sửa ≥ 2 lần, giống ≥ 0.95 mà model lại chọn tool sai → ép tool đúng (`engine/turn/corrections.py`). Xem/xoá: `GET /api/corrections/list`, kind `correction` ở `/api/memory-control/delete`.
+- **Dream Cycle:** chạy khi rảnh để tổng hợp/dọn dữ liệu cũ; có sao lưu trước khi gộp. Model trả JSON theo grammar (think 128): `trivial` kiểu true/false, `bullets` ≤ 3; JSON hỏng thì để chu kỳ sau.
+- **Self-Healing:** phân loại lỗi từ log bằng grammar (enum CODE_BUG/TRANSIENT/CONFIG/DEPENDENCY/OTHER, think 128); code ghép mục `Errors.md` (giờ, tệp, lỗi) với tóm tắt + bước xử lý của model; chỉ CODE_BUG mới hỏi người dùng duyệt gửi fix_self (Goose).
 - **Nhiều phiên:** WebUI và Telegram có session riêng; lịch sử và trạng thái định tuyến tách theo phiên.
 
 ## Giao diện và tích hợp
 
-Frontend dùng Vite, TypeScript và Three.js trong `frontend/`. WebUI gồm giao diện chat/HUD, Command Bar, trình phát media và Settings dashboard. Tính năng bản đồ (panel MapLibre, ghim vị trí, ranh giới hành chính) đã gỡ hẳn ngày 2026-10-13 (test `tests/test_map_removed.py`). Webcam chỉ còn khung nhỏ, không phóng toàn màn hình.
+Frontend dùng Vite, TypeScript và Three.js trong `frontend/`. Trên điện thoại JARVIS chỉ dùng chiều dọc: nằm ngang (màn cảm ứng, cao ≤ 500px) thì cả trang bị che bằng dòng "Xoay dọc điện thoại để dùng JARVIS" và mọi hiệu ứng dừng như lúc mở Settings, vì iOS bỏ qua `"orientation": "portrait"` của manifest và Safari không cho trang tự khoá hướng (test `frontend/e2e/landscape.cjs`). Hiệu ứng trang trí đi qua một công tắc chung (`frontend/src/anim-gate.ts`, test `frontend/e2e/anim-gate.cjs`, `anim-boot.cjs`): chưa chạy khi trang còn đang nạp (đợi `load` và font), dừng hết khi mở Settings (cả animation CSS), và khi ẩn thanh lệnh thì bot, shader nút gửi, quầng sáng dừng hẳn, chỉ còn đồng hồ, hàng trạng thái và orb. Orb nền (`frontend/src/orb.ts`, tự dựng lại khi mất GPU lúc app chạy nền, test `frontend/e2e/orb-lost.cjs`) vẽ bằng `WebGPURenderer` của three (máy không có WebGPU thì tự lùi về WebGL 2); three được nạp riêng sau khi trang chạy, nên orb hỏng hay chậm cũng không chặn WebSocket, Settings và phần giao diện còn lại (test `frontend/e2e/orb-toggle.cjs` bước 7). Mở trang với `?debug=1` (bảng `frontend/src/perf-debug.ts`) thì dòng `orb` cho biết nền đang chạy: `webgpu`, `webgl2` hoặc `off`, xem được cả trên Safari iPhone. Bảng này còn đo độ trễ luồng chính (`lag`, chạy được trên Safari) và gửi mỗi mẫu/giây về máy chủ (`POST /api/perf-log`, ghi `logs/perf.jsonl`, mỗi lần mở trang một file mới, test `tests/test_perf_log.py`): dùng điện thoại vài phút rồi đọc file để biết lúc nào máy bận. WebUI gồm giao diện chat/HUD, Command Bar, trình phát media và Settings dashboard. Tính năng bản đồ (panel MapLibre, ghim vị trí, ranh giới hành chính) đã gỡ hẳn ngày 2026-10-13 (test `tests/test_map_removed.py`); tra đơn vị hành chính chỉ trả lời bằng chữ. Webcam chỉ còn khung nhỏ, không phóng toàn màn hình.
 
 - Gõ `/` hoặc `@` trên Command Bar để gợi ý công cụ, lối tắt.
 - Nút Cài đặt (Settings) trực tiếp trên thanh điều khiển (thay thế menu sổ dropdown); nút Khởi động lại hệ thống được đưa vào tab "Kết nối & API".
@@ -247,28 +248,6 @@ Giá trị mặc định và các biến bổ sung nằm trong `.env.example`; k
 
 Truy cập từ xa qua Tailscale: cài Tailscale trên máy chạy JARVIS và thiết bị truy cập, mở frontend cho mạng bằng `npm run dev -- --host`, sau đó thêm origin Tailscale của máy chủ vào `JARVIS_CORS_ORIGINS`. Không cần mở cổng router.
 
-## Fork sang ngôn ngữ khác
-
-Quy mô nội dung tiếng Việt (số dòng chứa chữ Việt): `engine/` hơn 3.000 dòng, `frontend/src/` hơn 500, `prompt/`, `prompt/tools/` và `tests/` hàng trăm dòng. Tác giả không có kế hoạch hỗ trợ ngôn ngữ khác, nên hãy coi đây là việc chuyển đổi toàn bộ. Làm theo thứ tự:
-
-1. **Prompt**: `prompt/jarvis.md`, `prompt/turn_tool.md`, `prompt/turn_answer.md`, `prompt/voice_cues.md`, mọi mô tả tool trong `prompt/tools/*.md` và các prompt nền (`learning_*`, `evolution`, `dream_*`, `self_healing`). Thêm chỉ dẫn rõ ràng ở đầu `prompt/jarvis.md`, ví dụ:
-   ```
-   The user's language is English. Always reply in English, even when tool results come back in Vietnamese.
-   Address the user as "sir" and refer to yourself as "I". Keep sentences short and natural for speech.
-   ```
-2. **Từ khoá khớp chuỗi trong code** (phần dễ hỏng âm thầm nhất): `_NEEDS_WORD`, `_FUTURE`, `_ACT` và câu thay thế `_NO_PROMISE` trong `engine/turn/loop.py`; `_PREF_STYLE` và tên thứ trong tuần ở `engine/turn/prompt.py`; chữ tiếng Việt trong các tool ở `engine/tools/catalog/` và `engine/tools/*.py`; tên file wiki như `Học hỏi.md` ở `engine/core/learning.py`. Mẫu chặn `PROMPT_INJECTION_PATTERNS` ở `engine/core/guardrails.py` đã có tiếng Anh.
-3. **Giọng nói**:
-   - Đọc: đặt `TTS_LOCAL_MODEL=en-US-GuyNeural` trong `.env` (`edge-tts --list-voices` liệt kê giọng). Giữ `EDGE_TTS_ENABLED=true`, `VIENEU_TTS_ENABLED=false`, vì VieNeu chỉ đọc tiếng Việt. Muốn ElevenLabs, OpenAI TTS, Azure, Google: viết thêm engine trong `engine/server/` theo mẫu `tts_engine.py`, đăng ký ở `tts_manager.py` (đọc `TTS_ENGINE`); dịch vụ nên trả âm thanh từng câu để phát liên tục.
-   - Nghe: phía trình duyệt dùng `vi-VN` trong `frontend/src/voice.ts`, còn `engine/server/whisper_server.py` cố định `language="vi"`. Đổi cả hai.
-4. **Nguồn dữ liệu**: tin tức, thời tiết, giá vàng/xăng, lịch vạn niên, rạp CGV, Epic, trang bán hàng đều của Việt Nam. Thay hoặc bỏ tool tương ứng (`engine/tools/catalog/` + `prompt/tools/<tên>.md`).
-5. **Chữ trên giao diện** trong `frontend/src/` và các trang Settings.
-6. **Test**: nhiều test và bản chụp `tests/golden/` chứa câu tiếng Việt; cập nhật theo prompt mới rồi chạy lại toàn bộ test.
-7. **Đo lại**: prompt được tinh chỉnh cho model local nhỏ bằng tiếng Việt. Dịch xong hãy chạy lại các probe trong `tests/live/` với llama-server của bạn.
-
-**Dùng model lớn (Claude, Gemini, ChatGPT)**: đổi `LOCAL_URL`, `LOCAL_API_KEY`, `LOCAL_MODEL` trong `.env` sang endpoint tương thích OpenAI của nhà cung cấp. Nếu API khác định dạng OpenAI, cần chỉnh hoặc viết lại [`engine/server/llm_server.py`](engine/server/llm_server.py) (cách gọi, tham số, stream); prompt có thể cần chỉnh lại vì được tinh chỉnh cho model local nhỏ.
-
-**Khi tải về**: skill `skills/officecli` chỉ chứa hướng dẫn dùng, hãy cài officecli từ mã nguồn gốc và lấy thư mục `examples/` từ đó. Hai tool `legal_lookup` (tra cứu pháp luật Việt Nam) và `vn_admin_lookup` (tỉnh/thành, phường/xã) là dữ liệu riêng của Việt Nam; cứ giữ nguyên nếu cần, không dùng thì xoá tool (`engine/tools/catalog/lookup.py`, `prompt/tools/<tên>.md`) và `engine/tools/legal_engine.py`.
-
 ## API, kiểm thử và bảo mật
 
 ### API
@@ -284,13 +263,13 @@ Các API nhạy cảm yêu cầu quyền/trạng thái phù hợp; xem router tr
 ### Kiểm thử
 
 ```powershell
-python -m pytest tests -q --ignore=tests/live --ignore-glob="tests/test_live_*"
+python -m pytest tests -q --ignore=tests/live
 # Chẩn đoán RAM và kiểm tra cache mô hình HuggingFace VieNeu-TTS:
 python scripts/check_vieneu_memory.py
 python -m pytest tests/test_vieneu_health_and_memory.py -v
 ```
 
-Frontend dùng các kịch bản Playwright trong `frontend/e2e/*.cjs` (chạy `npm run dev` ở `:5173`, rồi `PW=<đường dẫn module playwright> node frontend/e2e/<tên>.cjs`; Playwright không nằm trong `package.json`, cần tự cài). CI (`.github/workflows/ci.yml`, chạy mỗi lần push `main` và mỗi PR) gồm: `ruff check .`, compile Python, `python .github/scripts/check_imports.py` (mọi `from engine... import X` phải trỏ tới tên có thật), `pytest` (cài `requirements-ci.txt` và `bsdtar`) và `npm run build` cho frontend; chạy lại các lệnh này trước khi push. Một số test cần máy thật (VieNeu, llama-server) nên tự bỏ qua trên CI; nếu test lỗi trên máy bạn, hãy kiểm tra lại trước khi sửa code. Test dữ liệu learning/wiki chạy trên thư mục tạm để tránh thay đổi dữ liệu người dùng.
+Frontend dùng các script kiểm tra trong `frontend/e2e/`; xem `frontend/package.json` để biết lệnh hiện hành. Test dữ liệu learning/wiki chạy trên thư mục tạm để tránh thay đổi dữ liệu người dùng.
 
 ### Bảo mật
 
@@ -301,10 +280,11 @@ Frontend dùng các kịch bản Playwright trong `frontend/e2e/*.cjs` (chạy `
 
 ## Phiên bản và giấy phép
 
-Phiên bản được quản lý tại [`VERSION`](VERSION) (nguồn duy nhất); lịch sử cũ ở [CHANGELOG.md](CHANGELOG.md). Khi phát hành bản mới, cập nhật `VERSION` và ghi tóm tắt thay đổi chính tại đây.
+Phiên bản được quản lý tại [`VERSION`](VERSION). Hiện tại là **v9.9.8**, gồm `@rag`, giao diện Settings/HUD và các cải tiến bảo vệ prompt injection. Khi phát hành bản mới, cập nhật `VERSION` và ghi tóm tắt thay đổi chính tại đây.
 
 ### Chưa phát hành
 
+- **Bộ nhớ: tab Sửa công cụ (2026-10-14):** Cài đặt → Bộ nhớ có tab **Sửa công cụ** đọc `/api/corrections/list` (câu, công cụ đã dùng, công cụ nên dùng, số lần sửa); xem và xoá (xem trước quan hệ qua `/api/memory-control/dependencies`), chưa sửa được vì backend chưa hỗ trợ.
 - **Graphfy đỡ rối (2026-10-13):** đường import mờ, chỉ đường gọi LLM có xung sáng; đường tới các khối dùng chung `server`, `tools`, `UIUX` ẩn mặc định (rê chuột vào khối thì hiện), nút **Hiện tất cả** để bật lại.
 - **Chuyển đổi sang kiến trúc định tuyến tool phẳng (2026-10-12):** Thay thế toàn bộ hệ thống 31 agent, orchestrator, classifier và single-stream ReAct cũ bằng mô hình gọi tool phẳng của Gemma 4: Quyết định không nhân cách (tối đa 3 vòng gọi tool) → Trả lời có nhân cách JARVIS. Dọn dẹp toàn bộ code thừa, thư mục commands/ và các probe/test chết.
 - **Nâng cấp Timeline Indicator & Connector trên Dynamic Island (2026-10-11):** Tái cấu trúc danh sách các bước xử lý theo chuẩn Chakra/Ant Design Timeline; thay thế đường kẻ nền tạm bợ cũ bằng các đoạn `TimelineConnector` mỏng gắn liền theo từng bước và tự động triệt tiêu ở bước cuối cùng; áp dụng hiệu ứng `TimelineDot` morphicon (pulsing beacon khi đang chạy, tự động biến hình pop spring thành solid dot tích hợp icon khi hoàn tất).
@@ -315,6 +295,7 @@ Phiên bản được quản lý tại [`VERSION`](VERSION) (nguồn duy nhất)
 - **Tối ưu thanh trạng thái iOS Safari, ẩn controls & đảo động khi mở Cài đặt (2026-10-10):** Giữ dải gradient tai thỏ Safari iOS bằng cách đặt `.sd-root` và `.sd-topbar` nền trong suốt (`background: none`); tự động ẩn hoàn toàn cụm nút `#controls` và đảo động Dynamic Island (`.island`) khi mở modal Cài đặt để tránh lộ nút hay thông báo qua topbar trong suốt; tự khôi phục đảo động nếu đang chạy khi đóng Cài đặt; dọn dẹp thẻ thừa `btn-menu`.
 - **Evolution cập nhật cả bộ luật STYLE (2026-10-08):** mỗi lần trả về toàn bộ `STYLE.md` (tối đa 20 luật giao tiếp): giữ luật cũ, gộp luật trùng ý, viết đè luật bị bài học mới phủ định, thêm luật từ bài học/sở thích về cách nói; sự thật đời sống không thành luật; không nhãn `[MỚI]`/nguồn/ví dụ; temp 0. Probe `tests/live/probes/evolution_probe.py`: 9/9 kiểm tra × 3 lần.
 - **Learning chỉ học đúng 3 loại (2026-10-08):** điều ngài tự nói về bản thân, yêu cầu ghi nhớ/đổi cách cư xử, và lời chỉ trích/sửa sai; không tự suy diễn luật từ trò chuyện. Luật xưng hô/giọng/emoji/độ dài luôn là `behaviour_lesson`. Nói lại điều đã học (khác chữ) không tạo/ghi đè dòng mới (`adds_new_information`). Probe learning: nên học 10/10, không nên học 0/9.
+- **Learning/Evolution theo grammar (2026-10-14):** cổng từ khoá dạy rõ (ngài chốt 2026-10-14: không tự lưu khi trò chuyện); replay 2 lượt dạy thật: 3/3 luật cách nói + 3/3 luật tool, trò chuyện/chê trách 0; luật tool nạp vào vòng chọn tool: held_out tool 66/66, tham số 66/66. Evolution 2 lần gọi + rào chắn cosine: evolution_probe 8/9 tiêu chí × 3 lần, không mất bài học; hạn chế: STYLE có thể giữ cả hai luật trái ý. Embedder EmbeddingGemma 2 (768d, :8081; `tests/live/probes/embed_probe.py`).
 - **Dọn dữ liệu học (2026-10-08):** bài học không còn lưu kèm "(ví dụ: …)"/"(Evidence: …)" (câu của ngài từng lọt vào prompt chat); `STYLE.md` vào prompt không còn nhãn `[MỚI]`/`(Từ key)`. Dọn dữ liệu cũ: `python scripts/clean_learnings_2026_10.py` (mặc định chỉ xem; `--apply` sao lưu `jarvis.db` rồi xóa dòng rác, làm sạch nội dung và đồng bộ lại wiki).
 - **Prompt đúng định dạng Gemma 4 (2026-10-08):** Gemma 4 chỉ được huấn luyện với một system turn ở đầu; chat từng gửi 3 system turn (2 cái giữa hội thoại) và model có lúc chép nguyên `<turn_status>` ra câu trả lời. `llm_server` giờ gộp mọi system về một turn ở đầu cho Gemma như Qwen/Bonsai (đo: fabrication/honorific/knowledge/command_help/overask bằng hoặc tốt hơn).
 

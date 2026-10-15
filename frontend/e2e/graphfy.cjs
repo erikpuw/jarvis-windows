@@ -44,7 +44,6 @@ const MAP = {
   await page.route("**/api/graphfy", (r) => { graphCalls++; return r.fulfill({ json: MAP }); });
   await page.goto(BASE);
   await page.evaluate(() => localStorage.setItem("jarvis.graphfy.positions.v3", '{"router":[5000,5000]}'));
-  await page.click("#btn-menu");
   await page.evaluate(() => document.getElementById("btn-settings").click());
   await page.waitForSelector("#settings-container.open");
   await page.click('.sd-nav-item[data-page="graphfy"]');

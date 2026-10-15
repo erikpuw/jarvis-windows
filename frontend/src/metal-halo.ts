@@ -8,7 +8,7 @@
 // sampled (the metal keeps changing colour) and normalised to full brightness like metal-fx's tint; it follows the metal
 // while it stays lit. Not ported: picking the brightest spot of the live shader (we pick a random spot on the ring),
 // the slow wander along the ring and the cursor catch-light.
-import { onAnimGate } from "./anim-gate";
+import { onBarGate } from "./anim-gate";
 
 // metal-fx GLOW_DEFAULTS
 const HALO = [
@@ -32,6 +32,12 @@ const GLOW_OPACITY = 0.3; // just under metal-fx glowOpacity at its dim end (bas
 const HALO_ALPHA = Math.min(1, GLOW_OPACITY * 2); // haloOpMul
 const CORE_ALPHA = 0.3; // metal-fx gives min(1, glowOpacity * 3.51); a full-white core read too hot on the dark bar
 const TINT = [155, 231, 255]; // fallback when the ring cannot be sampled (#9be7ff, the shader's tint)
+const BEAT_MS = 3000;
+// dark, fade in (ease-in-out) to full at 1 s, hold to 2 s, fade out (ease-in-out) to dark at 3 s
+const BEAT_KEYS: Keyframe[] = [
+  { offset: 0, opacity: 0 }, { offset: 0.01, opacity: 0, easing: "ease-in-out" },
+  { offset: 0.333, opacity: 1 }, { offset: 0.667, opacity: 1, easing: "ease-in-out" }, { offset: 1, opacity: 0 },
+];
 const RECOLOUR_MS = 400; // while lit, re-sample the ring this often and ease towards its colour
 const EASE = 0.5;
 const MIN_JUMP = Math.PI / 3; // a new spot is at least 60° away from the last one
@@ -186,8 +192,9 @@ export function mountMetalHalo(wrap: HTMLElement, face: HTMLElement): void {
     env.dataset.tint = tint.join(",");
   }
 
-  // the wrapper's CSS animation (style.css .metal-glow) fades in, holds, fades out every 3 s and starts each beat
-  // fully dark; the next spot, random on the ring, is painted right then, on animationiteration
+  // one beat = 3 s: fade in 1 s, hold 1 s, fade out 1 s. JS runs each beat and paints the next spot before it starts the next one.
+  // It used to be a CSS animation with the move on animationiteration: the fade runs off the main thread but the event waits for it,
+  // so on a busy main thread (a phone loading the page) the next fade began at the old spot and the halo jumped while lit.
   let angle = Math.random() * 2 * Math.PI;
   let tint = ringColour(angle);
   paint(angle, tint);
@@ -197,11 +204,20 @@ export function mountMetalHalo(wrap: HTMLElement, face: HTMLElement): void {
   const watchDpr = () => matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener("change", () => { refit(); watchDpr(); }, { once: true });
   watchDpr();
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) { env.style.opacity = "1"; return; }
-  env.addEventListener("animationiteration", () => {
-    angle += MIN_JUMP + Math.random() * (2 * Math.PI - 2 * MIN_JUMP);
-    tint = ringColour(angle); // a new spot starts dark, so its colour can jump
-    paint(angle, tint);
-  });
+  let beat: Animation | null = null;
+  let stopped = false;
+  const nextBeat = () => {
+    beat = env.animate(BEAT_KEYS, { duration: BEAT_MS });
+    if (stopped) beat.pause();
+    beat.finished.then(() => {
+      angle += MIN_JUMP + Math.random() * (2 * Math.PI - 2 * MIN_JUMP);
+      tint = ringColour(angle); // a new spot starts dark, so its colour can jump
+      paint(angle, tint);
+      env.dispatchEvent(new Event("metal-glow-beat")); // read by the e2e test
+      nextBeat();
+    }, () => { /* cancelled */ });
+  };
+  nextBeat();
   // the metal keeps changing colour: while the halo is lit, ease towards the ring's colour at its spot
   setInterval(() => {
     refit(); // also catches a density change that raised neither resize nor a media-query event
@@ -210,5 +226,9 @@ export function mountMetalHalo(wrap: HTMLElement, face: HTMLElement): void {
     tint = tint.map((v, i) => Math.round(v + (target[i] - v) * EASE));
     paint(angle, tint);
   }, RECOLOUR_MS);
-  onAnimGate((paused) => env.classList.toggle("paused", paused));
+  onBarGate((paused) => {
+    stopped = paused;
+    env.classList.toggle("paused", paused);
+    if (paused) beat?.pause(); else beat?.play();
+  });
 }

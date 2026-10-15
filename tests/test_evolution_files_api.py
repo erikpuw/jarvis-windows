@@ -2,7 +2,7 @@
 
 Hai file, một chỗ duy nhất trong UI:
 - skills/self_evolution/STYLE.md   luật giọng điệu ĐANG ÁP DỤNG (được nạp vào system prompt mỗi lượt chat)
-- data/wiki/System/Evolution.md    nhật ký luật tiến hóa đã thêm (Routing = đề xuất chờ duyệt, Giao tiếp)
+- data/wiki/System/Evolution.md    nhật ký bài học đã gỡ/gộp (Đã dọn)
 
 GET /api/evolution/list và POST /api/evolution/update (engine/UIUX/ui_engine.py). STYLE.md bị chặn quá dài vì nó vào prompt mỗi lượt.
 

@@ -8,6 +8,8 @@ Sử dụng:
 
 import os
 import sys
+import gc
+import glob
 import time
 from pathlib import Path
 

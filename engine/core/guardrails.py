@@ -6,6 +6,7 @@ import logging
 import re
 import unicodedata
 from typing import Tuple
+from engine.core.json_parser import safe_json_loads
 
 log = logging.getLogger("jarvis.guardrails")
 

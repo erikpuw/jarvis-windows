@@ -1,5 +1,5 @@
 // E2E: orb dùng 1000 hạt trên cả điện thoại lẫn máy tính, canvas vẫn 1080px cao.
-// Đếm số hạt qua gl.drawArrays(POINTS). Chạy: PW=<module playwright> node frontend/e2e/orb-mobile.cjs   (cần `npm run dev` ở :5173)
+// Đếm số hạt qua số instance lớn nhất của lệnh vẽ instanced (mỗi hạt là một sprite; WebGPU không vẽ điểm to hơn 1px). Chromium headless không lấy được GPU nên three chạy nền WebGL 2. Chạy: PW=<module playwright> node frontend/e2e/orb-mobile.cjs   (cần `npm run dev` ở :5173)
 const { chromium } = require(process.env.PW || "playwright");
 const BASE = process.env.BASE_URL || "http://localhost:5173/";
 let failed = 0;
@@ -9,10 +9,10 @@ async function probe(browser, opts) {
   const ctx = await browser.newContext(opts);
   await ctx.addInitScript(() => {
     window.__n = 0;
-    for (const C of [window.WebGL2RenderingContext, window.WebGLRenderingContext]) {
-      const d = C.prototype.drawArrays;
-      C.prototype.drawArrays = function (m, f, n) { if (m === 0 && this.canvas.id === "orb-canvas") window.__n = Math.max(window.__n, n); return d.call(this, m, f, n); };
-    }
+    const P = window.WebGL2RenderingContext.prototype;
+    const da = P.drawArraysInstanced, de = P.drawElementsInstanced;
+    P.drawArraysInstanced = function (m, f, c, n) { if (this.canvas.id === "orb-canvas") window.__n = Math.max(window.__n, n); return da.call(this, m, f, c, n); };
+    P.drawElementsInstanced = function (m, c, t, o, n) { if (this.canvas.id === "orb-canvas") window.__n = Math.max(window.__n, n); return de.call(this, m, c, t, o, n); };
   });
   const page = await ctx.newPage();
   await page.routeWebSocket(/\/ws/, () => {});

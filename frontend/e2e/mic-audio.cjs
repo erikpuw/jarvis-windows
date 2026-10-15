@@ -32,7 +32,11 @@ async function run(browser, label, opts) {
   await page.goto(BASE + "?debug=1");
   for (let i = 0; i < 50 && !sock; i++) await page.waitForTimeout(100);
   await page.waitForTimeout(1500);
-  const press = (sel) => (opts.hasTouch ? page.tap(sel) : page.click(sel));
+  // the control buttons sit behind the round menu button (#controls): open it first, then a real tap/click
+  const press = async (sel) => {
+    if (!(await page.$eval("#controls", (e) => e.classList.contains("open")))) { await page.click("#btn-controls"); await page.waitForTimeout(350); }
+    return opts.hasTouch ? page.tap(sel) : page.click(sel);
+  };
   const send = (m) => sock.send(JSON.stringify(m));
   const state = () => page.evaluate(() => window.__ctxs[0]?.state);
   const suspends = () => page.evaluate(() => window.__suspends);

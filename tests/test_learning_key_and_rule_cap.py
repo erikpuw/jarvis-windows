@@ -4,7 +4,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from engine.core.evolution import _cap_rules, _newest_entries
 from engine.core.learning import LearningEngine, _lexically_similar
 
 
@@ -12,17 +11,6 @@ def test_vietnamese_key_keeps_letters_instead_of_underscores():
     assert LearningEngine._normalise_key("Chỉ chạy khi cần") == "chi_chay_khi_can"
     assert LearningEngine._normalise_key("đồng_ý") == "dong_y"
     assert LearningEngine._normalise_key("snake_case_key") == "snake_case_key"
-
-
-def test_cap_rules_dedupes_and_limits():
-    text = "---\nv: 1\n---\n\n# Self Evolution Routing Rules\n" + "\n".join(
-        [f"- luật {i}" for i in range(10)] + ["- luật 1", "- " + "x" * 2000]
-    )
-    out = _cap_rules(text)
-    bullets = [l for l in out.splitlines() if l.startswith("- ")]
-    assert len(bullets) == 6 and len(set(bullets)) == 6, bullets
-    assert "# Self Evolution Routing Rules" in out
-    assert _cap_rules("") == "\n"
 
 
 def test_lexical_dedupe_catches_rephrased_and_keeps_distinct():
@@ -51,12 +39,6 @@ def test_consolidate_keeps_newest_and_removes_older_duplicate(tmp_path=None):
     assert le.consolidate_learnings() == 1
     ids = [r["id"] for r in _conn().execute("SELECT id FROM learnings ORDER BY id")]
     assert ids == [2, 3], ids
-
-
-def test_newest_entries_keeps_header_and_last_n():
-    text = "# T\n\n<!-- m -->\n" + "\n".join(f"- [`k{i}`] mục {i}" for i in range(30))
-    out = _newest_entries(text, 20)
-    assert "# T" in out and "k29" in out and "k10" in out and "k9`" not in out, out
 
 
 if __name__ == "__main__":

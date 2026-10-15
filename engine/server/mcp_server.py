@@ -62,6 +62,26 @@ def _runtime_entry(cfg: dict) -> dict:
     }
 
 
+# Server chỉ được đọc (ngài 2026-10-13): mọi tool ngoài danh sách bị chặn bằng code, không dựa vào prompt.
+_READ_ONLY_TOOLS = {"gmail": {"search_emails", "read_email"}}
+_GMAIL_MAX_RESULTS = 10
+
+
+def _read_only_guard(server_name: str, tool_name: str, arguments: dict) -> dict:
+    allowed = _READ_ONLY_TOOLS.get(server_name)
+    if allowed is None:
+        return arguments
+    if tool_name not in allowed:
+        raise PermissionError(f"'{tool_name}' trên '{server_name}' bị chặn: chỉ cho phép {', '.join(sorted(allowed))}")
+    if tool_name == "search_emails":
+        try:
+            n = int(arguments.get("maxResults") or _GMAIL_MAX_RESULTS)
+        except (TypeError, ValueError):
+            n = _GMAIL_MAX_RESULTS
+        arguments = {**arguments, "maxResults": max(1, min(n, _GMAIL_MAX_RESULTS))}
+    return arguments
+
+
 # ─── MCPHub — Quản lý kết nối MCP servers ───
 class MCPHub:
     """Manages multiple MCP server connections and exposes their tools to JARVIS."""
@@ -403,6 +423,7 @@ class MCPHub:
         """
         if server_name not in self.sessions:
             raise ValueError(f"Server '{server_name}' not connected")
+        arguments = _read_only_guard(server_name, tool_name, arguments or {})
         session = self.sessions[server_name]
         try:
             result = await asyncio.wait_for(session.call_tool(tool_name, arguments or {}), timeout=timeout)

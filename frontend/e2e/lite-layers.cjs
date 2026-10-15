@@ -33,7 +33,7 @@ const disp = (page, id) => page.$eval("#" + id, (e) => getComputedStyle(e).displ
       sock.send(JSON.stringify({ type: "text_chunk", text: "Câu trả lời " + n })); await page.waitForTimeout(200);
       sock.send(JSON.stringify({ type: "stream_end" })); await page.waitForTimeout(200);
     }
-    await page.evaluate(() => document.getElementById("btn-menu").click()); await page.waitForTimeout(300);
+    await page.evaluate(() => document.getElementById("btn-controls").click()); await page.waitForTimeout(300);
     const blur = await page.evaluate(() => [...document.querySelectorAll("body *")].filter((e) => { const s = getComputedStyle(e); return (s.backdropFilter || s.webkitBackdropFilter || "none") !== "none"; }).map((e) => e.id || e.className.toString().split(" ")[0]).slice(0, 5));
     check(blur.length === 0, `7. ${label}: chạy thật (chat + menu): không phần tử nào còn backdrop-filter`, blur.join(","));
     await page.context().close();

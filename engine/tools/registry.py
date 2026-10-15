@@ -213,6 +213,25 @@ def description(name: str) -> str:
     return spec.description if spec else ""
 
 
+# Tên hiện trên status/island (ngài 2026-10-13: không hiện lệnh thô); log vẫn ghi tên tool.
+_LABELS = {
+    "open_app": "Mở ứng dụng", "close_app": "Đóng ứng dụng", "win_control": "Điều khiển Windows",
+    "capture_screen": "Chụp màn hình", "read_screen": "Đọc màn hình", "read_webcam": "Webcam",
+    "system_status": "Trạng thái máy", "check_security": "Kiểm tra bảo mật", "play_media": "Phát nhạc/video",
+    "weather": "Thời tiết", "search_news": "Tin tức", "market_price": "Giá thị trường",
+    "search_products": "Giá sản phẩm", "cinema": "Lịch chiếu phim", "free_games": "Game miễn phí",
+    "lunar_today": "Lịch âm", "zodiac": "Tử vi", "legal_lookup": "Tra cứu pháp luật",
+    "vn_admin_lookup": "Đơn vị hành chính", "lookup_knowledge": "Bách khoa", "check_mail": "Gmail", "gym": "Gym",
+    "office_edit": "Chỉnh sửa tài liệu", "rag_ask": "Hỏi đáp tài liệu", "search_documents": "Kho tài liệu", "read_image": "Đọc ảnh",
+    "upscale_image": "Nâng cấp ảnh", "dream": "Dọn dẹp bộ nhớ", "install_extension": "Cài tiện ích",
+    "mcp_call": "Gọi MCP", "check_project": "Kiểm tra dự án",
+}
+
+
+def label(name: str) -> str:
+    return _LABELS.get(name, name)
+
+
 def answer_rules(name: str) -> str:
     spec = get(name)
     return spec.answer if spec else ""
@@ -237,13 +256,16 @@ def usage(name: str) -> str:
     return f"/{name}" + (f" <{', '.join(ps)}>" if ps else "")
 
 
-def catalog_text(names: list[str]) -> str:
-    """Danh mục công cụ trong <cong_cu> của prompt/jarvis.md (định dạng đã đo 2026-10-12)."""
+def catalog_text(names: list[str], rules: dict[str, list[str]] | None = None) -> str:
+    """Danh mục công cụ trong <cong_cu> của prompt/jarvis.md (định dạng đã đo 2026-10-12). rules: luật ngài dạy
+    (learning.tool_rules) nối sau mô tả đúng tool đó."""
     lines = []
     for n in names:
         props = parameters(n)["properties"]
         ps = ", ".join(f"{k}: {v.get('description', v['type'])}" for k, v in props.items())
-        lines.append(f"- {n}: {description(n)}" + (f" ({ps})" if ps else ""))
+        taught = (rules or {}).get(n)
+        lines.append(f"- {n}: {description(n)}" + (f" Ngài dạy dùng cho: {'; '.join(taught)}." if taught else "")
+                     + (f" ({ps})" if ps else ""))
     return "\n".join(lines)
 
 

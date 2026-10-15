@@ -19,7 +19,7 @@ import engine.core.evolution as evolution
 from engine.UIUX import ui_engine
 
 PASSWORD = "mat-khau-thu-nghiem"
-PREFIXES = ("/api/learnings", "/api/workflows", "/api/outcomes", "/api/conversations", "/api/evolution", "/api/memory-control", "/api/history", "/api/logs")
+PREFIXES = ("/api/learnings", "/api/workflows", "/api/outcomes", "/api/corrections", "/api/conversations", "/api/evolution", "/api/memory-control", "/api/history", "/api/logs")
 
 app = FastAPI()
 app.include_router(ui_engine.router)

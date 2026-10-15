@@ -7,6 +7,7 @@ _ID_TABLES = {
     "learnings",
     "outcomes",
     "workflows",
+    "corrections",
 }
 
 
