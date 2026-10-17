@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from engine.server.llm_server import call_llm
-from engine.core.memory import DB_PATH, save_memory
+from engine.core.memory import DB_PATH
 from engine.core.memory_tree import WIKI_DIR, ensure_wiki_dirs
 
 log = logging.getLogger("jarvis.dream")
@@ -265,9 +265,11 @@ async def _dream_consolidate_messages(run_id: str, retention_days: int) -> dict:
             if result["trivial"] or not result["summary"]:
                 dropped += 1
             else:
-                await asyncio.to_thread(
-                    save_memory, result["summary"], mem_type="fact", source="dream_cycle", importance=4
-                )
+                _archive_jsonl("summaries", [{
+                    "summary": result["summary"],
+                    "message_ids": [m["id"] for m in chunk],
+                    "created_at": time.time(),
+                }], run_id)
                 kept += 1
             archive_rows.extend(chunk)
             ids_to_delete.extend(m["id"] for m in chunk)

@@ -219,7 +219,7 @@ _LABELS = {
     "capture_screen": "Chụp màn hình", "read_screen": "Đọc màn hình", "read_webcam": "Webcam",
     "system_status": "Trạng thái máy", "check_security": "Kiểm tra bảo mật", "play_media": "Phát Youtube",
     "weather": "Thời tiết", "search_news": "Tin tức", "market_price": "Giá thị trường",
-    "search_products": "Giá sản phẩm", "cinema": "Lịch chiếu phim", "free_games": "Game miễn phí",
+    "search_products": "Giá sản phẩm", "search_medicine": "Giá thuốc men", "cinema": "Lịch chiếu phim", "free_games": "Game miễn phí",
     "lunar_today": "Lịch âm", "zodiac": "Cung hoàng đạo", "legal_lookup": "Tra cứu pháp luật",
     "vn_admin_lookup": "Đơn vị hành chính", "lookup_knowledge": "Bách khoa toàn thư", "check_mail": "Gmail", "gym": "Gym",
     "office_edit": "Chỉnh sửa tài liệu", "rag_ask": "Hỏi đáp tài liệu", "search_documents": "Kho tài liệu", "read_image": "Đọc ảnh",

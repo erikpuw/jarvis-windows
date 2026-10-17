@@ -149,3 +149,155 @@ def test_cards_must_match_most_query_words():
     assert [c["url"] for c in shop._relevant_cards(cards, "airpods pro 3")] == ["a"]
     only_off = [{"name": "iPhone 18 Pro 256GB", "price_vnd": 1, "url": "b"}]
     assert shop._relevant_cards(only_off, "airpods pro 3") == only_off  # không còn gì thì giữ nguyên, để báo gần nhất
+
+
+def test_grocery_sources_include_coop_and_winmart():
+    sources = shop.build_source_urls("trứng gà", "grocery")
+    names = [s["source"] for s in sources]
+    assert "Bách Hóa Xanh" in names
+    assert "Co.op Online" in names
+    assert "WinMart" in names
+    coop = next(s for s in sources if s["source"] == "Co.op Online")
+    assert "cooponline.vn/search?router=productListing&query=" in coop["url"]
+    winmart = next(s for s in sources if s["source"] == "WinMart")
+    assert "winmart.vn/search/" in winmart["url"]
+
+
+def test_parse_coop():
+    data = {
+        "result": {
+            "products": [
+                {
+                    "productInfo": {
+                        "name": "Trứng gà Ba Huân",
+                        "uomName": "Hộp 10 quả",
+                        "canonical": "trung-ga-ba-huan-hop-10-qua-p123",
+                    },
+                    "prices": [{"latestPrice": 32000}],
+                    "averageRating": 4.8,
+                },
+                {
+                    "productInfo": {"name": "Hết hàng"},
+                    "prices": [],
+                },
+            ]
+        }
+    }
+    cards = shop.sources_mod.parse_coop(data)
+    assert len(cards) == 1
+    assert cards[0]["name"] == "Trứng gà Ba Huân (Hộp 10 quả)"
+    assert cards[0]["price_vnd"] == 32000
+    assert cards[0]["url"] == "https://cooponline.vn/trung-ga-ba-huan-hop-10-qua-p123"
+    assert cards[0]["rating"] == 4.8
+
+
+def test_parse_winmart():
+    data = {
+        "data": [
+            {
+                "description": "Trứng gà tươi sạch MEATDeli",
+                "uomName": "Vỉ 10 quả",
+                "seoName": "trung-ga-tuoi-sach-meatdeli-vi-10-qua",
+                "price": {"salePrice": 29500, "originPrice": 32000},
+            },
+            {
+                "description": "Sản phẩm không giá",
+                "price": {"salePrice": 0},
+            },
+        ]
+    }
+    cards = shop.sources_mod.parse_winmart(data)
+    assert len(cards) == 1
+    assert cards[0]["name"] == "Trứng gà tươi sạch MEATDeli (Vỉ 10 quả)"
+    assert cards[0]["price_vnd"] == 29500
+    assert cards[0]["url"] == "https://winmart.vn/products/trung-ga-tuoi-sach-meatdeli-vi-10-qua"
+
+
+def test_grocery_sources_include_lotte_mart_default_vi_nsg():
+    sources = shop.build_source_urls("trứng gà", "grocery")
+    names = [s["source"] for s in sources]
+    assert "LOTTE Mart" in names
+    lotte = next(s for s in sources if s["source"] == "LOTTE Mart")
+    assert lotte["store"] == "vi-nsg"
+    assert "lottemart.vn/vi-nsg/category?q=" in lotte["url"]
+
+
+def test_parse_lotte():
+    data = {
+        "data": {
+            "items": [
+                {
+                    "name": "Trứng Gà Tươi 365 Fresh Size 60G Hộp 6 Trứng",
+                    "price": {
+                        "VND": {
+                            "default": 19800,
+                            "special_price": 0,
+                            "price": 19800,
+                        }
+                    },
+                    "url_key": "cl-trung-ga-tuoi-size-60g-hop-6-8938511817430",
+                    "rating_summary": 90,
+                },
+                {
+                    "name": "Hết hàng",
+                    "price": {"VND": {"price": 0}},
+                },
+            ]
+        }
+    }
+    cards = shop.sources_mod.parse_lotte(data, store="vi-nsg")
+    assert len(cards) == 1
+    assert cards[0]["name"] == "Trứng Gà Tươi 365 Fresh Size 60G Hộp 6 Trứng"
+    assert cards[0]["price_vnd"] == 19800
+    assert cards[0]["url"] == "https://www.lottemart.vn/vi-nsg/product/cl-trung-ga-tuoi-size-60g-hop-6-8938511817430"
+    assert cards[0]["rating"] == 90.0
+
+
+def test_grocery_filters_out_lekima_and_sandwiches_for_egg_query():
+    cards = [
+        {"name": "Quả Lêkima (Trứng gà) (Kg)", "price_vnd": 59900, "url": "u1"},
+        {"name": "ATABLE-Sandwich Trứng mayo+Gà Terryaki (Cái)", "price_vnd": 25000, "url": "u2"},
+        {"name": "Bánh trứng tươi sợi thịt gà Fasty túi 6gói", "price_vnd": 30000, "url": "u3"},
+        {"name": "Trứng gà tươi Dabaco hộp 10 quả", "price_vnd": 32000, "url": "u4"},
+    ]
+    p = shop._plain
+    filtered = [c for c in cards if not shop._is_unwanted_grocery(p(c["name"]), p("trứng gà"))]
+    kept = shop._relevant_cards(filtered, "trứng gà")
+    assert [c["name"] for c in kept] == ["Trứng gà tươi Dabaco hộp 10 quả"]
+
+
+def test_tech_query_filters_out_books_and_homonyms_for_macmini():
+    cards = [
+        {"name": "Mac Mini 2024 - Chip M4 - 16GB/ 256GB", "price_vnd": 23990000, "url": "u1"},
+        {"name": "Sách - Mini Fashion - Migo", "price_vnd": 24000, "url": "u2"},
+        {"name": "Két heo NAGA - Đỏ cam - Két Gấu ấm áp", "price_vnd": 986000, "url": "u3"},
+        {"name": "Thiên Thần Nhỏ - Số 493", "price_vnd": 20000, "url": "u4"},
+        {"name": "François Mauriac - Sa mạc tình yêu", "price_vnd": 90250, "url": "u5"},
+        {"name": "Bàn phím không dây Logitech MX Keys Mini - Có bản cho Mac", "price_vnd": 2699000, "url": "u6"},
+    ]
+    p = shop._plain
+    clean_query = shop.normalize_product_query("giá macmini")
+    assert clean_query == "mac mini"
+    filtered = [c for c in cards if not shop._is_unwanted_accessory(p(c["name"]), p(clean_query))]
+    kept = shop._relevant_cards(filtered, clean_query)
+    assert [c["name"] for c in kept] == ["Mac Mini 2024 - Chip M4 - 16GB/ 256GB"]
+
+
+def test_egg_sort_prioritizes_shell_eggs_over_egg_organs(monkeypatch):
+    import asyncio
+    cards = [
+        {"name": "Tràng trứng gà (trứng non) THÀNH ĐẠT (Kg)", "price_vnd": 90000, "url": "u1", "rating": 5, "sold": 10},
+        {"name": "Trứng gà tươi Dabaco hộp 10 quả", "price_vnd": 32000, "url": "u2", "rating": 5, "sold": 100},
+    ]
+
+    async def fake_load(item, url):
+        return cards
+
+    monkeypatch.setattr(shop, "_load_cards", fake_load)
+    item = {"source": "WinMart", "url": "x"}
+    _, rows = asyncio.run(shop._fetch_cards(item, "trứng gà", {}, sort=False, per_term=None))
+    assert rows[0]["name"].startswith("Trứng gà tươi Dabaco")
+    assert rows[1]["name"].startswith("Tràng trứng gà")
+
+
+

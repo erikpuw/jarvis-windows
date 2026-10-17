@@ -84,11 +84,38 @@ def parse_fpt(html: str, base_url: str) -> list[dict]:
     return list(cards.values())
 
 
+EMART_BASE = "https://emartmall.com.vn"
+
+
+def emart_search_url(keyword: str) -> str:
+    from urllib.parse import quote_plus
+    return f"{EMART_BASE}/index.php?search={quote_plus(keyword.strip())}&route=product/search&sub_category=true&description=true"
+
+
+def parse_emart(html: str, base_url: str = EMART_BASE) -> list[dict]:
+    """Emart Mall (OpenCart): thẻ .product-meta, tên ở .name a, giá ở .price (.price-new hoặc text)."""
+    cards = []
+    for meta in Selector(html).css(".product-meta"):
+        name = " ".join((meta.css(".name a::text").get() or "").split())
+        href = meta.css(".name a::attr(href)").get() or ""
+        if not name or not href:
+            continue
+        price_new = meta.css(".price .price-new::text").get()
+        price_text = price_new if price_new else meta.css(".price::text").get()
+        price = _vnd(price_text)
+        if price:
+            cards.append(_card(name, price, urljoin(base_url, href)))
+    return cards
+
+
 _LISTING_PARSERS = {
     "dienmayxanh.com": parse_dmx,
     "thegioididong.com": parse_dmx,
     "cellphones.com.vn": parse_cellphones,
     "fptshop.com.vn": parse_fpt,
+    "emartmall.com.vn": parse_emart,
+    "sala.emartmall.com.vn": parse_emart,
+    "phi.emartmall.com.vn": parse_emart,
 }
 
 
@@ -148,3 +175,108 @@ def parse_bhx(data: dict) -> list[dict]:
         card["reviews"] = int(item.get("totalReview") or 0)
         cards.append(card)
     return cards
+
+
+COOP_SEARCH_API = "https://discovery.tekoapis.com/api/v1/search"
+COOP_BASE = "https://cooponline.vn"
+COOP_TERMINAL_ID = 26607
+
+
+def coop_search_body(keyword: str, page: int = 1, size: int = 20) -> dict:
+    return {"terminalId": COOP_TERMINAL_ID, "query": keyword, "page": page, "pageSize": size}
+
+
+def parse_coop(data: dict) -> list[dict]:
+    """JSON của discovery.tekoapis.com cho cooponline.vn. Chuẩn đầu ra tương đồng Bách Hóa Xanh."""
+    products = ((data or {}).get("result") or {}).get("products") or []
+    cards = []
+    for item in products:
+        info = item.get("productInfo") or {}
+        prices = item.get("prices") or []
+        if not prices:
+            continue
+        price_val = prices[0].get("latestPrice") or prices[0].get("terminalPrice") or 0
+        try:
+            price = int(round(float(price_val)))
+        except (ValueError, TypeError):
+            price = 0
+        if not price:
+            continue
+        uom = f" ({info['uomName']})" if info.get("uomName") else ""
+        canonical = info.get("canonical") or info.get("slug") or ""
+        url = urljoin(COOP_BASE + "/", canonical) if canonical else COOP_BASE
+        rating = float(item["averageRating"]) if item.get("averageRating") else None
+        card = _card(f"{info.get('name', '')}{uom}".strip(), price, url, rating=rating, sold=0)
+        cards.append(card)
+    return cards
+
+
+WINMART_SEARCH_API = "https://api-crownx.winmart.vn/ss/api/v2/public/winmart/item-search"
+WINMART_BASE = "https://winmart.vn"
+WINMART_STORE_NO = "1535"
+WINMART_STORE_GROUP = "1998"
+
+
+def winmart_search_body(keyword: str, page: int = 1, size: int = 20) -> dict:
+    return {
+        "keyword": keyword,
+        "storeNo": WINMART_STORE_NO,
+        "storeGroupCode": WINMART_STORE_GROUP,
+        "applicationType": "Winmart",
+        "pageNumber": page,
+        "pageSize": size,
+    }
+
+
+def parse_winmart(data: dict) -> list[dict]:
+    """JSON của api-crownx.winmart.vn cho winmart.vn. Chuẩn đầu ra tương đồng Bách Hóa Xanh."""
+    items = (data or {}).get("data") or []
+    cards = []
+    for item in items:
+        price_obj = item.get("price") or {}
+        price_val = price_obj.get("salePrice") or price_obj.get("originPrice") or 0
+        try:
+            price = int(round(float(price_val)))
+        except (ValueError, TypeError):
+            price = 0
+        if not price:
+            continue
+        uom = f" ({item['uomName']})" if item.get("uomName") else ""
+        name = f"{item.get('description', '')}{uom}".strip()
+        seo = item.get("seoName") or ""
+        url = urljoin(WINMART_BASE + "/", f"products/{seo}") if seo else WINMART_BASE
+        card = _card(name, price, url, rating=None, sold=0)
+        cards.append(card)
+    return cards
+
+
+LOTTE_SEARCH_API = "https://www.lottemart.vn/v1/p/mart/es/{store_code}/products/search"
+LOTTE_BASE = "https://www.lottemart.vn"
+
+
+def lotte_search_body(keyword: str, page: int = 1, size: int = 20) -> dict:
+    return {"where": {"query": keyword}, "pageSize": size, "pageNumber": page}
+
+
+def parse_lotte(data: dict, store: str = "vi-nsg") -> list[dict]:
+    """JSON của search API Elasticsearch trên lottemart.vn ({store_code}/products/search)."""
+    items = ((data or {}).get("data") or {}).get("items") or []
+    cards = []
+    for item in items:
+        name = item.get("name") or ""
+        vnd = (item.get("price") or {}).get("VND") or {}
+        price_val = vnd.get("special_price") or vnd.get("price") or vnd.get("default") or 0
+        try:
+            price = int(round(float(price_val)))
+        except (ValueError, TypeError):
+            price = 0
+        if not name or not price:
+            continue
+        url_key = item.get("url_key") or ""
+        url = urljoin(LOTTE_BASE + "/", f"{store}/product/{url_key}") if url_key else f"{LOTTE_BASE}/{store}/category"
+        rating = float(item["rating_summary"]) if item.get("rating_summary") else None
+        card = _card(name.strip(), price, url, rating=rating, sold=0)
+        cards.append(card)
+    return cards
+
+

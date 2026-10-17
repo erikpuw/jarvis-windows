@@ -10,7 +10,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from engine.tools import windows_control as wc
+from engine.tools import desktop_control as dc
+from engine.tools.desktop_control.cua_runner import _CUA_MAX_ROWS
 
 
 class FakeCua:
@@ -52,7 +53,7 @@ def _run(actions, cua=None, confirm_answers=(True,), max_steps=None):
         asked.append(message)
         return next(answers, True)
 
-    out = asyncio.run(wc.run_cua_task(
+    out = asyncio.run(dc.run_cua_task(
         "mở notepad", None, None,
         session_factory=lambda: cua, ask_llm=_say(*actions), confirm=confirm, max_steps=max_steps,
     ))
@@ -91,7 +92,7 @@ def test_list_windows_observation_hides_the_cua_overlay_window():
         seen.append(messages[-1]["content"])
         return json.dumps({"finish": "xong"}) if len(seen) > 1 else json.dumps({"tool": "list_windows", "args": {}})
 
-    asyncio.run(wc.run_cua_task("x", None, None, session_factory=lambda: FakeCua({"list_windows": WINDOWS}),
+    asyncio.run(dc.run_cua_task("x", None, None, session_factory=lambda: FakeCua({"list_windows": WINDOWS}),
                                 ask_llm=ask, confirm=None))
     assert "Untitled - Notepad" in seen[1] and "window_id=20" in seen[1] and "AgentCursorOverlay" not in seen[1]
 
@@ -160,10 +161,10 @@ def test_state_observation_is_capped_and_reports_the_total(monkeypatch):
         return json.dumps({"tool": "get_window_state", "args": {"pid": 1, "window_id": 2}}) if len(seen) == 1 \
             else json.dumps({"finish": "xong"})
 
-    asyncio.run(wc.run_cua_task("x", None, None, ask_llm=ask, confirm=None, session_factory=lambda: FakeCua(
+    asyncio.run(dc.run_cua_task("x", None, None, ask_llm=ask, confirm=None, session_factory=lambda: FakeCua(
         {"get_window_state": {"is_error": False, "text": "", "data": {"elements": els, "total_element_count": 300}}})))
     obs = seen[1]
-    assert obs.count("[") <= wc._CUA_MAX_ROWS + 5 and "300" in obs and "b0" in obs and "b299" not in obs
+    assert obs.count("[") <= _CUA_MAX_ROWS + 5 and "300" in obs and "b0" in obs and "b299" not in obs
 
 
 def test_only_the_latest_window_snapshot_stays_in_the_conversation():
@@ -177,7 +178,7 @@ def test_only_the_latest_window_snapshot_stays_in_the_conversation():
         seen.append(messages)
         return json.dumps(next(script))
 
-    asyncio.run(wc.run_cua_task("x", None, None, ask_llm=ask, confirm=None,
+    asyncio.run(dc.run_cua_task("x", None, None, ask_llm=ask, confirm=None,
                                 session_factory=lambda: FakeCua({"get_window_state": els})))
     final = " ".join(m["content"] for m in seen[-1] if m["role"] == "user")
     assert final.count('"Save"') == 1
@@ -241,7 +242,7 @@ def test_the_refusal_is_reported_back_to_the_model(monkeypatch):
         seen.append(messages[-1]["content"])
         return json.dumps(next(script))
 
-    asyncio.run(wc.run_cua_task("x", None, None, ask_llm=ask, confirm=None,
+    asyncio.run(dc.run_cua_task("x", None, None, ask_llm=ask, confirm=None,
                                 session_factory=lambda: FakeCua({"get_window_state": PREVIEW_PAGE})))
     assert "preview" in seen[2].lower()
 
@@ -256,7 +257,7 @@ def test_driver_error_is_fed_back_to_the_model_instead_of_crashing(monkeypatch):
         seen.append(messages[-1]["content"])
         return json.dumps(next(script))
 
-    out = asyncio.run(wc.run_cua_task("x", None, None, ask_llm=ask, confirm=None,
+    out = asyncio.run(dc.run_cua_task("x", None, None, ask_llm=ask, confirm=None,
                                       session_factory=lambda: FakeCua({"click": bad, "get_window_state": STATE})))
     assert "stale" in seen[2] and out.startswith("Lỗi")
 
@@ -291,37 +292,20 @@ def test_missing_driver_returns_a_clear_error():
         async def __aexit__(self, *exc):
             return False
 
-    out = asyncio.run(wc.run_cua_task("x", None, None, session_factory=Missing, ask_llm=_say(), confirm=None))
+    out = asyncio.run(dc.run_cua_task("x", None, None, session_factory=Missing, ask_llm=_say(), confirm=None))
     assert out.startswith("Lỗi") and "CUA_DRIVER_PATH" in out
 
 
 def test_empty_task_is_an_error():
-    assert asyncio.run(wc.run_cua_task("  ", None, None, session_factory=FakeCua, ask_llm=_say())).startswith("Lỗi")
-
-
-def test_dispatcher_sends_window_state_requests_to_the_fast_path_and_the_rest_to_cua(monkeypatch):
-    seen = {}
-
-    async def fake_state(text, ws, send, **kw):
-        seen["state"] = text
-        return "state-ran"
-
-    async def fake_cua(task, ws, send, **kw):
-        seen["cua"] = task
-        return "cua-ran"
-
-    monkeypatch.setattr(wc, "run_window_state_workflow", fake_state)
-    monkeypatch.setattr(wc, "run_cua_task", fake_cua)
-    assert asyncio.run(wc.run_win_control_workflow("@control phóng to notepad", None, None)) == "state-ran"
-    assert asyncio.run(wc.run_win_control_workflow('@control mở notepad gõ "hi"', None, None)) == "cua-ran"
-    assert seen["cua"] == 'mở notepad gõ "hi"'
+    assert asyncio.run(dc.run_cua_task("  ", None, None, session_factory=FakeCua, ask_llm=_say())).startswith("Lỗi")
 
 
 def test_legacy_hardcoded_workflows_and_uitars_are_gone():
     for name in ("run_notepad_text_workflow", "run_edge_omnibox_workflow", "run_windows_update_workflow",
-                 "execute_windows_control", "win_control_backend"):
-        assert not hasattr(wc, name), name
-    assert not (Path(__file__).parent.parent / "engine" / "tools" / "uitars_agent.py").exists()
+                 "execute_windows_control", "win_control_backend", "run_win_control_workflow"):
+        assert not hasattr(dc, name), name
+    tools = Path(__file__).parent.parent / "engine" / "tools"
+    assert not (tools / "uitars_agent.py").exists() and not (tools / "windows_control.py").exists()
 
 
 def test_element_index_without_a_snapshot_is_refused_so_the_model_cannot_guess(monkeypatch):
@@ -419,7 +403,7 @@ def _run_shell(actions, shell, cua=None, confirm_answers=(True,)):
         asked.append(message)
         return next(answers, True)
 
-    out = asyncio.run(wc.run_cua_task("x", None, None, session_factory=lambda: cua, shell=shell,
+    out = asyncio.run(dc.run_cua_task("x", None, None, session_factory=lambda: cua, shell=shell,
                                       ask_llm=_say(*actions), confirm=confirm))
     return out, cua, shell, asked
 
@@ -444,7 +428,7 @@ def test_shell_state_lists_the_taskbar_rows_for_the_model():
         seen.append(messages[-1]["content"])
         return json.dumps(next(script))
 
-    asyncio.run(wc.run_cua_task("x", None, None, ask_llm=ask, confirm=None, session_factory=FakeCua,
+    asyncio.run(dc.run_cua_task("x", None, None, ask_llm=ask, confirm=None, session_factory=FakeCua,
                                 shell=FakeShell({"shell_state": SHELL_STATE})))
     assert "Microsoft Edge - 1 running window" in seen[1] and "[1] Button" in seen[1]
 
@@ -508,7 +492,7 @@ class FakeSurface:
 
 
 def _shell(els):
-    return wc.ShellUia(surfaces=lambda: [FakeSurface(els)])
+    return dc.ShellUia(surfaces=lambda: [FakeSurface(els)])
 
 
 def test_shell_state_keeps_actionable_rows_and_filters_by_query():
@@ -567,7 +551,7 @@ def test_a_refused_element_click_points_the_model_to_shell_click():
         seen.append(messages[-1]["content"])
         return json.dumps(next(script))
 
-    asyncio.run(wc.run_cua_task("x", None, None, ask_llm=ask, confirm=None, session_factory=FakeCua, shell=FakeShell()))
+    asyncio.run(dc.run_cua_task("x", None, None, ask_llm=ask, confirm=None, session_factory=FakeCua, shell=FakeShell()))
     assert "shell_click" in seen[1]
 
 
@@ -586,7 +570,7 @@ def test_uri_launch_with_pid_0_lists_real_windows_for_the_model(monkeypatch):
             return json.dumps({"tool": "launch_app", "args": {"name": "ms-settings:windowsupdate"}})
         return json.dumps({"finish": "xong"})
 
-    asyncio.run(wc.run_cua_task("cập nhật windows", None, None,
+    asyncio.run(dc.run_cua_task("cập nhật windows", None, None,
                                 session_factory=lambda: FakeCua({"launch_app": launched, "list_windows": settings}),
                                 ask_llm=ask, confirm=None))
     assert "pid=77 window_id=88" in seen[1] and "Settings" in seen[1]
@@ -602,7 +586,7 @@ def test_window_id_is_filled_from_listed_windows(monkeypatch, pid):
         {"pid": 77, "window_id": 88, "app_name": "SystemSettings.exe", "title": "Settings", "is_on_screen": True}]}}
     launched = {"is_error": False, "text": "✅ Launched ms-settings:windowsupdate (pid 0) in background.", "data": {}}
     cua = FakeCua({"launch_app": launched, "list_windows": settings, "get_window_state": STATE})
-    out = asyncio.run(wc.run_cua_task("cập nhật windows", None, None, session_factory=lambda: cua, confirm=None,
+    out = asyncio.run(dc.run_cua_task("cập nhật windows", None, None, session_factory=lambda: cua, confirm=None,
                                       ask_llm=_say({"tool": "launch_app", "args": {"name": "ms-settings:windowsupdate"}},
                                                    {"tool": "get_window_state", "args": {"pid": pid}},
                                                    {"finish": "xong"})))
@@ -641,7 +625,7 @@ def _record_run(actions, results, monkeypatch, mode="off"):
     monkeypatch.setattr("engine.tools.desktop_control.cua_runner._URI_WINDOW_WAIT", 0)
     cua = FakeCua(results)
     record = []
-    out = asyncio.run(wc.run_cua_task("cập nhật windows", None, None, session_factory=lambda: cua,
+    out = asyncio.run(dc.run_cua_task("cập nhật windows", None, None, session_factory=lambda: cua,
                                       ask_llm=_say(*actions), confirm=None, record=record))
     return out, cua, record
 
@@ -696,7 +680,7 @@ def _replay_run(results, monkeypatch, actions=(), answers=(True, True, True), mo
     async def ask(messages):
         seen.append(messages[1]["content"])
         return json.dumps(actions[len(seen) - 1]) if len(seen) <= len(actions) else json.dumps({"finish": "model xong"})
-    out = asyncio.run(wc.run_cua_task("cập nhật windows", None, None, session_factory=lambda: cua, ask_llm=ask,
+    out = asyncio.run(dc.run_cua_task("cập nhật windows", None, None, session_factory=lambda: cua, ask_llm=ask,
                                       confirm=confirm, record=record, replay=REPLAY))
     return out, cua, asked, record, seen
 
@@ -747,7 +731,7 @@ def test_replay_risky_label_asks_even_when_confirm_off(monkeypatch):
     async def confirm(msg):
         asked.append(msg)
         return False
-    out = asyncio.run(wc.run_cua_task("gỡ", None, None, session_factory=lambda: FakeCua(
+    out = asyncio.run(dc.run_cua_task("gỡ", None, None, session_factory=lambda: FakeCua(
         {"list_windows": SETTINGS_WIN, "get_window_state": state}), ask_llm=_say({"finish": "x"}),
         confirm=confirm, replay=risky))
     assert len(asked) == 1 and out.startswith("Lỗi: đã dừng ở bước 1")
@@ -764,7 +748,7 @@ def test_replay_keeps_preview_install_block(monkeypatch):
     cua = FakeCua({"list_windows": SETTINGS_WIN, "get_window_state": state})
     step = [{"action": "click", "window": {"app": "SystemSettings.exe", "title": "Settings"},
              "target": {"role": "Hyperlink", "label": "Download & install"}}]
-    out = asyncio.run(wc.run_cua_task("cập nhật", None, None, session_factory=lambda: cua,
+    out = asyncio.run(dc.run_cua_task("cập nhật", None, None, session_factory=lambda: cua,
                                       ask_llm=_say({"finish": "x"}), confirm=None, replay=step))
     assert "Preview" in out and not any(c[0] == "click" for c in cua.calls)
 

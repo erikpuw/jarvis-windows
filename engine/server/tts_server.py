@@ -15,7 +15,7 @@ _DEFAULT_VOICE = "vi-VN-NamMinhNeural"
 # and gets connections reset; this makes later callers queue behind the one
 # in flight instead of racing it.
 # ponytail: process-local only, doesn't span the separate port-8082 process —
-# raise to a shared cross-process lock (e.g. via the Redis already running)
+# raise to a shared cross-process lock (e.g. a lock file)
 # if resets still show up with both processes hitting edge-tts at once.
 _edge_tts_semaphore = asyncio.Semaphore(1)
 

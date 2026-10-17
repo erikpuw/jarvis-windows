@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import sqlite3
 import time
 import logging
@@ -517,9 +518,12 @@ class LearningEngine:
     def _embed_text(content: str) -> Optional[list]:
         """Nhúng văn bản qua embedder sẵn có; trả None nếu embedder chưa sẵn sàng."""
         try:
-            from engine.core.memory import SemanticMemoryEngine
-            vec = SemanticMemoryEngine.get_instance()._get_embedding(content)
-            return vec.tolist() if vec is not None else None
+            from engine.server.llm_server import get_embed_client
+            client = get_embed_client()
+            if client is None:
+                return None
+            resp = client.embeddings.create(input=[content[:6000]], model=os.getenv("LOCAL_EMBED_MODEL"))
+            return list(resp.data[0].embedding)
         except Exception as exc:
             log.info("Embedding unavailable for semantic dedup: %s", exc)
             return None
@@ -1119,9 +1123,96 @@ class LearningEngine:
     # Truy vấn hội thoại từ jarvis.db (messages table — dùng chung memory)
     # ------------------------------------------------------------------
 
+    def get_recent_interactions(self, limit: int = 20) -> list[dict]:
+        """Lấy N cặp user+assistant gần nhất từ jarvis.db messages table."""
+        conn = self._get_memory_db()
+        rows = conn.execute(
+            "SELECT id, role, content, created_at FROM messages ORDER BY id DESC LIMIT ?",
+            (limit * 2,)
+        ).fetchall()
+        conn.close()
+
+        pairs = []
+        user_msg = None
+        for r in reversed(rows):
+            d = dict(r)
+            if d["role"] == "user":
+                user_msg = d
+            elif d["role"] == "assistant" and user_msg is not None:
+                pairs.append({
+                    "user_input": user_msg["content"],
+                    "assistant_response": d["content"],
+                    "created_at": d["created_at"],
+                })
+                user_msg = None
+        return pairs[-limit:]
+
+    def get_interactions_in_range(self, since: float, until: float) -> list[dict]:
+        """Lấy cặp user+assistant trong khoảng thời gian."""
+        conn = self._get_memory_db()
+        rows = conn.execute(
+            "SELECT id, role, content, created_at FROM messages "
+            "WHERE created_at >= ? AND created_at <= ? ORDER BY id ASC",
+            (since, until)
+        ).fetchall()
+        conn.close()
+
+        pairs = []
+        user_msg = None
+        for r in rows:
+            d = dict(r)
+            if d["role"] == "user":
+                user_msg = d
+            elif d["role"] == "assistant" and user_msg is not None:
+                pairs.append({
+                    "user_input": user_msg["content"],
+                    "assistant_response": d["content"],
+                    "created_at": d["created_at"],
+                })
+                user_msg = None
+        return pairs
+
     # ------------------------------------------------------------------
     # Truy xuất learnings
     # ------------------------------------------------------------------
+
+    def recall_learnings(self, query: str, limit: int = 5, agent: str = "") -> list[dict]:
+        if not query or len(query.strip()) < 3:
+            return []
+
+        keywords = [w.lower() for w in query.split() if len(w) > 2]
+        if not keywords:
+            return self.get_recent_learnings(limit)
+
+        conn = self._get_learning_db()
+        if agent:
+            rows = conn.execute(
+                "SELECT * FROM learnings WHERE source IN (?, 'session_reflection') ORDER BY importance DESC LIMIT 80",
+                (f"agent_outcome:{agent}",),
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM learnings ORDER BY importance DESC LIMIT 80").fetchall()
+        conn.close()
+
+        scored: list[dict] = []
+        for row in rows:
+            d = dict(row)
+            haystack = d["content"].lower()
+            hits = sum(1 for kw in keywords if kw in haystack)
+            if hits:
+                d["score"] = (hits / len(keywords)) * 0.7 + (d["importance"] / 10) * 0.3
+                scored.append(d)
+
+        scored.sort(key=lambda x: x["score"], reverse=True)
+        return scored[:limit]
+
+    def get_recent_learnings(self, limit: int = 5) -> list[dict]:
+        conn = self._get_learning_db()
+        rows = conn.execute(
+            "SELECT * FROM learnings ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
 
     @staticmethod
     def _bounded_page(limit: int, offset: int) -> tuple[int, int]:
@@ -1555,6 +1646,7 @@ class LearningEngine:
 
         # Xử lý embedding riêng biệt nếu có (chỉ cho learning)
         embedding_value = values.get("embedding")
+        embedding_model_value = values.get("embedding_model")
 
         # Nếu có embedding parameter, xử lý nó
         if kind == "learning" and "embedding" in values:

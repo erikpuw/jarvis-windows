@@ -31,20 +31,6 @@ def test_init_db_no_longer_creates_registry(db):
     assert "memory_registry" not in _tables(db)
 
 
-def test_delete_memory_works_without_registry_table(db):
-    mem_id = memory.save_memory("Người dùng thích cà phê sữa", "preference", "test", 5)
-    assert memory.delete_memory(mem_id) is True
-
-
-def test_delete_memory_works_with_leftover_registry_table(db):
-    """DB cũ của ngài còn bảng (chưa chạy script xoá): code mới không được vấp vào nó."""
-    c = sqlite3.connect(db)
-    c.execute("CREATE TABLE memory_registry (id INTEGER PRIMARY KEY, semantic_key TEXT, mem_type TEXT, memory_id INTEGER, wiki_scope TEXT, updated_at REAL)")
-    c.commit(); c.close()
-    mem_id = memory.save_memory("x", "fact", "test", 5)
-    assert memory.delete_memory(mem_id) is True
-
-
 def test_registry_kind_is_gone_from_memory_control(db):
     assert not hasattr(memory, "list_registry_records")
     assert not hasattr(memory, "list_memory_records")

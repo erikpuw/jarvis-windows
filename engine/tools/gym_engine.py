@@ -3,10 +3,9 @@
 import json
 import logging
 import re
-import shutil
 import sqlite3
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 GYM_DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "gym"
@@ -19,6 +18,11 @@ _NUTRITION_GOALS = {"eat_food", "maintain", "fat_loss", "gain_muscle"}
 def get_local_now() -> datetime:
     """Thời gian hiện tại theo múi giờ địa phương kèm offset (tránh lệch giờ UTC)."""
     return datetime.now().astimezone()
+
+
+def get_local_today_str() -> str:
+    """Ngày hiện tại theo múi giờ địa phương (YYYY-MM-DD)."""
+    return get_local_now().date().isoformat()
 
 
 def parse_natural_date(text: str) -> str:
@@ -682,9 +686,9 @@ def delete_gym_memory_item(full_id: str) -> bool:
     if full_id.startswith("profile_"):
         pid = full_id[len("profile_"):]
         try:
-            profile_dir = _profile_dir(pid)
+            profile_dir = _safe_profile_path(pid)
             if profile_dir.is_dir():
-                profile_meta = profile_dir / "profile.json"
+                profile_meta = _profile_metadata_file(pid)
                 pname = ""
                 if profile_meta.is_file():
                     try:

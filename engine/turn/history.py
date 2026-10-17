@@ -30,6 +30,14 @@ def result_message(tool: str, text: str, outcome: str, displayed: bool, answer: 
     return {"role": "user", "content": content}
 
 
+def answer_result(label: str, text: str, outcome: str, displayed: bool, answer: str, limit: int) -> dict:
+    """Kết quả cho vòng trả lời: dữ liệu trong thẻ XML, cách dùng nằm ở prompt (2026-10-17, hướng dẫn Anthropic;
+    tiêu đề "[kết quả …]" bị chép nguyên dòng). Vòng chọn tool giữ result_message (đo 66/66 với định dạng đó)."""
+    attrs = f'cong_cu="{label}" trang_thai="{outcome}"' + (' da_hien="có"' if displayed else "")
+    note = f"\n<luu_y>{answer}</luu_y>" if answer else ""
+    return {"role": "user", "content": f"<ket_qua {attrs}>\n{(text or '')[:limit]}{note}\n</ket_qua>"}
+
+
 def for_model(conversation_history: list[dict], plain: bool = False) -> list[dict]:
     """plain = vòng trả lời bằng chữ thường: trợ lý là câu trả lời cuối, không JSON, không bước tool."""
     items = [m for m in (conversation_history or []) if m.get("role") in ("user", "assistant")]
@@ -51,8 +59,8 @@ def for_model(conversation_history: list[dict], plain: bool = False) -> list[dic
             text = m.get("final_say") if steps and m.get("final_say") else m.get("content")
             out.append({"role": "assistant", "content": str(text or "")[:limit]})
             if limit == LAST and steps:  # kết quả tool lượt gần nhất đi kèm câu hỏi của lượt đó: vẫn xen kẽ vai
-                carry = "\n".join(result_message(registry.label(s["tool"]), s.get("result", ""), s.get("outcome", ""), False, "",
-                                                 LAST)["content"] for s in steps)
+                carry = "\n".join(answer_result(registry.label(s["tool"]), s.get("result", ""), s.get("outcome", ""), False, "",
+                                                LAST)["content"] for s in steps)
             continue
         block = []
         for s in steps:

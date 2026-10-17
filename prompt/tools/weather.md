@@ -1,6 +1,6 @@
-Lấy thời tiết hiện tại và dự báo vài ngày tới của một nơi: nhiệt độ, mưa, độ ẩm, gió. Dùng khi ngài hỏi trời, mưa nắng, nhiệt độ ở đâu đó. Không dùng cho tin thiên tai, bão (dùng search_news).
+Lấy thời tiết của một tỉnh/thành phố từ nguồn tra cứu ngay lúc hỏi. Mặc định trả thời tiết lúc này: trạng thái trời và nhiệt độ, thường kèm độ ẩm, gió và khả năng mưa của giờ hiện tại; có lúc nguồn chỉ có trạng thái trời và nhiệt độ. Khi câu hỏi nhắc tới mấy giờ mưa, khả năng mưa hay lịch mưa theo giờ, kết quả là khả năng mưa (%) từng giờ trong 24 giờ tới. Khi câu hỏi nhắc tới ngày mai, kết quả là dự báo ngày mai (trạng thái trời, nhiệt độ thấp nhất–cao nhất, khả năng mưa ban ngày và ban đêm), chỉ có cho tỉnh thành Việt Nam. Dùng khi ngài hỏi trời, mưa nắng, nhiệt độ ở một nơi. Không dùng cho tin bão, thiên tai, cảnh báo thời tiết (dùng search_news). Công cụ không có dự báo từ ngày kia trở đi.
 
 location: tên tỉnh/thành phố, giữ nguyên như người dùng nói
 
 ## answer
-Nêu nhiệt độ, độ ẩm, gió, trạng thái trời và một lời khuyên thiết thực (mang ô, mặc ấm…). Lịch mưa theo giờ: nêu các khung giờ khả năng mưa từ 50% trở lên và giờ cao nhất, giữ đúng số phần trăm.
+Kể lại đúng những gì kết quả có, bằng vài câu nói tự nhiên, không dùng danh sách mục. Chỉ nhắc tới thông tin có trong kết quả; thông tin nào kết quả không có thì bỏ qua, không nhắc tới. Kết quả là thời tiết lúc này hay dự báo ngày mai thì nói đúng thời điểm đó. Ngài hỏi điều kết quả không có (giờ mưa, ngày mai, các ngày tới): nói rõ là chưa có, rồi báo những gì đang có. Kết quả có dòng theo giờ: nêu giờ có khả năng mưa cao nhất và các giờ gần đó, đúng phần trăm trong kết quả. Có thể kết bằng một lời khuyên ngắn hợp với trạng thái trời.

@@ -12,11 +12,12 @@ def test_weather_uses_location(monkeypatch):
     _quiet(monkeypatch)
     got = {}
 
-    async def fake(location, hourly=False):
-        got["loc"] = location; return "28°C"
+    async def fake(location, hourly=False, question=""):
+        got["loc"], got["q"] = location, question; return "28°C"
     monkeypatch.setattr("engine.tools.weather_engine.weather_search", fake)
-    assert asyncio.run(R.run("weather", {"location": "hà nội"})).text == "28°C"
-    assert got["loc"] == "hà nội"
+    ctx = R.ToolContext(user_text="ngày mai hà nội thế nào")
+    assert asyncio.run(R.run("weather", {"location": "hà nội"}, ctx)).text == "28°C"
+    assert got == {"loc": "hà nội", "q": "ngày mai hà nội thế nào"}
 
 
 def test_news_returns_display(monkeypatch):

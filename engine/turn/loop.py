@@ -36,7 +36,7 @@ _REPEAT = re.compile(r"(\S+(?:\s+\S+){0,5}?)(?:\s+\1){6,}\s*$")
 _REPEAT_TAIL = 800
 # Lượt không chạy tool mà model chép khuôn kết quả trong lịch sử (history.result_message) → số liệu bịa
 # (log 2026-10-14 01:19: "[kết quả system_status] CPU: 15%…"). Bỏ từ đó tới hết câu trả lời, báo chưa làm.
-_FAKE_RESULT = re.compile(r"\[kết quả \w+")
+_FAKE_RESULT = re.compile(r"\[kết quả \w+|</?ket_qua\b")  # 2026-10-17: vòng trả lời thấy kết quả trong <ket_qua>
 # Ngài 2026-10-13: "tôi đang xem…" (ngài kể việc mình làm) bị gọi read_screen/system_status; sửa prompt, nạp bài học
 # đều không chặn được (spike tuning 0/2) → code: tool này chỉ chạy khi câu nói tới đúng đối tượng của nó.
 # ponytail: theo từ khoá; câu nhờ thật mà không có các từ này ("máy chậm quá, kiểm tra giúp") cũng bị chặn → dùng @tool.
@@ -52,9 +52,16 @@ _RAG_SAVE = "rag_save"
 ANSWERING = {"type": "status", "state": "thinking", "message": "Đang trả lời…"}
 
 
+# honesty_probe 2026-10-17: tìm khách sạn/quán → search_products dù mô tả đã ghi "không dùng"; chưa có công cụ
+# tìm địa điểm/dịch vụ nên chặn hẳn, lượt thành trò chuyện (vòng trả lời nói chưa có công cụ)
+_PLACE = re.compile(r"\b(quán|nhà hàng|khách sạn|homestay|resort|nhà nghỉ|đặt (bàn|phòng|chỗ|vé)|vé máy bay|gọi xe)\b",
+                    re.I)
+_NOT_FOR = {"search_products": _PLACE, "lookup_knowledge": _PLACE}
+
+
 def _off_target(tool: str, text: str) -> bool:
-    rx = _NEEDS_WORD.get(tool)
-    return bool(rx) and not rx.search(text or "")
+    rx, never = _NEEDS_WORD.get(tool), _NOT_FOR.get(tool)
+    return bool(rx and not rx.search(text or "")) or bool(never and never.search(text or ""))
 # Phần nghĩ (reasoning_content) không lên UI và không bị cắt (cắt cũ gây "lỗi kết nối", log 15:46); THINK_BUDGET
 # giới hạn nó. Nghĩ xong mà không có JSON → say rỗng → _SILENT.
 
@@ -185,6 +192,23 @@ async def _stream_round(ctx, out: _Output, messages, sch, hide=None) -> dict | N
     return parse_turn(raw)
 
 
+_ITEM_HEAD = re.compile(r"(?:[*-]|\d+\.)\s+\**([^:*\n]{2,60})")
+_PLACE_KIND = re.compile(r"(quán( cà phê| cafe| ăn| nhậu)?|cà phê|cafe|nhà hàng|khách sạn|homestay|resort|tiệm)\s+", re.I)
+
+
+def _names_a_place(sentence: str, labels: set[str] = frozenset()) -> bool:
+    """Dòng gạch đầu dòng mở bằng tên riêng: "* **The Note Coffee:** …" (≥ 2 chữ, mọi chữ viết hoa) hoặc loại quán +
+    tên viết hoa "* **Cà phê Góc Phố:** …"; "Quán cà phê ở hẻm nhỏ" là loại quán chung, giữ.
+    ponytail: tên riêng nằm giữa câu thường ("ghé quán X nhé") vẫn lọt; thêm luật khi probe bắt được."""
+    m = _ITEM_HEAD.match(sentence.strip())
+    head = m.group(1).split("(")[0].strip() if m else ""  # "The Coffee House (Chi nhánh Quận 6)": phần ngoặc không tính
+    if head.casefold() in labels:  # tên khả năng của JARVIS ("Phát Youtube"), không phải tên quán
+        return False
+    kind = _PLACE_KIND.match(head)
+    words = [w for w in head[kind.end():].split() if w[0].isalpha()] if kind else [w for w in head.split() if w[0].isalpha()]
+    return len(words) >= (1 if kind else 2) and all(w[0].isupper() for w in words)
+
+
 def _breaks_promise(sentence: str, ran_tool: bool) -> bool:
     s = sentence.strip()
     if s.endswith("?"):
@@ -196,15 +220,26 @@ def _breaks_promise(sentence: str, ran_tool: bool) -> bool:
 async def _stream_answer(ctx, out: _Output, text, answer_msgs, names, ran_tool=False) -> str | None:
     """Vòng trả lời bằng chữ thường, từng câu qua _breaks_promise rồi mới hiện + đọc; None = bị huỷ."""
     from engine.turn import prompt
-    messages = [{"role": "system", "content": prompt.system_prompt(names, answer=True)},
+    messages = [{"role": "system", "content": prompt.system_prompt(names, answer=True, ran_tool=ran_tool)},
                 *history.for_model(ctx.conversation_history, plain=True),
                 _user_message(text, ctx.attachment_context), *answer_msgs]
     stream = await _call(messages, None, stream=True)
     raw, pending, dropped, fake = "", "", False, False
+    # honesty_probe 2026-10-17: hỏi quán/khách sạn mà không có tool → model kể tên theo trí nhớ: bỏ dòng tên riêng
+    # (cả phần còn lại của dòng) và câu dẫn ":" đứng ngay trước
+    place_ask, skip_line, held = not ran_tool and bool(_PLACE.search(text or "")), False, ""
+    labels = {registry.label(n).casefold() for n in names} if place_ask else set()
     await out.gap()
 
+    async def show(sentence: str):
+        nonlocal raw
+        if not raw:  # câu đầu ra: model đang viết câu trả lời (ngài chốt 2026-10-15; log iPhone 02:15 viết 8,4 giây)
+            await ctx.send_json(ctx.ws, ANSWERING)
+        raw += sentence
+        await out.say(sentence)
+
     async def emit(sentence: str):
-        nonlocal raw, dropped, fake
+        nonlocal dropped, fake, skip_line, held
         sentence = registry.humanize(sentence)  # tên hàm còn sót (chép từ lịch sử cũ) → tên gọi, trước khi hiện + đọc
         if _FAKE_RESULT.search(sentence):
             if ran_tool:  # chép dòng tiêu đề [kết quả …] của tool vừa chạy (log 2026-10-15 17:29): chỉ bỏ dòng đó
@@ -217,10 +252,19 @@ async def _stream_answer(ctx, out: _Output, text, answer_msgs, names, ran_tool=F
             log.info("[TURN] bỏ câu hứa: %r", sentence.strip()[:120])
             dropped = True
             return
-        if not raw:  # câu đầu ra: model đang viết câu trả lời (ngài chốt 2026-10-15; log iPhone 02:15 viết 8,4 giây)
-            await ctx.send_json(ctx.ws, ANSWERING)
-        raw += sentence
-        await out.say(sentence)
+        if place_ask:
+            if skip_line or _names_a_place(sentence, labels):
+                if not skip_line:
+                    log.info("[TURN] bỏ tên địa điểm không có kết quả tool: %r", sentence.strip()[:80])
+                skip_line, held, dropped = not sentence.endswith("\n"), "", True
+                return
+            if held:
+                await show(held)
+                held = ""
+            if sentence.rstrip().endswith(":"):
+                held = sentence
+                return
+        await show(sentence)
     async for chunk in stream:
         if _cancelled(ctx):
             return None
@@ -243,6 +287,8 @@ async def _stream_answer(ctx, out: _Output, text, answer_msgs, names, ran_tool=F
             break
     if pending and not fake:
         await emit(pending)
+    if held:
+        await show(held)
     if dropped:
         note = (" " if raw.strip() else "") + _NO_PROMISE
         raw += note
@@ -289,8 +335,8 @@ async def _run_tool(ctx, out, tool_ctx, tool: str, args: dict, say: str, cua_rep
     if tool_ctx.trace and None not in tool_ctx.trace:
         step_rec["cua_steps"] = tool_ctx.trace
     result = history.result_message(tool, res.text, res.outcome, displayed, registry.answer_rules(tool), RESULT_CHARS)
-    answer = history.result_message(registry.label(tool), res.text, res.outcome, displayed, registry.answer_rules(tool),
-                                    RESULT_CHARS)
+    answer = history.answer_result(registry.label(tool), res.text, res.outcome, displayed, registry.answer_rules(tool),
+                                   RESULT_CHARS)
     return step_rec, result, answer
 
 
@@ -325,8 +371,8 @@ async def run_loop(text: str, ctx, only: str | None = None, replay: dict | None 
             args, err = registry.validate(st["tool"], st.get("args") or {}, set(names))
             if err:
                 steps.append(history.step_record(say, st["tool"], st.get("args") or {}, f"Lỗi: {err}", "failed"))
-                answer_msgs.append(history.result_message(registry.label(st["tool"]), f"Lỗi: {err}", "failed", False, "",
-                                                          RESULT_CHARS))
+                answer_msgs.append(history.answer_result(registry.label(st["tool"]), f"Lỗi: {err}", "failed", False, "",
+                                                         RESULT_CHARS))
                 break
             ran_step = await _run_tool(ctx, out, tool_ctx, st["tool"], args, say, st.get("cua_steps"))
             if ran_step is None:

@@ -45,9 +45,11 @@ def _help_text() -> str:
 EMPTY = 'Kho tài liệu đang trống. Thả file vào thư mục data/wiki/Documents hoặc đính kèm tệp và nói "@rag lưu" để thêm.'
 NO_MATCH = "Không tìm thấy nội dung phù hợp trong kho tài liệu."
 NO_EMBED = "Embedding service chưa sẵn sàng để tìm trong kho tài liệu."
-# ponytail: ngưỡng hybrid_score cố định; chunk không liên quan đứng ~0.16 (chỉ có điểm vị trí/độ dài).
-# Chỉnh qua RAG_MIN_SCORE khi đổi model embedding hoặc công thức rerank.
-MIN_SCORE = float(os.getenv("RAG_MIN_SCORE", "0.2"))
+# ponytail: ngưỡng cosine cố định của đoạn tốt nhất, đo 2026-10-17 (EmbeddingGemma): câu có trong kho ≥ 0.759,
+# câu lạc đề ≤ 0.732 — khe hẹp; đổi model embedding thì đo lại bằng tests/live/probes/rag_probe.py, chỉnh RAG_MIN_SCORE.
+MIN_SCORE = float(os.getenv("RAG_MIN_SCORE", "0.74"))
+# Chỉ giữ đoạn cách đoạn tốt nhất ≤ 0.05 (đo: rác trong prompt/nguồn 37 → 19, top3 vẫn 16/16)
+REL_CUT = 0.05
 
 _DELETE_WORDS = {"xóa", "xoá"}
 
@@ -109,13 +111,25 @@ async def _engine():
     return rag
 
 
+async def retrieve_for_answer(rag, query: str) -> list[dict]:
+    """Các đoạn đưa vào prompt trả lời và dòng "Nguồn" (tests/live/probes/rag_probe.py đo đúng hàm này).
+    Đoạn chứa nguyên văn câu hỏi thì chỉ giữ các đoạn đó, kể cả dưới ngưỡng: từ khoá ngắn ("TDEE", "khachquy2026")
+    có cosine thấp (~0.67-0.78) và kéo theo đoạn sát điểm nhưng không liên quan."""
+    chunks = await rag.retrieve(query=query, top_k=5, max_tokens=4000, rel_cut=REL_CUT)
+    term = query.strip().lower()
+    exact = [c for c in chunks if term in c["content"].lower()]
+    if exact:
+        return exact
+    return chunks if chunks and chunks[0]["score"] >= MIN_SCORE else []
+
+
 async def _ask(query: str, ctx=None) -> str:
     rag = await _engine()
     if not rag.chunks:
         return await _say(ctx, EMPTY)
     if rag.embed_client is None:
         return await _say(ctx, NO_EMBED)
-    chunks = await rag.retrieve(query=query, top_k=5, max_tokens=4000, min_score=MIN_SCORE)
+    chunks = await retrieve_for_answer(rag, query)
     if not chunks:
         return await _say(ctx, NO_MATCH)
 

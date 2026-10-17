@@ -47,11 +47,21 @@ def _get_watch_db() -> sqlite3.Connection:
     return conn
 
 
-def _is_indexed(file_path: str) -> bool:
+# Obsidian tự lưu liên tục khi đang gõ: chờ tệp yên chừng này rồi mới nạp, khỏi nhúng lại từng phím
+_SETTLE_SECONDS = 2.0
+
+
+def _indexed_row(file_path: str) -> Optional[sqlite3.Row]:
     conn = _get_watch_db()
-    row = conn.execute("SELECT file_path FROM indexed_files WHERE file_path = ?", (file_path,)).fetchone()
+    row = conn.execute("SELECT file_size, indexed_at FROM indexed_files WHERE file_path = ?", (file_path,)).fetchone()
     conn.close()
-    return row is not None
+    return row
+
+
+def _is_current(row: Optional[sqlite3.Row], path: Path) -> bool:
+    """Đã nạp và tệp chưa đổi (cùng kích thước, không sửa sau lần nạp)."""
+    st = path.stat()
+    return row is not None and row["file_size"] == st.st_size and row["indexed_at"] >= st.st_mtime
 
 
 def _mark_indexed(file_path: str, filename: str, chunks: int, file_size: int = 0):
@@ -130,6 +140,10 @@ class RAGFolderWatcher:
                         log.info(f"RAG Watcher: new file detected: {p.name}")
                         watcher_self._schedule_index(str(p.resolve()))
 
+            def on_modified(self, event):  # tệp tạo rỗng rồi mới ghi nội dung (ghi chú Obsidian)
+                if not event.is_directory and Path(event.src_path).suffix.lower() in SUPPORTED_EXTENSIONS:
+                    watcher_self._schedule_index(str(Path(event.src_path).resolve()))
+
             def on_deleted(self, event):
                 if not event.is_directory:
                     p = Path(event.src_path)
@@ -167,8 +181,11 @@ class RAGFolderWatcher:
             log.warning(f"RAG Watcher: file not found: {file_path}")
             return
 
-        # Tranh re-index file cung kich thuoc (chua thay doi)
-        if _is_indexed(file_path):
+        await asyncio.sleep(max(0.0, _SETTLE_SECONDS - (time.time() - path.stat().st_mtime)))
+        if not path.exists():
+            return
+        row = _indexed_row(file_path)
+        if _is_current(row, path):
             log.debug(f"RAG Watcher: already indexed, skipping: {path.name}")
             return
 
@@ -194,6 +211,8 @@ class RAGFolderWatcher:
 
         log.info(f"RAG Watcher: indexing {path.name}...")
         try:
+            if row is not None:  # tệp đã sửa: process_document bỏ qua tệp còn chunk cũ, nên xoá trước
+                await rag.remove_document(file_path)
             result = await rag.process_document(file_path)
             if result.get("success"):
                 chunks = result.get("chunks", 0)
@@ -272,7 +291,7 @@ class RAGFolderWatcher:
         log.info(f"RAG Watcher: scanning {len(files)} existing files...")
         for f in files:
             fp = str(f.resolve())
-            if not _is_indexed(fp):
+            if not _is_current(_indexed_row(fp), f):  # cả tệp sửa lúc JARVIS tắt
                 await self._index_file(fp)
                 await asyncio.sleep(0.5)  # Tranh overload embedding server
 

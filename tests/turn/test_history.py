@@ -77,5 +77,15 @@ def test_latest_turn_keeps_long_result_older_turns_stay_short():
     plain = H.for_model(hist, plain=True)
     assert [m["role"] for m in plain] == ["user", "assistant", "user", "assistant"]  # vẫn xen kẽ user/assistant
     assert plain[0]["content"] == "tin cũ"
-    assert plain[2]["content"].startswith("tin mới\n\n[kết quả Tin tức (success)]")  # vòng trả lời: tên gọi, không tên hàm
+    assert plain[2]["content"].startswith('tin mới\n\n<ket_qua cong_cu="Tin tức" trang_thai="success">')  # tên gọi, thẻ XML
     assert len(plain[2]["content"]) > H.LAST - 10 and plain[3]["content"] == "Tóm tắt."
+
+
+def test_answer_result_is_xml_data_by_label():
+    """2026-10-17 (Anthropic: dữ liệu trong thẻ XML, tách khỏi lời dặn): vòng trả lời nhận kết quả trong <ket_qua>,
+    không còn tiêu đề "[kết quả …]" mà model hay chép lại nguyên dòng."""
+    r = H.answer_result("Thời tiết", "28°C", "success", False, "", 8000)
+    assert r == {"role": "user", "content": '<ket_qua cong_cu="Thời tiết" trang_thai="success">\n28°C\n</ket_qua>'}
+    r = H.answer_result("Giá thị trường", "x" * 9000, "success", True, "Nói ngắn.", 8000)["content"]
+    assert r.startswith('<ket_qua cong_cu="Giá thị trường" trang_thai="success" da_hien="có">')
+    assert "<luu_y>Nói ngắn.</luu_y>" in r and "x" * 8000 in r and "x" * 8001 not in r and "[kết quả" not in r

@@ -1,3 +1,3 @@
-Giá vàng, tỷ giá ngoại tệ, giá xăng dầu, giá gas, giá điện, giá nước hôm nay, hoặc bảng giá tổng hợp tất cả.
+Lấy giá thị trường mới nhất của các mặt hàng có giá niêm yết chung trong ngày: vàng, tỷ giá ngoại tệ, xăng dầu, gas, điện, nước, hoặc bảng tổng hợp tất cả. Dùng khi ngài hỏi giá hôm nay hay giá đang lên xuống của đúng các mặt hàng này. Không dùng cho một món đồ cụ thể bán ở sàn hay cửa hàng (dùng search_products), thuốc và thực phẩm chức năng (dùng search_medicine), hay tin tức kinh tế (dùng search_news). Kết quả là bảng giá từ nguồn tra cứu lúc hỏi.
 
 item: mặt hàng cần xem giá (vd "vàng", "tỷ giá ngoại tệ", "euro", "yên nhật", "xăng", "gas", "điện", "nước"); "tổng hợp" khi muốn xem tất cả

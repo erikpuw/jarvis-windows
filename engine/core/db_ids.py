@@ -1,7 +1,6 @@
 """SQLite helpers for reusing missing positive record IDs."""
 
 _ID_TABLES = {
-    "memories",
     "messages",
     "feedback",
     "learnings",

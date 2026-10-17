@@ -104,13 +104,5 @@ def save_daily_digest(
                 month_file.write_text(month_content, encoding="utf-8")
 
         log.info(f"Daily digest saved to {daily_file.relative_to(WIKI_DIR)}")
-        
-        # Gọi WikiSync tự động để nạp ngay vào Semantic Memory
-        try:
-            from engine.core.wiki_sync import sync_wiki_to_semantic_memory
-            sync_wiki_to_semantic_memory()
-        except Exception as sync_err:
-            log.warning(f"Failed to auto-sync wiki on daily digest: {sync_err}")
-            
     except Exception as e:
         log.error(f"Failed to save daily digest: {e}")

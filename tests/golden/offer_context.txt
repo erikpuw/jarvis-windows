@@ -1,1 +1,0 @@
-Lượt trước Jarvis đã đề nghị (chưa làm): mở Notepad [công cụ: open_app]. Nếu yêu cầu hiện tại là đồng ý hoặc sửa lại đề nghị đó, chọn agent theo đề nghị và viết query là câu lệnh cụ thể.

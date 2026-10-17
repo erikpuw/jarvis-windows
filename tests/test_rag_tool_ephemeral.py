@@ -17,7 +17,7 @@ def test_attachment_question_never_builds_a_persistent_engine(monkeypatch):
     class RecordingEngine:
         def __init__(self, dim=768, persistent=True):
             self.persistent = persistent
-            self.chunks, self.vector_index, self.bm25_index = [], None, None
+            self.chunks, self.vector_index = [], None
             engines.append(self)
 
         def set_client(self, c): pass

@@ -45,7 +45,6 @@ def test_concurrent_save_message_from_many_sessions(monkeypatch):
 def test_concurrent_daily_digest_writes_header_once(monkeypatch):
     wiki = Path(tempfile.mkdtemp())
     monkeypatch.setattr(memory_tree, "WIKI_DIR", wiki)
-    monkeypatch.setattr("engine.core.wiki_sync.sync_wiki_to_semantic_memory", lambda *a, **k: None)
 
     _run_threads(lambda i: memory_tree.save_daily_digest(f"hỏi {i}", f"đáp {i}"), 8)
 

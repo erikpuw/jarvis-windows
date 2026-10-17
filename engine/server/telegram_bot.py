@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import functools
+import html
 import json
 import logging
 import mimetypes
@@ -187,15 +188,6 @@ def split_telegram_text(text: str, limit: int = TELEGRAM_TEXT_LIMIT) -> list[str
     return parts
 
 
-def _escape_markdown_v2(text: str) -> str:
-    return re.sub(r"([_\*\[\]\(\)~`>#+\-=|{}.!\\])", r"\\\1", text)
-
-
-def _escape_markdown_v2_url(url: str) -> str:
-    """Escape the two characters Telegram reserves inside MarkdownV2 URLs."""
-    return url.replace("\\", "\\\\").replace(")", "\\)")
-
-
 def _render_markdown_table(match: re.Match[str]) -> str:
     """Degrade a WebUI Markdown table to readable Telegram text.
 
@@ -218,67 +210,51 @@ def _render_markdown_table(match: re.Match[str]) -> str:
     return "\n\n".join(rendered_rows)
 
 
-def render_telegram_markdown(text: str) -> str:
-    """Render a narrow Markdown subset while escaping all Telegram MarkdownV2 syntax."""
+def render_telegram_html(text: str) -> str:
+    """Render a narrow Markdown subset as Telegram HTML (parse_mode HTML).
+
+    HTML mode only reserves <, > and &, so ordinary punctuation never gets a message rejected the way MarkdownV2 did.
+    """
     protected: list[str] = []
 
     def protect(value: str) -> str:
-        token = f"\ue000{len(protected)}\ue001"
+        token = f"{len(protected)}"
         protected.append(value)
         return token
 
-    def fenced_code(match: re.Match[str]) -> str:
-        content = match.group(1).replace("\\", "\\\\").replace("`", "\\`")
-        return protect(f"```{content}```")
+    def esc(value: str) -> str:
+        return html.escape(value, quote=False)
 
-    def inline_code(match: re.Match[str]) -> str:
-        content = match.group(1).replace("\\", "\\\\").replace("`", "\\`")
-        return protect(f"`{content}`")
-
-    def bold(match: re.Match[str]) -> str:
-        return protect(f"*{_escape_markdown_v2(match.group(1))}*")
-
-    def italic(match: re.Match[str]) -> str:
-        return protect(f"_{_escape_markdown_v2(match.group(1))}_")
+    def link(label: str, url: str) -> str:
+        return protect(f'<a href="{html.escape(url)}">{esc(label)}</a>')
 
     def raw_url(match: re.Match[str]) -> str:
         value = match.group(0)
         url = value.rstrip(".,!?;:")
-        suffix = value[len(url):]
         hostname = urlsplit(url).hostname or url
-        label = hostname.removeprefix("www.")
-        return protect(f"[{_escape_markdown_v2(label)}]({_escape_markdown_v2_url(url)})") + suffix
+        return link(hostname.removeprefix("www."), url) + value[len(url):]
 
-    rendered = re.sub(r"```(.*?)```", fenced_code, text, flags=re.DOTALL)
-    rendered = re.sub(r"`([^`\n]+)`", inline_code, rendered)
+    rendered = re.sub(r"```[\w+-]*\n?(.*?)```", lambda m: protect(f"<pre>{esc(m.group(1))}</pre>"), text, flags=re.DOTALL)
+    rendered = re.sub(r"`([^`\n]+)`", lambda m: protect(f"<code>{esc(m.group(1))}</code>"), rendered)
     rendered = re.sub(
         r"(?m)^[ \t]*\|.+\|[ \t]*\n[ \t]*\|(?:[ \t]*:?-{3,}:?[ \t]*\|)+[ \t]*\n(?:[ \t]*\|.+\|[ \t]*(?:\n|$))+",
         lambda match: _render_markdown_table(match) + "\n\n",
         rendered,
     )
-    rendered = re.sub(
-        r"(?m)^#{1,6}\s+(.+?)\s*#*\s*$",
-        lambda match: protect(f"*{_escape_markdown_v2(match.group(1))}*"),
-        rendered,
-    )
+    rendered = re.sub(r"(?m)^#{1,6}\s+(.+?)\s*#*\s*$", lambda m: protect(f"<b>{esc(m.group(1))}</b>"), rendered)
     rendered = re.sub(
         r"!\[([^\]\n]*)\]\((?:[^()\s]+|\([^()\s]*\))+\)",
-        lambda match: protect(match.group(1).strip() or ""),
+        lambda match: protect(esc(match.group(1).strip())),
         rendered,
     )
-    rendered = re.sub(
-        r"(!?)\[([^\]\n]+)\]\(([^\s()]+)\)",
-        lambda match: protect(
-            f"[{_escape_markdown_v2(match.group(2))}]({_escape_markdown_v2_url(match.group(3))})"
-        ),
-        rendered,
-    )
+    rendered = re.sub(r"\[([^\]\n]+)\]\(([^\s()]+)\)", lambda m: link(m.group(1), m.group(2)), rendered)
     rendered = re.sub(r"https?://[^\s<>()]+", raw_url, rendered)
-    rendered = re.sub(r"\*\*(.+?)\*\*", bold, rendered)
-    rendered = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", italic, rendered)
-    rendered = _escape_markdown_v2(rendered)
-    for index, value in enumerate(protected):
-        rendered = rendered.replace(f"\ue000{index}\ue001", value)
+    rendered = re.sub(r"\*\*(.+?)\*\*", lambda m: protect(f"<b>{esc(m.group(1))}</b>"), rendered)
+    rendered = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", lambda m: protect(f"<i>{esc(m.group(1))}</i>"), rendered)
+    rendered = esc(rendered)
+    # newest first: a later value (bold) can wrap an earlier token (a link inside it)
+    for index in range(len(protected) - 1, -1, -1):
+        rendered = rendered.replace(f"{index}", protected[index])
     return rendered
 
 
@@ -971,15 +947,15 @@ class TelegramBot:
         for index, part in enumerate(parts):
             payload: dict[str, Any] = {
                 "chat_id": chat_id,
-                "text": render_telegram_markdown(part),
-                "parse_mode": "MarkdownV2",
+                "text": render_telegram_html(part),
+                "parse_mode": "HTML",
             }
             if reply_markup is not None and index == len(parts) - 1:
                 payload["reply_markup"] = reply_markup
             try:
                 await self._request("sendMessage", payload)
             except (OSError, URLError, ValueError):
-                logger.info("Telegram MarkdownV2 rejected; retrying plain text")
+                logger.info("Telegram HTML rejected; retrying plain text")
                 fallback: dict[str, Any] = {"chat_id": chat_id, "text": part}
                 if reply_markup is not None and index == len(parts) - 1:
                     fallback["reply_markup"] = reply_markup

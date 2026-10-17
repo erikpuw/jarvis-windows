@@ -215,4 +215,3 @@ async def handle_rag_query(*, query: str, attachment_context) -> dict:
             store.discard_staging(prepared)
         rag.chunks.clear()
         rag.vector_index = None
-        rag.bm25_index = None
