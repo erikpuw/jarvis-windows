@@ -1,7 +1,7 @@
 # Build app iOS (Capacitor) trên máy Mac của Codemagic, KHÔNG ký mã.
 # File .ipa tải về rồi cài lên iPhone bằng Sideloadly (Windows) với Apple ID miễn phí.
 # Trước khi chạy: vào Codemagic → app → Environment variables, thêm JARVIS_SERVER_URL
-# (ví dụ http://100.x.y.z:5173, địa chỉ Tailscale của PC chạy JARVIS).
+# vào nhóm (group) tên "jarvis" (tạo nhóm mới ngay trong ô Select group).
 workflows:
   ios-unsigned:
     name: JARVIS iOS (không ký)
@@ -10,6 +10,8 @@ workflows:
     environment:
       node: 22
       xcode: latest
+      groups:
+        - jarvis
     scripts:
       - name: Cài dependency frontend
         script: |
