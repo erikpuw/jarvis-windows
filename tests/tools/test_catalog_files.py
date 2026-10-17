@@ -21,7 +21,7 @@ def test_chat_tool_set_is_exactly_the_spec_list():
     shown = set(R.chat_names(None))
     assert shown == {"open_app", "close_app", "win_control", "capture_screen", "read_screen", "read_webcam",
                      "system_status", "check_security", "play_media", "weather", "search_news", "market_price",
-                     "search_products", "cinema", "free_games", "lunar_today", "zodiac", "legal_lookup",
+                     "search_products", "search_medicine", "cinema", "free_games", "lunar_today", "zodiac", "legal_lookup",
                      "vn_admin_lookup", "lookup_knowledge", "gym", "check_mail", "search_documents"}
 
 

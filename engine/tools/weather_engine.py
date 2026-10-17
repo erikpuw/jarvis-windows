@@ -93,12 +93,21 @@ def _wants_hourly(text: str) -> bool:
     return bool(_HOURLY_INTENT.search((text or "").lower()))
 
 
+# Hỏi ngày mai -> dự báo ngày mai (Báo Mới), không trả thời tiết lúc này. "Mai Châu", "Mai Sơn" là tên nơi.
+_TOMORROW_INTENT = re.compile(r"ngày mai|(sáng|trưa|chiều|tối|đêm) mai|^mai\b(?! (châu|sơn))")
+
+
+def _wants_tomorrow(text: str) -> bool:
+    return bool(_TOMORROW_INTENT.search((text or "").lower().strip()))
+
+
 def _clean_location(location: str) -> str:
     """Loại bỏ các từ khóa nhiễu và chuẩn hóa viết tắt địa điểm."""
     loc = location.lower().strip()
     loc = re.sub(r"\b(tp\.?\s*hcm|tphcm|hcm)\b", "hồ chí minh", loc)
     noise_patterns = [
         _HOURLY_INTENT.pattern,
+        _TOMORROW_INTENT.pattern,
         r"\bcho tôi\b",
         r"\bcụ thể\b",
         r"\bphần trăm\b",
@@ -147,13 +156,18 @@ def _api_location_name(location: str) -> str:
 
 # ── Public API: weather_search (dùng cho tool) ──
 
-async def weather_search(location: str, hourly: bool = False) -> str:
+async def weather_search(location: str, hourly: bool = False, question: str = "") -> str:
     """Thời tiết một địa điểm. Mặc định là thời tiết hiện tại (Báo Mới -> wttr.in -> Open-Meteo);
-    hourly=True là lịch khả năng mưa theo từng giờ (Open-Meteo, dự phòng Báo Mới)."""
-    hourly = hourly or _wants_hourly(location)
+    hourly=True là lịch khả năng mưa theo từng giờ (Open-Meteo, dự phòng Báo Mới); hỏi ngày mai là dự báo
+    ngày mai (chỉ Báo Mới), ưu tiên hơn theo giờ. Ý hỏi đọc từ câu của ngài (question): model hay bỏ
+    "ngày mai", "mấy giờ" khỏi location."""
+    tomorrow = _wants_tomorrow(question) or _wants_tomorrow(location)
+    hourly = hourly or _wants_hourly(question) or _wants_hourly(location)
     place = _clean_location(location)
     board = _resolve_province(place, await _load_boards())
     try:
+        if tomorrow:
+            return await _tomorrow_weather(place, board)
         return await (_hourly_rain(place, board) if hourly else _current_weather(place, board))
     except LookupError:
         return f"Không tìm thấy địa điểm '{place}'. Bạn muốn xem thời tiết ở đâu?"
@@ -182,6 +196,20 @@ async def _current_weather(place: str, board: Optional[dict]) -> str:
         temp = f", nhiệt độ {snap['temp']}°C" if snap.get("temp") is not None else ""
         return f"📍 Thời tiết tại {name}: {snap['desc']}{temp}."
     return _format_response(name, await _fetch_open_meteo(lat, lon))
+
+
+async def _tomorrow_weather(place: str, board: Optional[dict]) -> str:
+    """Dự báo ngày mai từ Báo Mới. Không có thì nói rõ, không thay bằng thời tiết lúc này."""
+    # ponytail: chỉ tỉnh thành có trên Báo Mới; nơi khác cần thêm "daily" của Open-Meteo nếu ngài muốn
+    if board:
+        try:
+            p = await _baomoi_fetch(board["slug"])
+            if len(p["days"]) > 1:
+                return _format_baomoi_tomorrow(p)
+        except Exception as e:
+            log.warning(f"Báo Mới {board['slug']} lỗi khi lấy dự báo ngày mai: {e}")
+    name = board["name"] if board else place
+    return f"Chưa có dự báo ngày mai cho {name}: nguồn dự báo theo ngày lúc này không có dữ liệu."
 
 
 async def _hourly_rain(place: str, board: Optional[dict]) -> str:
@@ -312,6 +340,31 @@ def _format_response(resolved: str, data: dict) -> str:
     lines.append(f"  ☀️  Chỉ số UV: {uv}.")
 
     return "\n".join(lines)
+
+
+def sanitize_weather_display_text(text: str) -> str:
+    """Dọn ký hiệu LaTeX do LLM chèn vào các đơn vị thời tiết."""
+    if not text:
+        return text
+
+    cleaned = re.sub(r"\^\s*\\circ\s*C\b", "°C", text, flags=re.I)
+    cleaned = re.sub(r"\\circ\s*C\b", "°C", cleaned, flags=re.I)
+    cleaned = cleaned.replace(r"\%", "%")
+
+    weather_measurement = r"[+-]?\d+(?:[.,]\d+)?\s*(?:km/h|m/s|mm|°C|%)"
+    cleaned = re.sub(
+        rf"\$(?=\s*{weather_measurement})",
+        "",
+        cleaned,
+        flags=re.I,
+    )
+    cleaned = re.sub(
+        rf"({weather_measurement})\$",
+        r"\1",
+        cleaned,
+        flags=re.I,
+    )
+    return cleaned
 
 
 # ── Báo Mới: danh sách tỉnh thành + thời tiết từng giờ (JSON nhúng trong trang, dữ liệu gốc từ weather.com) ──
@@ -480,6 +533,19 @@ def _format_baomoi(p: dict, hour: int) -> str:
         lines.append(f"  🌬  Gió: {cur['wind']} km/h.")
     if cur["pop"] is not None:
         lines.append(f"  🌧  Khả năng mưa: {cur['pop']}%.")
+    return "\n".join(lines)
+
+
+def _format_baomoi_tomorrow(p: dict) -> str:
+    d = p["days"][1]
+    lines = [f"📅 Dự báo ngày mai ({d['date']}) tại {p['name']}:"]
+    if d["status"]:
+        lines.append(f"  ☁️  {d['status']}.")
+    lines.append(f"  🌡  Nhiệt độ: {d['tmin']}–{d['tmax']}°C.")
+    if d["pop_day"] is not None:
+        lines.append(f"  🌧  Khả năng mưa ban ngày: {d['pop_day']}%.")
+    if d["pop_night"] is not None:
+        lines.append(f"  🌙  Khả năng mưa ban đêm: {d['pop_night']}%.")
     return "\n".join(lines)
 
 

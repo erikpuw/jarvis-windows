@@ -57,9 +57,6 @@ async def execute_desktop_control(user_text: str, ws: Any, safe_ws_send_json: An
     return await run_cua_task(task, ws, safe_ws_send_json, record=record, replay=replay)
 
 
-# Bí danh tương thích ngược
-run_win_control_workflow = execute_desktop_control
-
 __all__ = [
     "WindowsControl",
     "CuaSession",
@@ -73,7 +70,6 @@ __all__ = [
     "open_application",
     "parse_window_state_request",
     "run_cua_task",
-    "run_win_control_workflow",
     "run_window_state_workflow",
     "_KNOWN_APPS",
 ]

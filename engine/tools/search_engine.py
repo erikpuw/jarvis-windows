@@ -27,8 +27,17 @@ _NOISE_LINE_RE = re.compile(
 )
 
 
+_CSS_BLOCK_RE = re.compile(
+    r"(?is)(?:@[a-z\-]+[^{]*\{[^{}]*\}|(?:\.[a-z0-9_\-]+|#[a-z0-9_\-]+|[a-z0-9_\-]+(?:\s*>\s*[a-z0-9_\-]+)*)\s*\{[^{}]*\})+",
+)
+_CSS_LINE_DECL_RE = re.compile(
+    r"\{[^{}]*(?:margin|padding|display|color|width|height|background|font-|border|align-|justify-|position|overflow)[^{}]*\}",
+    re.IGNORECASE,
+)
+
+
 def _clean_article_content(text: str) -> str:
-    """Strip share buttons, social labels, and whitespace-only lines from scraped text."""
+    """Strip share buttons, social labels, CSS style blocks, and whitespace-only lines from scraped text."""
     if not text:
         return ""
 
@@ -38,6 +47,8 @@ def _clean_article_content(text: str) -> str:
         "\n",
         text,
     )
+    # Gỡ các khối CSS rules hoặc @media style lọt vào văn bản
+    text = _CSS_BLOCK_RE.sub(" ", text)
 
     cleaned: list[str] = []
     for raw in text.splitlines():
@@ -45,6 +56,11 @@ def _clean_article_content(text: str) -> str:
         if not line:
             continue
         if _NOISE_LINE_RE.match(line):
+            continue
+        # Bỏ các dòng chứa khai báo CSS còn sót
+        if ("{" in line and "}" in line and _CSS_LINE_DECL_RE.search(line)) or (
+            line.startswith(("@media", "@keyframes", ".tdi_", ".tdc-", ".wpb_", ".vc_")) and "{" in line
+        ) or ("var(--" in line and ";" in line):
             continue
         # Bỏ dòng chỉ có ký tự đặc biệt / số đơn lẻ (menu, icon text)
         if len(line) < 4 and not re.search(r"[\w\u00C0-\u1EF9]", line, re.UNICODE):
@@ -1264,37 +1280,35 @@ async def handle_cgv_movies_query(query: str = None, **kwargs) -> str:
     now_showing = res_now if show_now else []
     coming_soon = res_coming if show_coming else []
     
+    def _format_cgv_table(movies_list):
+        if not movies_list:
+            return ""
+        cols = len(movies_list)
+        return "\n".join([
+            "| " + " | ".join(f"**{m['title']}**" for m in movies_list) + " |",
+            "|" + "|".join(":---:" for _ in range(cols)) + "|",
+            "| " + " | ".join(f"![{m['title']}]({m['img']})" if m.get("img") else "*(Không có ảnh)*" for m in movies_list) + " |",
+            "| " + " | ".join(f"*{m['genre']}*" for m in movies_list) + " |",
+            "| " + " | ".join(f"⏱️ {m['duration']}" for m in movies_list) + " |",
+            "| " + " | ".join(f"📅 {m['release']}" for m in movies_list) + " |",
+            "| " + " | ".join(f"[Xem chi tiết]({m['link']})" if m.get("link") else "" for m in movies_list) + " |",
+        ])
+
     output = []
     
     if show_now:
         output.append("=== PHIM ĐANG CHIẾU TẠI CGV ===")
         if now_showing:
-            for idx, m in enumerate(now_showing):
-                output.append(f"Phim {idx+1}:")
-                output.append(f"Tên phim: {m['title']}")
-                output.append(f"Poster: {m['img']}")
-                output.append(f"Thể loại: {m['genre']}")
-                output.append(f"Thời lượng: {m['duration']}")
-                output.append(f"Khởi chiếu: {m['release']}")
-                output.append(f"Chi tiết: {m['link']}")
-                output.append("")
-            output.append(f"Xem thêm tại: {now_showing_url}\n")
+            output.append(_format_cgv_table(now_showing))
+            output.append(f"\n[Xem toàn bộ danh sách]({now_showing_url})\n")
         else:
             output.append("Không thể tải danh sách phim đang chiếu hoặc danh sách trống.\n")
             
     if show_coming:
         output.append("=== PHIM SẮP CHIẾU TẠI CGV ===")
         if coming_soon:
-            for idx, m in enumerate(coming_soon):
-                output.append(f"Phim {idx+1}:")
-                output.append(f"Tên phim: {m['title']}")
-                output.append(f"Poster: {m['img']}")
-                output.append(f"Thể loại: {m['genre']}")
-                output.append(f"Thời lượng: {m['duration']}")
-                output.append(f"Khởi chiếu: {m['release']}")
-                output.append(f"Chi tiết: {m['link']}")
-                output.append("")
-            output.append(f"Xem thêm tại: {coming_soon_url}\n")
+            output.append(_format_cgv_table(coming_soon))
+            output.append(f"\n[Xem toàn bộ danh sách]({coming_soon_url})\n")
         else:
             output.append("Không thể tải danh sách phim sắp chiếu hoặc danh sách trống.\n")
         
@@ -1308,8 +1322,10 @@ CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.pat
 async def handle_vietnam_data_query(
     query: str,
     data_dir=None,
-) -> dict:
-    """Tra cứu đơn vị hành chính Việt Nam từ bộ dữ liệu vendored."""
+    question: str = "",
+) -> str:
+    """Tra cứu đơn vị hành chính Việt Nam từ bộ dữ liệu vendored (2 cấp: tỉnh, xã/phường/đặc khu).
+    question = câu gốc của ngài: ý đếm/liệt kê đọc từ đó vì model hay chỉ để tên nơi trong query."""
 
     def normalize(value) -> str:
         text = str(value or "").lower().replace("đ", "d")
@@ -1466,7 +1482,6 @@ async def handle_vietnam_data_query(
         elif len(exact_ward_matches) == 1:
             matched_pair = exact_ward_matches[0]
         else:
-            bool(ward_matches)
             if ward_matches and len(province_matches) == 1:
                 province_context = province_matches[0][0]
                 ward_matches = [
@@ -1501,31 +1516,30 @@ async def handle_vietnam_data_query(
         display = "Không tìm thấy đơn vị hành chính phù hợp trong dữ liệu hiện có."
     else:
         unit, province = matched_pair
-        list_requested = any(
-            phrase in normalized_query
-            for phrase in ("liet ke", "danh sach", "cac phuong xa")
+        intent = f" {normalize(question)} {normalized_query} "
+        list_requested = re.search(
+            r" (liet ke|danh sach|(cac|nhung) (phuong|xa|don vi)|(phuong|xa) nao) ", intent
+        ) is not None
+        province_name = province.get("FullName") or province.get("Name")
+        by_type: dict[str, list[str]] = {}
+        for ward in province["Wards"]:
+            by_type.setdefault(ward.get("AdministrativeUnitShortName") or "Khác", []).append(ward.get("Name"))
+        size = (
+            f"{province_name} (mã {province['Code']}) có {len(province['Wards'])} đơn vị cấp xã: "
+            + ", ".join(f"{len(names)} {kind.lower()}" for kind, names in by_type.items())
+            + "."
         )
         if unit is province and list_requested:
-            ward_names = [
-                ward.get("FullName") or ward.get("Name")
-                for ward in province["Wards"]
-            ]
-            display = (
-                f"{province.get('FullName') or province.get('Name')} "
-                f"(mã {province['Code']}) có {len(ward_names)} phường/xã: "
-                + ", ".join(ward_names)
-                + "."
+            display = size + "\n" + "\n".join(
+                f"{kind} ({len(names)}): {', '.join(names)}." for kind, names in by_type.items()
             )
         elif unit is province:
-            display = (
-                f"{province.get('FullName') or province.get('Name')} "
-                f"có mã đơn vị {province['Code']}."
-            )
+            display = size
         else:
+            kind = (unit.get("AdministrativeUnitShortName") or "đơn vị").lower()
             display = (
-                f"{unit.get('FullName') or unit.get('Name')} "
-                f"(mã {unit['Code']}) thuộc "
-                f"{province.get('FullName') or province.get('Name')}."
+                f"{unit.get('FullName') or unit.get('Name')} (mã {unit['Code']}) là {kind} thuộc {province_name}. "
+                f"{size} Dữ liệu chỉ có 2 cấp (tỉnh và xã/phường), không có cấp quận/huyện."
             )
 
     return display

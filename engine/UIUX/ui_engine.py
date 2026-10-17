@@ -72,9 +72,36 @@ async def health():
     return {"status": "online", "name": "JARVIS", "version": _VERSION}
 
 
+@router.get("/api/reader")
+async def read_article_api(url: str):
+    """Bóc tách bài báo sạch (reader mode) phục vụ Reader Card trên WebUI."""
+    clean_url = (url or "").strip()
+    if not clean_url or not (clean_url.startswith("http://") or clean_url.startswith("https://")):
+        return JSONResponse({"error": "URL không hợp lệ"}, status_code=400)
+    try:
+        from engine.tools.browser import browser
+        from engine.tools.search_engine import get_source_label, _clean_article_content
+        page_data = await browser.visit_article(clean_url, timeout_ms=12_000)
+        if not page_data or not page_data.text_content:
+            return JSONResponse({"error": "Không thể trích xuất nội dung bài viết từ trang này."}, status_code=404)
+        clean_text = _clean_article_content(page_data.text_content)
+        title = (page_data.title or "").strip() or "Bài báo"
+        source = get_source_label(clean_url)
+        return {
+            "title": title,
+            "source": source,
+            "url": clean_url,
+            "content": clean_text,
+        }
+    except Exception as exc:
+        log.warning("Không thể đọc bài viết %s: %s", clean_url, exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+
 @router.get("/api/health/detailed")
 async def health_detailed():
-    """Chi tiết trạng thái của toàn bộ hệ thống (LLM, Redis, UI-TARS, RAG, DB)."""
+    """Chi tiết trạng thái của toàn bộ hệ thống (LLM, embed, TTS, RAG, DB)."""
     import os
     import time
     import httpx
@@ -111,18 +138,6 @@ async def health_detailed():
     tts_stream_url = (os.getenv("TTS_STREAM_URL") or "http://127.0.0.1:8082").strip()
     stream_tts_online, stream_tts_msg, stream_tts_port = check_stream_tts_server(force=True)
     stream_tts_status = "online" if stream_tts_online else "chờ kết nối"
-
-    # 2. Redis Status
-    redis_status = "offline"
-    try:
-        from engine.server.redis_server import redis_client
-        if redis_client:
-            await asyncio.wait_for(redis_client.ping(), timeout=2.0)
-            redis_status = "online"
-        else:
-            redis_status = "not_initialized"
-    except Exception as e:
-        redis_status = f"offline ({type(e).__name__})"
 
     # 4. RAG Status
     rag_enabled = False
@@ -179,9 +194,6 @@ async def health_detailed():
             "port": stream_tts_port,
             "message": stream_tts_msg,
             "url": tts_stream_url
-        },
-        "redis": {
-            "status": redis_status
         },
 
         "rag": {
@@ -1789,9 +1801,11 @@ async def api_conversations(
         return {"success": False, "error": str(e)}
 
 def _session_row(row: dict) -> dict:
-    """Gắn nhãn nguồn; session_id rỗng (tin cũ trước khi có phiên) hiện là 'legacy'."""
+    """Gắn nhãn nguồn và thiết bị; session_id rỗng (tin cũ trước khi có phiên) hiện là 'legacy'."""
+    from engine.core.memory import session_device
     sid = row["session_id"] or ""
     row["source"] = "web" if sid.startswith("web-") else "telegram" if sid.startswith("tg-") else "legacy"
+    row["device"] = session_device(sid, row.get("device"))
     row["session_id"] = sid or "legacy"
     return row
 
@@ -1804,7 +1818,9 @@ async def api_conversations_sessions(limit: int = 50):
             conn = _get_db()
             try:
                 rows = conn.execute(
-                    "SELECT session_id, COUNT(*) as msg_count, MIN(created_at) as started_at, MAX(created_at) as last_msg FROM messages GROUP BY session_id ORDER BY last_msg DESC LIMIT ?",
+                    "SELECT m.session_id, COUNT(*) as msg_count, MIN(m.created_at) as started_at, MAX(m.created_at) as last_msg, d.device"
+                    " FROM messages m LEFT JOIN session_devices d ON d.session_id = m.session_id"
+                    " GROUP BY m.session_id ORDER BY last_msg DESC LIMIT ?",
                     (limit,)
                 ).fetchall()
                 return [_session_row(dict(r)) for r in rows]

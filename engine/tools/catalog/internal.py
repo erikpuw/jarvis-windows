@@ -1,4 +1,5 @@
 """Tool nội bộ (chat=False): chỉ gọi bằng /tên_tool, @tên_tool hoặc từ code."""
+import json
 
 from engine.tools.registry import tool
 

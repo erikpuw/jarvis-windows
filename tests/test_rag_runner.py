@@ -73,11 +73,11 @@ def test_ask_with_no_relevant_chunks_does_not_call_llm(monkeypatch):
     rag = FakeRAG(chunks=[{"id": 0}], results=[])
     out = _run("điều khoản phạt", rag, monkeypatch)
     assert out == runner.NO_MATCH
-    assert rag.retrieve_kwargs["min_score"] == runner.MIN_SCORE
+    assert rag.retrieve_kwargs["rel_cut"] == runner.REL_CUT
 
 
 def test_ask_answers_from_evidence_with_sources(monkeypatch):
-    chunk = {"id": 7, "content": "Phạt 10% giá trị hợp đồng.", "filename": "hd.pdf", "page_number": 3}
+    chunk = {"id": 7, "content": "Phạt 10% giá trị hợp đồng.", "filename": "hd.pdf", "page_number": 3, "score": 0.8}
     rag = FakeRAG(chunks=[chunk], results=[chunk])
     seen = {}
 
@@ -154,7 +154,7 @@ def test_delete_unknown_reports_not_found_and_touches_nothing(monkeypatch, tmp_p
 
 
 def test_ask_streams_chunks_and_sources(monkeypatch):
-    chunk = {"id": 8, "content": "Tài liệu mẫu.", "filename": "sample.pdf", "page_number": 1}
+    chunk = {"id": 8, "content": "Tài liệu mẫu.", "filename": "sample.pdf", "page_number": 1, "score": 0.8}
     rag = FakeRAG(chunks=[chunk], results=[chunk])
     monkeypatch.setattr(rag_engine_mod, "get_rag_engine", lambda: rag)
 

@@ -203,8 +203,8 @@ def test_retrieve_with_no_indexed_chunks_returns_empty_list():
         assert results == []
 
 
-def test_retrieve_min_score_drops_irrelevant_chunks():
-    """Without a floor retrieve() always returns top_k, even for chunks that
+def test_retrieve_rel_cut_drops_chunks_far_below_the_best():
+    """Without a cut retrieve() always returns top_k, even for chunks that
     share nothing with the query - the LLM then gets junk as "evidence"."""
     with _isolated_rag_data_dir() as tmp:
         cats_doc = _write_doc(tmp, "cats.txt", "Meo thich choi voi bong len. " * 3)
@@ -215,7 +215,7 @@ def test_retrieve_min_score_drops_irrelevant_chunks():
         asyncio.run(rag.process_document(str(python_doc)))
 
         unfiltered = asyncio.run(rag.retrieve("meo thich choi", top_k=5))
-        filtered = asyncio.run(rag.retrieve("meo thich choi", top_k=5, min_score=0.2))
+        filtered = asyncio.run(rag.retrieve("meo thich choi", top_k=5, rel_cut=0.2))
 
         assert {r["filename"] for r in unfiltered} == {"cats.txt", "python.txt"}
         assert [r["filename"] for r in filtered] == ["cats.txt"], filtered

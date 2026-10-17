@@ -87,6 +87,21 @@ def test_payload_carries_view_and_download_urls():
     assert "ba_cao" not in payload["url"] and "C:" not in payload["url"]
 
 
+def test_payload_carries_file_size_in_bytes(tmp_path):
+    # the chat's file card shows "PDF · 1.8 MB": the size comes with the event (no extra request from the page)
+    target = tmp_path / "bao_cao.pdf"
+    target.write_bytes(b"x" * 245760)
+    ws = FakeWs()
+    asyncio.run(od.deliver_output_file(ws, target))
+    assert ws.sent[-1]["size"] == 245760
+
+
+def test_unreadable_file_size_is_none_and_event_still_goes():
+    ws = FakeWs()
+    assert asyncio.run(od.deliver_output_file(ws, r"C:\khong_co\a.docx")) is True
+    assert ws.sent[-1]["size"] is None
+
+
 def test_office_labels_word_excel_powerpoint_pdf():
     expected = {
         "so_lieu.xlsx": "Excel",

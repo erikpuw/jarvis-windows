@@ -18,8 +18,7 @@ LLM_NODE = "server/llm_server"
 LANES = {
     "server": "input", "server/telegram_bot": "input", "server/slash_commands": "input",
     "server/whisper_server": "input", "security": "input", "UIUX": "input",
-    "router": "turn", "tools": "turn",
-    "plans": "turn", "jobs": "turn", "prompts": "turn", "main": "turn",
+    "tools": "turn", "prompts": "turn", "main": "turn",
     "server/mcp_server": "turn", "core/guardrails": "input",
     LLM_NODE: "llm",
     "server/voice_streamer": "output", "server/tts_manager": "output",
@@ -31,11 +30,10 @@ LANES = {
     "core/attachment_store": "input", "server/ws_dispatcher": "input",
     "core/mcp_context": "turn",
     "server/text_streamer": "output", "server/tts_server": "output", "server/vieneu_tts": "output",
-    "core/wiki_sync": "memory",
     "core/rag_document_store": "ingestion", "core/rag_pdf_ingest": "ingestion",
     # shared helpers: drawn dimmed so they do not bury the real flows
     "core/json_parser": "support", "core/trace_logger": "support", "core/activity_gate": "support",
-    "core/process_tree": "support", "server/redis_server": "support",
+    "core/process_tree": "support",
 }
 
 

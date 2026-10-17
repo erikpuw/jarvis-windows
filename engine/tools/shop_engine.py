@@ -31,6 +31,10 @@ _GROCERY_KW = (
     "trái cây", "kimchi", "kim chi", "sữa", "gạo", "mì", "nước", "trứng", "đỗ", "đậu", "nấm",
     "gia vị", "thực phẩm", "bánh", "kẹo",
 )
+_MEDICINE_KW = (
+    "thuốc", "dược phẩm", "tpcn", "thực phẩm chức năng", "men vi sinh", "vitamin", "panadol", "paracetamol",
+    "berberin", "kháng sinh", "nhỏ mắt", "khẩu trang y tế", "băng gạc", "dầu gió", "siro ho",
+)
 _PRICE_RE = re.compile(
     r"(?P<price>\d{1,3}(?:[.\s]\d{3})+|\d{4,})\s*(?:₫|đ|vnđ|vnd)(?!\w)",
     re.IGNORECASE,
@@ -49,14 +53,20 @@ _NON_PRODUCT_PREFIXES = (
 )
 _QUERY_STOPWORDS = frozenset({
     "tim", "kiem", "tra", "cuu", "xem", "mua", "gia", "san", "pham",
+    "va", "co", "la", "cho", "cua", "tai", "trong",
 })
-# Phụ kiện/dịch vụ trôi vào kết quả "iphone 17 pro": bỏ trừ khi người dùng chính là tìm loại đó
-_ACCESSORY_PREFIXES = ("op lung", "dan sticker", "mieng dan", "s-buyback", "kinh cuong luc", "bao da", "hop đung",
-                       "vo op", "op ", "nut tai", "day đeo", "day sac", "cap sac", "tui đung")  # _plain giữ "đ"
+# Phụ kiện/dịch vụ trôi vào kết quả "iphone 17 pro", "mac mini": bỏ trừ khi người dùng chính là tìm loại đó
+_ACCESSORY_PREFIXES = (
+    "op lung", "dan sticker", "mieng dan", "s-buyback", "kinh cuong luc", "bao da", "hop đung",
+    "vo op", "op ", "nut tai", "day đeo", "day sac", "cap sac", "tui đung",
+    "tui xach", "tui chong soc", "tui deo", "balo", "ban phim", "chuot ", "lot chuot",
+    "de tan nhiet", "gia do", "hub ", "cong chuyen", "cap chuyen", "dau doc the",
+    "sach ", "sach -", "ket heo", "ket sat", "kep toc", "chau cay", "hop trang suc",
+)  # _plain giữ "đ"
 _PRODUCT_QUERY_PREFIX_RE = re.compile(
-    r"^(?:(?:hãy|giúp|vui\s+lòng|làm\s+ơn)\s+)?"
-    r"(?:tìm(?:\s+kiếm)?|tra(?:\s+cứu)?|xem)\s+"
-    r"(?:(?:sản\s+ph(?:ẩm|ầm)|mặt\s+hàng|công\s+nghệ|bách\s+hóa|giá)\s+)?",
+    r"^(?:(?:hãy|giúp|vui\s+lòng|làm\s+ơn)\s+)*"
+    r"(?:(?:tìm(?:\s+kiếm)?|tra(?:\s+cứu)?|xem)\s+)?"
+    r"(?:(?:sản\s+ph(?:ẩm|ầm)|mặt\s+hàng|công\s+nghệ|bách\s+hóa|giá(?!\s+(?:đỗ|đậu))|của)\s+)*",
     re.IGNORECASE,
 )
 
@@ -74,9 +84,87 @@ LOTTE_STORES = {
 
 def _is_unwanted_accessory(plain_name: str, plain_query: str) -> bool:
     """Phụ kiện/dịch vụ trôi vào kết quả: bỏ trừ khi người dùng chính là tìm loại đó."""
-    return plain_name.startswith(_ACCESSORY_PREFIXES) and not any(
+    if any(plain_name.startswith(prefix) for prefix in _ACCESSORY_PREFIXES) and not any(
         prefix in plain_query for prefix in _ACCESSORY_PREFIXES if plain_name.startswith(prefix)
-    )
+    ):
+        return True
+    # Đồ phụ kiện "cho / dành cho <thiết bị>" khi người dùng tìm chính thiết bị đó
+    tech_devices = ("mac mini", "macmini", "macbook", "iphone", "ipad", "imac", "laptop")
+    for dev in tech_devices:
+        clean_dev = "mac mini" if dev == "macmini" else dev
+        if clean_dev in plain_query and not any(acc in plain_query for acc in ("tui", "bao", "dan", "phim", "chuot", "hub", "de", "gia do")):
+            if re.search(rf"\b(?:cho|danh cho)\s+{re.escape(clean_dev)}\b", plain_name):
+                if not plain_name.startswith(clean_dev) and not plain_name.startswith(f"apple {clean_dev}"):
+                    return True
+    return False
+
+
+# Loại mặt hàng siêu thị theo danh từ đứng đầu tên (tiếng Việt: danh từ chính đứng trước, "sữa tắm sữa chua đào"
+# là sữa tắm). Thứ tự = thứ tự nhóm trong bảng kết quả. Từ khóa viết theo _plain (bỏ dấu, giữ "đ").
+_ITEM_KINDS = (
+    ("Thực phẩm tươi & sữa", (
+        "sua chua", "sua chua an", "thit", "ca", "tom", "muc", "cua", "ghe", "rau", "cu", "qua",
+        "trai cay", "trung", "nam", "đau hu", "đau phu", "gao", "bo", "heo", "ga", "vit", "phi le", "ba roi",
+        "suon", "kim chi", "kimchi", "pho mai", "pho mat",
+    )),
+    ("Đồ uống", (
+        "sua", "sua chua uong", "sua tuoi", "sua đau nanh", "sua hat", "sua bot", "nuoc ngot", "nuoc suoi",
+        "nuoc khoang", "nuoc tinh khiet", "nuoc ep", "nuoc tang luc", "nuoc dua", "tra", "ca phe", "cafe",
+        "bia", "ruou", "sinh to",
+    )),
+    ("Đồ ăn đóng gói & ăn vặt", (
+        "sua chua say", "banh", "keo", "snack", "mi goi", "mi an lien", "mi ly", "pho an lien", "chao an lien",
+        "đo hop", "pate", "xuc xich", "lap xuong", "mut", "ngu coc", "hat đieu", "rong bien", "kho ga", "kho bo",
+        "socola", "chocolate", "thach",
+    )),
+    ("Gia vị", (
+        "nuoc mam", "nuoc tuong", "xi dau", "tuong ot", "tuong ca", "hat nem", "bot ngot", "bot canh", "muoi",
+        "đuong", "dau an", "dau hao", "hat tieu", "tieu đen", "sot", "bot chien",
+    )),
+    ("Mỹ phẩm & chăm sóc cá nhân", (
+        "sua tam", "st", "dau goi", "dau xa", "sua rua mat", "kem duong", "duong the", "duong am", "sua duong",
+        "kem chong nang", "son moi", "nuoc hoa", "lan khu mui", "xit khu mui", "kem đanh rang", "ban chai",
+        "tay trang", "mat na", "xa phong", "nuoc rua tay", "serum", "toner",
+    )),
+    ("Tẩy rửa & gia dụng", (
+        "nuoc rua chen", "nuoc giat", "bot giat", "nuoc xa vai", "nuoc lau san", "nuoc lau kinh", "tay rua",
+        "tay bon cau", "xit con trung", "khan giay", "giay ve sinh",
+    )),
+)
+_NON_FOOD_KINDS = frozenset({"Mỹ phẩm & chăm sóc cá nhân", "Tẩy rửa & gia dụng"})
+
+
+def item_kind(name: str) -> str | None:
+    """Loại hàng của tên sản phẩm/từ khóa: từ khóa xuất hiện sớm nhất thắng, cùng chỗ thì từ khóa dài hơn
+    ("sữa chua uống" > "sữa chua" > "sữa"). Không khớp nhóm nào -> None (hàng công nghệ, điện máy...)."""
+    plain = _plain(name)
+    best = None
+    for kind, keywords in _ITEM_KINDS:  # ponytail: ~110 regex mỗi tên, đủ nhanh cho vài chục thẻ
+        for kw in keywords:
+            m = re.search(rf"(?<!\w){re.escape(kw)}(?!\w)", plain)
+            if m and (best is None or (m.start(), -len(kw)) < best[0]):
+                best = ((m.start(), -len(kw)), kind)
+    return best[1] if best else None
+
+
+def _is_unwanted_grocery(plain_name: str, plain_query: str) -> bool:
+    """Loại bỏ sản phẩm đồng âm hoặc lẫn lộn trong ngành hàng thực phẩm:
+    - Tìm đồ ăn uống thì bỏ mỹ phẩm/tẩy rửa trùng chữ ("sữa chua" ra "sữa tắm sữa chua đào", 2026-10-17) và ngược lại.
+    - Tìm trứng (trứng gà, trứng vịt, hột gà...): loại bỏ quả/trái lêkima (tên dân gian 'quả trứng gà')
+      trừ khi người dùng chủ đích tìm lêkima.
+    - Tìm trứng tươi/nguyên quả: loại bỏ bánh sandwich, bánh ngọt (vd sandwich trứng mayo + gà).
+    """
+    query_kind, name_kind = item_kind(plain_query), item_kind(plain_name)
+    if query_kind and name_kind and (query_kind in _NON_FOOD_KINDS) != (name_kind in _NON_FOOD_KINDS):
+        return True
+    if "trung" in plain_query:
+        if ("lekima" in plain_name or "le ki ma" in plain_name) and "lekima" not in plain_query:
+            return True
+        if any(b in plain_name for b in ("sandwich", "banh mi", "banh trung")) and not any(
+            b in plain_query for b in ("sandwich", "banh", "snack")
+        ):
+            return True
+    return False
 
 
 def _plain(text: str) -> str:
@@ -88,7 +176,7 @@ def _query_tokens(query: str) -> set[str]:
     return {
         token
         for token in re.findall(r"\w+", _plain(query))
-        if len(token) >= 3 and token not in _QUERY_STOPWORDS
+        if len(token) >= 2 and token not in _QUERY_STOPWORDS
     }
 
 
@@ -118,6 +206,7 @@ def _name_after_price(lines: list[str], index: int, query_tokens: set[str]) -> s
 def normalize_product_query(query: str) -> str:
     """Bỏ tiền tố ra lệnh, chỉ giữ từ khóa sản phẩm cho website bán lẻ."""
     cleaned = _PRODUCT_QUERY_PREFIX_RE.sub("", query.strip(), count=1).strip()
+    cleaned = re.sub(r"\bmacmini\b", "mac mini", cleaned, flags=re.IGNORECASE)
     return cleaned or query.strip()
 
 
@@ -129,6 +218,8 @@ def _has_kw(text: str, keywords: tuple[str, ...]) -> bool:
 def classify_product_query(query: str) -> str:
     """Phân loại nguồn cần tra mà không đưa logic mua sắm vào search_engine."""
     text = query.lower()
+    if _has_kw(text, _MEDICINE_KW):
+        return "pharmacy"
     if _has_kw(text, _APPLIANCE_KW):
         return "appliance"
     if _has_kw(text, _TECH_KW):
@@ -178,6 +269,10 @@ _FILLER_RE = re.compile(
     r"(?<!\w)(?:giá|hôm nay|hiện nay|hiện tại|bây giờ|mới nhất|bao nhiêu|tư vấn|giúp tôi|giúp|cho tôi|tôi muốn|muốn|mua|chọn)(?!\w)",
     re.IGNORECASE,
 )
+_STORE_FILLER_RE = re.compile(
+    r"(?<!\w)(?:(?:ở|tại|từ|bên)\s+)?(?:lotte\s*(?:mart|mark)?|coop\s*(?:online)?|co\.op\s*(?:online)?|winmart|vinmart|bách\s*hóa\s*xanh|bach\s*hoa\s*xanh|aeoneshop|aeon|tiki|shopee|điện\s*máy\s*xanh|thế\s*giới\s*di\s*động|cellphones|fpt\s*shop)(?!\w)",
+    re.IGNORECASE,
+)
 
 
 def site_keyword(query: str) -> str:
@@ -186,7 +281,9 @@ def site_keyword(query: str) -> str:
     query = query.strip()
     if "\n" not in query and len(query.split()) <= 12:
         plain = " ".join(_BUDGET_RE.sub(" ", _MIN_KG_RE.sub(" ", _TOP_RE.sub(" ", query))).split())
+        plain = " ".join(_STORE_FILLER_RE.sub(" ", plain).split())
         plain = " ".join(_FILLER_RE.sub(" ", re.sub(r"^đánh giá\s+", "", plain, flags=re.IGNORECASE)).split())
+        plain = re.sub(r"\bmacmini\b", "mac mini", plain, flags=re.IGNORECASE)
         return plain or query
     text = query.lower()
     hits = [
@@ -243,7 +340,7 @@ def build_source_urls(
     query: str,
     category: str,
     *,
-    lotte_store: str | None = None,
+    lotte_store: str | None = "vi-nsg",
 ) -> list[dict[str, str]]:
     """Tạo URL tìm kiếm theo đúng thanh tìm kiếm của từng nguồn."""
     encoded = quote_plus(query.strip())
@@ -275,6 +372,7 @@ def build_source_urls(
             "url": f"https://shopee.vn/search?keyword={encoded}",
         }, tiki]
 
+    active_lotte = lotte_store or "vi-nsg"
     sources = [
         {
             "source": "Bách Hóa Xanh",
@@ -282,16 +380,31 @@ def build_source_urls(
             "url": f"https://www.bachhoaxanh.com/tim-kiem?key={encoded}",
         },
         {
+            "source": "Co.op Online",
+            "keyword": query.strip(),
+            "url": f"https://cooponline.vn/search?router=productListing&query={quote(query.strip())}",
+        },
+        {
+            "source": "WinMart",
+            "keyword": query.strip(),
+            "url": f"https://winmart.vn/search/{encoded}",
+        },
+        {
+            "source": "LOTTE Mart",
+            "keyword": query.strip(),
+            "store": active_lotte,
+            "url": f"https://www.lottemart.vn/{active_lotte}/category?q={encoded}",
+        },
+        {
+            "source": "Emart",
+            "keyword": query.strip(),
+            "url": sources_mod.emart_search_url(query),
+        },
+        {
             "source": "AEONESHOP",
             "url": f"https://aeoneshop.com/products/search/{quote(query.strip())}",
         },
     ]
-    if lotte_store:
-        sources.append({
-            "source": "LOTTE Mart",
-            "store": lotte_store,
-            "url": f"https://www.lottemart.vn/{lotte_store}/category?q={encoded}",
-        })
     return sources
 
 
@@ -353,6 +466,8 @@ def _extract_rows(
         plain_name = _plain(name)
         if _is_unwanted_accessory(plain_name, _plain(query)):
             continue
+        if _is_unwanted_grocery(plain_name, _plain(query)):
+            continue
         if query_tokens and not any(
             re.search(rf"\b{re.escape(token)}\b", plain_name)
             for token in query_tokens
@@ -374,7 +489,9 @@ def _extract_rows(
     return list(rows_by_name.values())
 
 
-_CARD_SOURCES = frozenset({"Điện máy xanh", "Thế giới di động", "CellphoneS", "FPT Shop", "Bách Hóa Xanh", "Tiki"})
+_CARD_SOURCES = frozenset({
+    "Điện máy xanh", "Thế giới di động", "CellphoneS", "FPT Shop", "Bách Hóa Xanh", "Tiki", "Co.op Online", "WinMart", "LOTTE Mart", "Emart"
+})
 
 
 def _card_row(card: dict, source: str) -> dict[str, str]:
@@ -399,25 +516,88 @@ async def _load_cards(item: dict[str, str], url: str) -> list[dict]:
             more = await browser.post_json(sources_mod.BHX_SEARCH_API, sources_mod.bhx_search_body(item["keyword"], page=1), headers=headers)
             cards += sources_mod.parse_bhx(more)
         return cards
+    if item["source"] == "Co.op Online":
+        headers = {"Origin": sources_mod.COOP_BASE, "Referer": f"{sources_mod.COOP_BASE}/"}
+        data = await browser.post_json(sources_mod.COOP_SEARCH_API, sources_mod.coop_search_body(item["keyword"]), headers=headers)
+        return sources_mod.parse_coop(data)
+    if item["source"] == "WinMart":
+        headers = {"Origin": sources_mod.WINMART_BASE, "Referer": f"{sources_mod.WINMART_BASE}/search/{quote_plus(item['keyword'])}"}
+        data = await browser.post_json(sources_mod.WINMART_SEARCH_API, sources_mod.winmart_search_body(item["keyword"]), headers=headers)
+        return sources_mod.parse_winmart(data)
+    if item["source"] == "LOTTE Mart":
+        store = item.get("store") or "vi-nsg"
+        store_code = store.replace("-", "_")
+        api_url = sources_mod.LOTTE_SEARCH_API.format(store_code=store_code)
+        headers = {"Origin": sources_mod.LOTTE_BASE, "Referer": f"{sources_mod.LOTTE_BASE}/"}
+        data = await browser.post_json(api_url, sources_mod.lotte_search_body(item["keyword"]), headers=headers)
+        return sources_mod.parse_lotte(data, store=store)
+    if item["source"] == "Emart":
+        from scrapling.fetchers import AsyncFetcher
+        page = await AsyncFetcher.get(url, stealthy_headers=True, timeout=15000)
+        return sources_mod.parse_emart(str(page.html_content) if page else "", base_url=sources_mod.EMART_BASE)
     return sources_mod.parse_listing(url, await browser.fetch_listing_html(url))
 
 
 def _relevant_cards(cards: list[dict], term: str) -> list[dict]:
-    """Ô tìm kiếm của shop trả lẫn hàng chỉ khớp một chữ ("Airpods Pro 3" → "iPhone 18 Pro"): giữ thẻ có quá nửa từ khoá.
-    Không còn thẻ nào thì giữ nguyên để _missing_model_tokens báo kết quả gần nhất."""
-    tokens = [t for t in _query_tokens(term) if not t.isdigit()]
-    if len(tokens) < 2:
+    """Ô tìm kiếm của shop trả lẫn hàng:
+    - Nếu có thẻ khớp trọn vẹn cụm từ (vd "mac mini", "trứng gà"), ưu tiên giữ thẻ khớp trọn cụm.
+    - Với thực phẩm có tiền tố loại (thịt, rau, củ, quả, trái, hạt): giữ thẻ có chứa từ khóa thực phẩm chính (bò, muống...).
+    - Với từ đơn: bắt buộc thẻ phải chứa từ đó.
+    - Với nhiều từ: giữ thẻ có quá nửa từ khoá.
+    - Không còn thẻ nào thì giữ lại các thẻ có ít nhất 1 từ khoá NẾU có model bị thiếu
+      để _missing_model_tokens báo kết quả gần nhất, ngược lại loại bỏ hoàn toàn."""
+    clean_term = normalize_product_query(term)
+    plain_term = _plain(clean_term)
+    phrase = " ".join(plain_term.split())
+    tokens = [t for t in _query_tokens(clean_term) if not t.isdigit()]
+    if not tokens:
         return cards
+
+    # 1. Thẻ khớp trọn vẹn cụm từ (vd "mac mini", "trung ga")
+    if len(tokens) >= 2 and phrase:
+        exact = [c for c in cards if re.search(rf"\b{re.escape(phrase)}\b", _plain(c["name"]))]
+        if exact:
+            return exact
+
+    # 2. Với thực phẩm có tiền tố loại (thịt bò, rau muống, quả táo...)
+    grocery_prefixes = ("thit ", "rau ", "cu ", "trai ", "qua ", "hat ")
+    if any(plain_term.startswith(p) for p in grocery_prefixes):
+        core = [t for t in tokens if t not in ("thit", "rau", "cu", "trai", "qua", "hat")]
+        if core:
+            grocery_matches = [
+                c for c in cards
+                if all(re.search(rf"\b{re.escape(t)}\b", _plain(c["name"])) for t in core)
+            ]
+            if grocery_matches:
+                return grocery_matches
+
+    # 3. Với 1 từ khoá: bắt buộc phải có từ khoá đó
+    if len(tokens) == 1:
+        kept = [c for c in cards if re.search(rf"\b{re.escape(tokens[0])}\b", _plain(c["name"]))]
+        if kept:
+            return kept
+        return [c for c in cards if re.search(rf"\b{re.escape(tokens[0])}\b", _plain(c["name"]))]
+
+    # 4. Với nhiều từ khoá: giữ thẻ có quá nửa từ khoá
     kept = [c for c in cards if sum(bool(re.search(rf"\b{re.escape(t)}\b", _plain(c["name"]))) for t in tokens) * 2
             > len(tokens)]
-    return kept or cards
+    if kept:
+        return kept
+
+    # 5. Khi không có thẻ nào đạt quá nửa từ khoá: chỉ giữ lại thẻ có chứa ít nhất 1 từ khoá NẾU có model bị thiếu
+    if _missing_model_tokens(term, cards):
+        partial = [c for c in cards if any(re.search(rf"\b{re.escape(t)}\b", _plain(c["name"])) for t in tokens)]
+        if partial:
+            return partial
+
+    return []
 
 
 def _missing_model_tokens(term: str, cards: list[dict]) -> list[str]:
     """Số/mã máy trong từ khóa mà không thẻ nào có ("iphone 18" khi shop chỉ có 17): shop trả mẫu gần nhất,
     không báo thì người dùng tưởng đó là mẫu mình hỏi."""
     names = " ".join(_plain(card["name"]) for card in cards)
-    tokens = [t for t in re.findall(r"\w+", _plain(term)) if len(t) >= 2 and any(ch.isdigit() for ch in t)]
+    tokens = [t for t in re.findall(r"\w+", _plain(term)) if any(ch.isdigit() for ch in t)]
     return [t for t in dict.fromkeys(tokens) if not re.search(rf"(?<!\w){re.escape(t)}(?!\w)", names)]
 
 
@@ -438,11 +618,15 @@ async def _fetch_cards(
         raise pages[0]
     cards = list({c["url"]: c for page in pages if not isinstance(page, Exception) for c in page}.values())
     cards = [c for c in cards if not _is_unwanted_accessory(_plain(c["name"]), _plain(term))]
+    cards = [c for c in cards if not _is_unwanted_grocery(_plain(c["name"]), _plain(term))]
     cards = _relevant_cards(cards, term)
     # Ô tìm kiếm của shop khớp lỏng ("máy giặt 11kg" ra cả tủ lạnh, 2026-10-12): giữ đúng loại máy ngài hỏi
     kinds = [kw for kw in _APPLIANCE_KW if _has_kw(term.lower(), (kw,))]
     if kinds:
         cards = [c for c in cards if _has_kw(c["name"].lower(), tuple(kinds))]
+    # Ưu tiên trứng nguyên quả (hộp, vỉ, lốc, quả) trước tràng trứng / trứng non khi người dùng tìm trứng ăn thường
+    if "trung" in _plain(term) and not any(k in _plain(term) for k in ("non", "trang")):
+        cards.sort(key=lambda c: any(k in _plain(c["name"]) for k in ("trang trung", "trung non", "long do")))
     cards = list({(c["name"].casefold(), c["price_vnd"]): c for c in reversed(cards)}.values())[::-1]  # màu/sku khác, cùng tên cùng giá
     # so sánh: lấy mẫu khớp nhất của từng sản phẩm, không lọc theo nhu cầu
     kept = cards[:per_term] if per_term else rank_cards(cards, criteria, sort=sort)
@@ -464,7 +648,7 @@ async def _fetch_source(
     try:
         if item["source"] in _CARD_SOURCES:
             result = await _fetch_cards(item, query, criteria or {}, sort=sort, per_term=per_term)
-            if result[1] or result[0].get("note") or item["source"] in ("Bách Hóa Xanh", "Tiki"):
+            if result[1] or result[0].get("note") or item["source"] in ("Bách Hóa Xanh", "Tiki", "Co.op Online", "WinMart", "LOTTE Mart"):
                 return result
             # trang không có thẻ (vd Thế Giới Di Động chuyển thẳng sang trang chi tiết): đọc text như nguồn khác
         page = await browser.visit_product_listing(item["url"])
@@ -499,21 +683,28 @@ def _format_results(
         if any(row.get(key, "—") != "—" for _, rows in fetched for row in rows)
     ]
     rated = bool(extra_cols)
+    # cột Loại chỉ khi kết quả lẫn từ hai loại hàng trở lên (sữa chua ăn / uống / sấy), hàng xếp theo nhóm
+    pairs = [(source, row, item_kind(row["name"])) for source, rows in fetched for row in rows]
+    show_kind = len({kind for _, _, kind in pairs if kind}) >= 2
+    if show_kind:
+        order = [kind for kind, _ in _ITEM_KINDS]
+        pairs.sort(key=lambda p: order.index(p[2]) if p[2] else len(order))
     lines = [
         f"Kết quả tra giá cho **{query}**:",
         "",
-        "| Sản phẩm | Giá niêm yết |" + "".join(f" {title} |" for _, title, _ in extra_cols) + " Nguồn |",
-        "| :--- | ---: |" + "".join(f" {align} |" for _, _, align in extra_cols) + " :--- |",
+        "| Sản phẩm |" + (" Loại |" if show_kind else "") + " Giá niêm yết |"
+        + "".join(f" {title} |" for _, title, _ in extra_cols) + " Nguồn |",
+        "| :--- |" + (" :--- |" if show_kind else "") + " ---: |"
+        + "".join(f" {align} |" for _, _, align in extra_cols) + " :--- |",
     ]
-    found = False
-    for source, rows in fetched:
-        for row in rows:
-            found = True
-            extra = "".join(f" {row.get(key, '—')} |" for key, _, _ in extra_cols)
-            lines.append(
-                f"| {row['name']} | {row['price']} |{extra} "
-                f"[{source['source']}]({row['url']}) |"
-            )
+    found = bool(pairs)
+    for source, row, kind in pairs:
+        extra = "".join(f" {row.get(key, '—')} |" for key, _, _ in extra_cols)
+        kind_cell = f" {kind or 'Khác'} |" if show_kind else ""
+        lines.append(
+            f"| {row['name']} |{kind_cell} {row['price']} |{extra} "
+            f"[{source['source']}]({row['url']}) |"
+        )
     if not found:
         notes = [item["note"] for item, _ in fetched if item.get("note")]
         lines = [
@@ -542,9 +733,13 @@ async def search_products(query: str, ws=None) -> str:
         return "Vui lòng cho biết tên sản phẩm cần tra giá."
 
     category = classify_product_query(original_query)
+    if category == "pharmacy":
+        from engine.tools.pharmacy_engine import search_medicine
+        return await search_medicine(original_query, ws=ws)
+
     text = original_query.lower()
     lotte_choice = _lotte_choice(original_query) if category == "grocery" else None
-    lotte_store = lotte_choice[0] if lotte_choice else None
+    lotte_store = lotte_choice[0] if lotte_choice else "vi-nsg"
 
     criteria = parse_criteria(original_query)
     compare = split_compare(original_query)
@@ -561,10 +756,14 @@ async def search_products(query: str, ws=None) -> str:
         if category == "grocery":
             if "aeon" in text:
                 sources = [item for item in sources if item["source"] == "AEONESHOP"]
-            elif "lotte" in text and lotte_store:
+            elif "lotte" in text:
                 sources = [item for item in sources if item["source"] == "LOTTE Mart"]
             elif "bách hóa xanh" in text or "bach hoa xanh" in text:
                 sources = [item for item in sources if item["source"] == "Bách Hóa Xanh"]
+            elif "coop" in text or "co.op" in text:
+                sources = [item for item in sources if item["source"] == "Co.op Online"]
+            elif "winmart" in text or "vinmart" in text:
+                sources = [item for item in sources if item["source"] == "WinMart"]
         jobs += [
             _fetch_source(item, term, criteria, sort=sort, per_term=2 if compare else None)
             for item in sources

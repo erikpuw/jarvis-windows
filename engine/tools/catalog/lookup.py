@@ -3,9 +3,9 @@ from engine.tools.registry import tool
 
 
 @tool()
-async def weather(location: str) -> str:
+async def weather(location: str, ctx=None) -> str:
     from engine.tools.weather_engine import weather_search
-    return await weather_search(location)
+    return await weather_search(location, question=ctx.user_text)
 
 
 @tool()
@@ -25,6 +25,12 @@ async def market_price(item: str, ctx=None) -> str:
 async def search_products(query: str, ctx=None) -> str:
     from engine.tools.shop_engine import search_products as _search
     return await _search(query, ws=ctx.ws)
+
+
+@tool(display=True)
+async def search_medicine(query: str, ctx=None) -> str:
+    from engine.tools.pharmacy_engine import search_medicine as _search
+    return await _search(query, ws=getattr(ctx, "ws", None) if ctx else None)
 
 
 @tool()
@@ -58,9 +64,9 @@ async def legal_lookup(query: str) -> str:
 
 
 @tool()
-async def vn_admin_lookup(query: str) -> str:
+async def vn_admin_lookup(query: str, ctx=None) -> str:
     from engine.tools.search_engine import handle_vietnam_data_query
-    return await handle_vietnam_data_query(query)
+    return await handle_vietnam_data_query(query, question=ctx.user_text)
 
 
 @tool()

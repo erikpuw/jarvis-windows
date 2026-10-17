@@ -96,7 +96,7 @@ def test_same_product_and_price_from_color_variants_is_listed_once(monkeypatch):
 def test_bhx_asks_the_next_page_when_the_first_has_few_exact_matches(monkeypatch):
     seen = _patch_network(monkeypatch, bhx={"code": 0, "data": {"products": BHX["data"]["products"][:1]}})
     asyncio.run(shop.search_products("kimchi"))
-    assert [b["pageIndex"] for b in seen["post"]] == [0, 1]
+    assert [b["pageIndex"] for b in seen["post"] if "pageIndex" in b] == [0, 1]
 
 
 def test_unrated_cards_are_not_ranked_below_rated_low_sellers():
@@ -115,6 +115,14 @@ def _patch_network(monkeypatch, html_by_host=None, bhx=None):
 
     async def fake_post(url, body, headers=None):
         seen["post"].append(body)
+        if "bachhoaxanh" in url:
+            return bhx or {"code": 30000}
+        if "winmart" in url:
+            return {"data": []}
+        if "cooponline" in url:
+            return {"result": {"products": []}}
+        if "lottemart" in url:
+            return {"data": {"items": []}}
         return bhx or {"code": 30000}
     async def fake_text_page(url):  # đường dự phòng đọc text khi nguồn không có thẻ: không ra mạng thật
         return type("Page", (), {"text_content": ""})()
@@ -142,3 +150,86 @@ def test_missing_model_number_is_reported_instead_of_silently_showing_other_mode
     _patch_network(monkeypatch, {"cellphones.com.vn": CELLPHONES})
     out = asyncio.run(shop.search_products("giá iphone 18 pro hôm nay"))
     assert "18" in out.split("Lưu ý")[1] and "iPhone 17 Pro 256GB" in out
+
+
+def test_item_kind_reads_the_head_noun_not_the_scent():
+    assert shop.item_kind("HAZELINE Sữa tắm sữa chua đào 670g") == "Mỹ phẩm & chăm sóc cá nhân"
+    assert shop.item_kind("HAZELINE St sữa chua linh lan 670g") == "Mỹ phẩm & chăm sóc cá nhân"
+    assert shop.item_kind("Lốc 4 hộp sữa chua ăn ít đường Nutimilk 100g") == "Thực phẩm tươi & sữa"
+    assert shop.item_kind("Sữa Chua Uống Vinamilk Probi Chai 700ml") == "Đồ uống"
+    assert shop.item_kind("Sữa Chua Sấy Thập Cẩm Yov 60G") == "Đồ ăn đóng gói & ăn vặt"
+    assert shop.item_kind("Nước mắm Nam Ngư 500ml") == "Gia vị"
+    assert shop.item_kind("Nước rửa chén Sunlight chanh 750g") == "Tẩy rửa & gia dụng"
+    assert shop.item_kind("iPhone 17 Pro 256GB") is None
+
+
+def test_food_query_drops_cosmetics_and_cosmetic_query_drops_food():
+    p = shop._plain
+    assert shop._is_unwanted_grocery(p("HAZELINE Sữa tắm sữa chua đào 670g"), p("sữa chua"))
+    assert not shop._is_unwanted_grocery(p("Sữa Chua Uống Vinamilk Probi 700ml"), p("sữa chua"))
+    assert shop._is_unwanted_grocery(p("Sữa chua Vinamilk có đường 100g"), p("sữa tắm sữa chua"))
+    assert not shop._is_unwanted_grocery(p("Sữa tắm Hazeline sữa chua"), p("sữa tắm sữa chua"))
+
+
+def test_mixed_kinds_get_a_kind_column_grouped_by_kind():
+    src = {"source": "WinMart", "url": "u"}
+    rows = [{"name": n, "price": "1₫", "url": "u"} for n in (
+        "Sữa Chua Uống Probi 700ml", "Sữa chua ăn Vinamilk 100g", "Sữa chua uống TH 180ml")]
+    lines = shop._format_results("sữa chua", {}, [(src, rows)]).split("\n")
+    assert lines[2] == "| Sản phẩm | Loại | Giá niêm yết | Nguồn |"
+    body = [l for l in lines if l.startswith("| Sữa")]
+    assert "Thực phẩm tươi & sữa" in body[0] and all("Đồ uống" in l for l in body[1:])
+
+
+EMART = """<div class="product-layout product-grid col-lg-3 col-md-3 col-sm-6 col-xs-12">
+  <div class="product-thumb">
+    <div class="product-meta">
+      <div class="name"><a href="https://emartmall.com.vn/index.php?route=product/product&product_id=22032">Thạch Sữa Chua ABC 930G</a></div>
+      <div class="price">
+        <span class="price-new">55.900₫</span>
+        <span class="price-old">62.000₫</span>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="product-layout product-grid col-lg-3 col-md-3 col-sm-6 col-xs-12">
+  <div class="product-thumb">
+    <div class="product-meta">
+      <div class="name"><a href="/index.php?route=product/product&product_id=12345">Sữa Chua Ăn Vinamilk 100g</a></div>
+      <div class="price">7.500₫</div>
+    </div>
+  </div>
+</div>
+<div class="product-layout product-grid col-lg-3 col-md-3 col-sm-6 col-xs-12">
+  <div class="product-thumb">
+    <div class="product-meta">
+      <div class="name"><a href="/no-price">Hết hàng không giá</a></div>
+      <div class="price"></div>
+    </div>
+  </div>
+</div>"""
+
+
+def test_emart_markup_gives_name_price_and_url():
+    cards = src.parse_listing("https://emartmall.com.vn/index.php?search=sữa+chua", EMART)
+    assert len(cards) == 2
+    assert cards[0] == {
+        "name": "Thạch Sữa Chua ABC 930G",
+        "price_vnd": 55900,
+        "rating": None,
+        "sold": 0,
+        "url": "https://emartmall.com.vn/index.php?route=product/product&product_id=22032",
+    }
+    assert cards[1] == {
+        "name": "Sữa Chua Ăn Vinamilk 100g",
+        "price_vnd": 7500,
+        "rating": None,
+        "sold": 0,
+        "url": "https://emartmall.com.vn/index.php?route=product/product&product_id=12345",
+    }
+
+
+def test_build_source_urls_includes_emart_for_grocery():
+    urls = shop.build_source_urls("sữa chua", "grocery")
+    sources = [u["source"] for u in urls]
+    assert "Emart" in sources

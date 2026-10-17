@@ -4,11 +4,9 @@ import logging
 import asyncio
 from pathlib import Path
 from typing import Optional, Any, List, Dict
-from collections import Counter
 
 import numpy as np
 from turbovec import IdMapIndex
-from rank_bm25 import BM25Okapi
 
 import re
 import unicodedata
@@ -48,7 +46,7 @@ def clean_document_text(text: str) -> str:
     return unicodedata.normalize("NFC", text.strip())
 
 class RAGEngine:
-    """HyperRAG Engine combining turbovec Dense Search, BM25 Sparse Search and RRF Fusion."""
+    """RAG engine: turbovec dense search over document chunks."""
     def __init__(self, dim: int = 768, persistent: bool = True):
         self.dim = dim
         self.persistent = persistent
@@ -56,7 +54,6 @@ class RAGEngine:
         self.embed_client: Optional[Any] = None
         self.chunks: List[Dict[str, Any]] = []
         self.vector_index: Optional[IdMapIndex] = None
-        self.bm25_index: Optional[BM25Okapi] = None
         self.enabled = False
         self._needs_rebuild = False
         # Guards _rebuild_vector_index() so concurrent callers (e.g. two
@@ -132,7 +129,6 @@ class RAGEngine:
             self.enabled = bool(self.chunks)
 
         self._ensure_next_id()
-        self._rebuild_bm25()
 
     def _save_index(self):
         """Save vector and metadata index to disk.
@@ -165,16 +161,6 @@ class RAGEngine:
             log.info(f"Saved RAG index with {len(self.chunks)} chunks to disk")
         except Exception as e:
             log.error(f"Failed to save RAG index: {e}", exc_info=True)
-
-    def _rebuild_bm25(self):
-        """Build/rebuild the BM25 index from current chunks."""
-        if not self.chunks:
-            self.bm25_index = None
-            return
-            
-        corpus = [c["content"].lower().split() for c in self.chunks]
-        self.bm25_index = BM25Okapi(corpus)
-        log.info("Rebuilt BM25 index")
 
     def _chunk_text(self, text: str, chunk_size: int = 800, overlap: int = 150) -> List[str]:
         """Simple character-based chunking with overlap."""
@@ -358,7 +344,6 @@ class RAGEngine:
             # 3. Save persistent indexes only for the shared RAG workflow.
             if self.persistent:
                 await asyncio.to_thread(self._save_index)
-            self._rebuild_bm25()
             
             self.enabled = True
             return {
@@ -427,7 +412,6 @@ class RAGEngine:
 
             if self.persistent:
                 await asyncio.to_thread(self._save_index)
-            self._rebuild_bm25()
             self.enabled = bool(self.chunks)
             return {
                 "success": True,
@@ -443,7 +427,6 @@ class RAGEngine:
                     dim=self.dim,
                     bit_width=4,
                 )
-            self._rebuild_bm25()
             log.error(
                 "Failed to index prepared RAG pages: %s",
                 exc,
@@ -463,128 +446,39 @@ class RAGEngine:
         top_k: int = 5,
         max_tokens: int = 0,
         rerank_pool: int = 50,
-        min_score: float = 0.0,
+        rel_cut: float = 0.0,
     ) -> List[Dict[str, Any]]:
-        """
-        HyperRAG retrieval: TurboVec dense → BM25 sparse → RRF fusion → rerank → budget trim.
+        """Đoạn gần nghĩa nhất theo vector (turbovec), điểm cao trước; mỗi đoạn mang "score" (cosine).
+
+        2026-10-17 (tests/live/probes/rag_probe.py, 16 câu): rerank cũ BM25 + RRF + trùng âm tiết + vị trí làm
+        phần nghĩa chỉ còn ~4% điểm (top1 12/16, "thực đơn thứ 5" ra sách AI); chỉ vector: 15/16. BM25 còn bỏ sót
+        từ dính dấu câu ("khachquy2026") mà vector vẫn tìm ra.
 
         Args:
-            query: User query string.
-            top_k: Số chunk trả về sau rerank.
-            max_tokens: Nếu >0, trim chunks để tổng token ≤ max_tokens.
-            rerank_pool: Pool size trước rerank (lớn hơn giúp rerank có nhiều ứng viên).
+            top_k: số đoạn tối đa trả về.
+            max_tokens: >0 thì cắt bớt để tổng token ≤ max_tokens.
+            rerank_pool: số ứng viên lấy từ turbovec.
+            rel_cut: >0 thì chỉ giữ đoạn có điểm ≥ điểm cao nhất − rel_cut (bỏ đoạn kém hẳn khỏi prompt và nguồn).
         """
         if not self.chunks:
             return []
 
         try:
             await self._ensure_vector_index_ready()
+            query_np = np.array([await self._get_embedding(query)], dtype=np.float32)
+            scores, ids = self.vector_index.search(query_np, k=min(len(self.chunks), rerank_pool))
 
-            # ── 1. DENSE VECTOR SEARCH ──
-            query_embedding = await self._get_embedding(query)
-            query_np = np.array([query_embedding], dtype=np.float32)
+            by_id = {c["id"]: c for c in self.chunks}
+            results = [{**by_id[int(i)], "score": round(float(s), 4)}
+                       for s, i in zip(scores[0], ids[0]) if i != -1 and int(i) in by_id]
+            results.sort(key=lambda r: r["score"], reverse=True)
+            if rel_cut > 0 and results:
+                results = [r for r in results if r["score"] >= results[0]["score"] - rel_cut]
 
-            search_k = min(len(self.chunks), rerank_pool)
-            dense_scores, dense_indices = self.vector_index.search(query_np, k=search_k)
-
-            dense_results = []
-            if len(dense_indices) > 0 and len(dense_indices[0]) > 0:
-                for idx, score in zip(dense_indices[0], dense_scores[0]):
-                    if idx != -1:
-                        dense_results.append(int(idx))
-
-            # ── 2. SPARSE KEYWORD SEARCH (BM25) ──
-            sparse_results = []
-            tokenized_query = query.lower().split()
-            q_word_counts = Counter(tokenized_query)
-
-            if self.bm25_index is not None:
-                bm25_scores = self.bm25_index.get_scores(tokenized_query)
-                sorted_indices = np.argsort(bm25_scores)[::-1]
-                # sorted_indices are positions in the BM25 corpus (built
-                # positionally from self.chunks), not chunk["id"] — chunk ids
-                # are stable across removals and no longer equal list
-                # position, so translate through self.chunks here.
-                for pos in sorted_indices[:search_k]:
-                    if bm25_scores[pos] > 0:
-                        sparse_results.append(int(self.chunks[pos]["id"]))
-
-            # ── 3. RECIPROCAL RANK FUSION (RRF) ──
-            k_rrf = 60.0
-            rrf_scores: Dict[int, float] = {}
-
-            for rank, chunk_id in enumerate(dense_results):
-                rrf_scores[chunk_id] = rrf_scores.get(chunk_id, 0.0) + (1.0 / (k_rrf + rank))
-
-            for rank, chunk_id in enumerate(sparse_results):
-                rrf_scores[chunk_id] = rrf_scores.get(chunk_id, 0.0) + (1.0 / (k_rrf + rank))
-
-            sorted_rrf = sorted(rrf_scores.items(), key=lambda item: item[1], reverse=True)
-
-            # ── 4. MULTI-SIGNAL RERANKER ──
-            q_words = set(q_word_counts.keys())
-            q_len = len(q_words)
-
-            chunks_by_id = {c["id"]: c for c in self.chunks}
-            reranked_results = []
-            for chunk_id, rrf_score in sorted_rrf[:rerank_pool]:
-                chunk_entry = chunks_by_id.get(chunk_id)
-                if chunk_entry is None:
-                    continue
-                chunk_meta = chunk_entry.copy()
-                content = chunk_meta["content"]
-                content_lower = content.lower()
-                c_words = content_lower.split()
-                c_word_set = set(c_words)
-
-                # Signal 1: Query term coverage (% query words xuất hiện trong chunk)
-                coverage = len(q_words.intersection(c_word_set)) / max(q_len, 1)
-
-                # Signal 2: Keyword density (tần suất query words / total words)
-                c_word_counts = Counter(c_words)
-                density = sum(c_word_counts.get(w, 0) for w in q_words) / max(len(c_words), 1)
-
-                # Signal 3: Position bias (chunk đầu tài liệu có score nhẹ).
-                # Uses the chunk's position inside its own document. This read
-                # chunk_id back when ids were list positions; once ids became
-                # stable and monotonic, every chunk past the first 100 ever
-                # indexed scored a flat 0.5 and the signal was dead. Chunks
-                # without the field (pre-doc_index metadata) get the midpoint.
-                pos_bonus = 1.0 - min(chunk_meta.get("doc_index", 50), 100) / 200.0
-
-                # Signal 4: Length normalization
-                token_est = self._estimate_tokens(content)
-                if token_est < 15 or token_est > 600:
-                    len_penalty = 0.5
-                elif token_est < 30:
-                    len_penalty = 0.8
-                else:
-                    len_penalty = 1.0
-
-                # Hybrid score: RRF 45% + coverage 25% + density 15% + position 10% + length 5%
-                hybrid_score = (
-                    rrf_score * 0.45
-                    + coverage * 0.25
-                    + density * 0.15
-                    + pos_bonus * 0.10
-                    + len_penalty * 0.05
-                )
-
-                chunk_meta["rrf_score"] = rrf_score
-                chunk_meta["hybrid_score"] = round(hybrid_score, 4)
-                chunk_meta["coverage"] = round(coverage, 3)
-                chunk_meta["token_est"] = token_est
-                reranked_results.append(chunk_meta)
-
-            reranked_results.sort(key=lambda x: x["hybrid_score"], reverse=True)
-            if min_score > 0:
-                reranked_results = [r for r in reranked_results if r["hybrid_score"] >= min_score]
-
-            # ── 5. TOKEN BUDGET TRIM ──
             if max_tokens > 0:
                 trimmed = []
                 used = 0
-                for cm in reranked_results:
+                for cm in results:
                     needed = cm["token_est"]
                     if used + needed <= max_tokens:
                         trimmed.append(cm)
@@ -595,11 +489,8 @@ class RAGEngine:
                             trimmed.append(cm)
                             used += needed
                         break
-                reranked_results = trimmed[:top_k]
-            else:
-                reranked_results = reranked_results[:top_k]
-
-            return reranked_results
+                results = trimmed
+            return results[:top_k]
 
         except Exception as e:
             log.error(f"Error during RAG retrieval: {e}", exc_info=True)
@@ -630,7 +521,6 @@ class RAGEngine:
             self.enabled = False
             if self.persistent:
                 await asyncio.to_thread(self._save_index)
-            self._rebuild_bm25()
             return True
 
         failed = 0
@@ -664,7 +554,6 @@ class RAGEngine:
 
         if self.persistent:
             await asyncio.to_thread(self._save_index)
-        self._rebuild_bm25()
         self.enabled = bool(self.chunks)
         return True
 
@@ -707,7 +596,6 @@ class RAGEngine:
 
         if self.persistent:
             await asyncio.to_thread(self._save_index)
-        self._rebuild_bm25()
         self.enabled = bool(self.chunks)
         log.info(f"Removed {len(removed_ids)} chunks for: {file_path}")
         return len(removed_ids)
@@ -734,7 +622,6 @@ class RAGEngine:
 
         if self.persistent:
             await asyncio.to_thread(self._save_index)
-        self._rebuild_bm25()
         self.enabled = bool(self.chunks)
         log.info(f"Pruned {len(removed_ids)} orphaned chunks during RAG lifecycle sync")
         return len(removed_ids)

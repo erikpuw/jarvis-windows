@@ -1,5 +1,6 @@
 """System prompt của vòng lặp (spec mục 1.2): prompt/jarvis.md + <cach_lam_viec> (turn_tool.md: chọn tool bằng JSON,
-kèm <cong_cu>; turn_answer.md: trả lời bằng chữ thường) + <giong_dieu> + <nguoi_dung> + <thoi_gian>
+kèm <cong_cu>; turn_answer_result.md / turn_answer_chat.md + <kha_nang>: trả lời bằng chữ thường) + <giong_dieu>
++ <nguoi_dung> + <thoi_gian>
 (+ <voice_cues> khi TTS vieneu). Đọc thẳng file (có dấu ngoặc nhọn, không qua str.format)."""
 import logging
 import re
@@ -55,14 +56,21 @@ def _preferences() -> str:
     return "\n".join(lines)
 
 
-def system_prompt(tool_names: list[str], answer: bool = False) -> str:
-    """answer = vòng trả lời bằng chữ thường: không giao kèo JSON; danh mục công cụ chỉ có tên + mô tả."""
+def system_prompt(tool_names: list[str], answer: bool = False, ran_tool: bool = False) -> str:
+    """answer = vòng trả lời bằng chữ thường, không giao kèo JSON. Code chọn prompt, không để model tự phân biệt
+    (2026-10-17 answer_probe: chào là liệt kê khả năng + mời 5/6):
+    ran_tool → turn_answer_result.md, chỉ báo <ket_qua>, không danh mục (khỏi mời thêm việc);
+    không tool → turn_answer_chat.md + <kha_nang> tên + mô tả, để biết việc nào chưa làm được (log 2026-10-12
+    19:50-20:07: không thấy danh mục → bịa khả năng)."""
     from engine.core.evolution import style_lines
     parts = [_read(PROMPT_DIR / "jarvis.md")]
-    if answer:  # chỉ tên + mô tả: để biết mình làm được gì (log 19:50-20:07: không thấy danh mục → bịa khả năng)
-        # tên gọi, không tên hàm: vòng này viết cho ngài đọc, thấy tên hàm là chép ra (ngài 2026-10-16)
+    if answer and ran_tool:
+        parts.append(_read(PROMPT_DIR / "turn_answer_result.md"))
+    elif answer:  # tên gọi, không tên hàm: vòng này viết cho ngài đọc, thấy tên hàm là chép ra (ngài 2026-10-16)
         tools = "\n".join(f"- {registry.label(n)}: {registry.description(n)}" for n in tool_names)
-        parts += [_read(PROMPT_DIR / "turn_answer.md"), f"<cong_cu>\n{tools}\n</cong_cu>"]
+        parts += [_read(PROMPT_DIR / "turn_answer_chat.md"),
+                  f"<kha_nang>\nDữ liệu tham khảo: các việc bạn làm được qua công cụ, để biết việc nào chưa làm được; "
+                  f"chỉ kể ra khi ngài hỏi.\n{tools}\n</kha_nang>"]
     else:
         parts += [_read(PROMPT_DIR / "turn_tool.md"),
                   f"<cong_cu>\n{registry.catalog_text(tool_names, _tool_rules())}\n</cong_cu>"]

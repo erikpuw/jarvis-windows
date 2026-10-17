@@ -1,5 +1,0 @@
-Distil this completed Jarvis workflow into concise metadata. The execution has already been verified as successful. Do not approve, reject, score, reroute, or replace any executed tool. Return JSON only: {"intent":"concise canonical user intent","agent":"exact executed agent","tools":["exact executed tool names"]}. USER_REQUEST: mở notepad
-EXECUTED_AGENT: desktop
-EXECUTED_TOOLS: ["open_app"]
-RESULT: Đã mở Notepad.
-TRACES: [{"action_name": "open_app", "args": {"app_name": "notepad"}, "outcome": "success", "timestamp": 1000}]

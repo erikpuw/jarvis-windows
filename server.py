@@ -30,16 +30,13 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
 
-from openai import AsyncOpenAI, OpenAI
+from openai import AsyncOpenAI
 import httpx
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # Reconnected core and tools modules
-from engine.core.memory import (
-    SemanticMemoryEngine,
-)
 from engine.main.welcome import send_welcome
 from engine.core.session_context import resolve_ws_session, resume_history, set_session
 from engine.server.ws_sessions import ActiveSessions
@@ -192,7 +189,6 @@ async def generate_response_stream(
 
 # Shared state
 openai_client: Optional[AsyncOpenAI] = None
-embed_client: Optional[OpenAI] = None
 _stream_tts_proc: Optional[asyncio.subprocess.Process] = None
 _stream_tts_log = None
 
@@ -444,7 +440,7 @@ def _cost_from_tokens(input_t: int, output_t: int) -> float:
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     global _telegram_bot, _telegram_bot_task, _mcp_connect_task
-    global openai_client, embed_client, _stream_tts_proc, _stream_tts_log
+    global openai_client, _stream_tts_proc, _stream_tts_log
     
     # Load .env into os.environ for modules that use os.getenv
     try:
@@ -469,17 +465,6 @@ async def lifespan(application: FastAPI):
     else:
         log.warning("LOCAL_API_KEY not set — LLM features disabled")
 
-    # Initialize local embedding client pointing to LOCAL_EMBED_URL
-    local_embed_api = os.getenv("LOCAL_EMBED_API")
-    local_embed_url = os.getenv("LOCAL_EMBED_URL")
-    if local_embed_api and local_embed_url:
-        try:
-            embed_client = OpenAI(api_key=local_embed_api, base_url=local_embed_url)
-            log.info(f"Initialized local embedding client pointing to {local_embed_url}")
-        except Exception as embed_ex:
-            log.warning(f"Failed to initialize embed_client: {embed_ex}")
-    else:
-        log.warning("LOCAL_EMBED_API or LOCAL_EMBED_URL not set — local embedding features disabled")
 
  
     # Initialize modules
@@ -489,18 +474,6 @@ async def lifespan(application: FastAPI):
         skill_mgr.scan_skills()
         log.info(f"Skills: {len(skill_mgr.skills)}")
 
-        # RAG is initialized lazily by agent_rag when an attachment needs it.
-        if embed_client is not None:
-            SemanticMemoryEngine.get_instance().set_embed_client(embed_client)
-            # Chủ động khởi tạo semantic memory cache sau khi có embed client
-            try:
-                await asyncio.to_thread(SemanticMemoryEngine.get_instance().initialize_cache)
-            except Exception as sem_ex:
-                log.warning(f"Failed to initialize semantic cache at startup: {sem_ex}")
-
-        # Không nạp vector định tuyến lúc khởi động vì đã dùng Fast Keyword Router
-        pass
-            
     except Exception as e:
         log.warning(f"Skill manager init failed: {e}")
 
@@ -525,16 +498,6 @@ async def lifespan(application: FastAPI):
         _mcp_connect_task = asyncio.create_task(hub.connect_all(), name="mcp-connect-all")
     except Exception as e:
         log.warning(f"MCP server init failed: {e}")
-
-    try:
-        from engine.server.redis_server import connect_redis, worker_loop
-        if await connect_redis():
-            redis_worker_task = asyncio.create_task(worker_loop())
-            _background_tasks.add(redis_worker_task)
-            redis_worker_task.add_done_callback(_background_tasks.discard)
-            log.info("Redis worker loop started")
-    except Exception as e:
-        log.warning(f"Redis init failed: {e}")
 
     # Tự động kết nối hoặc khởi chạy stream_tts (port 8082)
     try:
@@ -727,14 +690,6 @@ async def lifespan(application: FastAPI):
             log.warning(f"Plugin unload failed: {e}")
 
         try:
-            from engine.server.redis_server import close_redis
-            await asyncio.wait_for(close_redis(), timeout=5.0)
-        except asyncio.TimeoutError:
-            log.warning("Redis close timed out")
-        except Exception as e:
-            log.warning(f"Redis close failed: {e}")
-
-        try:
             from engine.core.learning import get_learning_engine
             await asyncio.wait_for(
                 get_learning_engine().shutdown_learning_scheduler(), timeout=3.0
@@ -760,8 +715,8 @@ async def lifespan(application: FastAPI):
         log.warning("Overall lifespan shutdown timed out after 10s")
     finally:
         # Catch-all: force-kill every descendant server.py spawned (stream_tts,
-        # redis if self-started, MCP stdio subprocesses, tool helpers) so nothing
-        # is orphaned holding ports 8082/8340/6379. llama-server and headroom
+        # MCP stdio subprocesses, tool helpers) so nothing
+        # is orphaned holding ports 8082/8340. llama-server and headroom
         # live outside this process tree and are untouched.
         try:
             from engine.core.process_tree import kill_descendants
@@ -829,6 +784,11 @@ async def voice_handler(ws: WebSocket):
     # (?session=) nên socket nối lại (iPhone thoát app rồi vào lại) vẫn là phiên cũ, lịch sử không bị tách.
     ws.session_id = resolve_ws_session(ws.query_params.get("session"))
     set_session(ws.session_id)
+    try:  # thiết bị của phiên (desktop / ios / android), cho Settings → Bộ nhớ biết "web trên iPhone"
+        from engine.core.memory import record_session_device
+        await asyncio.to_thread(record_session_device, ws.session_id, device_type)
+    except Exception as e:
+        log.warning(f"Không ghi được thiết bị của phiên {ws.session_id}: {e}")
     _ws_sessions.add(ws)
     _active_ws_session = ws
 

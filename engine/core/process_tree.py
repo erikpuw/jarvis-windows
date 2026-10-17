@@ -1,9 +1,9 @@
 """Process-tree utilities for clean shutdown on Windows.
 
 JARVIS runs a two-process model (supervisor -> worker). The worker spawns
-stream_tts, redis (when self-started), MCP stdio subprocesses, and tool
+stream_tts, MCP stdio subprocesses, and tool
 helpers. Force-killing the worker alone orphans those descendants and they
-keep holding ports (8082, 8340, 6379). This module enumerates every
+keep holding ports (8082, 8340). This module enumerates every
 descendant PID that server.py spawned and force-kills them all, which is the
 "các pid của server.py chạy cái nào là kill cái đó" pattern.
 

@@ -3,8 +3,6 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
-import sys
-
 import pytest
 
 import engine.core.rag_engine as rag_engine_mod
@@ -108,7 +106,6 @@ def test_save_strips_directories_from_filename(env):
     assert [p.name for p in env.watch.iterdir()] == ["evil.pdf"]
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="So khớp đường dẫn không phân biệt hoa/thường là hành vi của Windows (os.path.normcase)")
 def test_save_returns_document_summary_after_indexing(env):
     """2026-10-14: lưu xong chỉ nói "Đã lưu X: N đoạn" → kèm tài liệu nói về gì (đọc đoạn của đúng tệp đó)."""
     import engine.rag.summary as summary_mod

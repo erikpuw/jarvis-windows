@@ -41,7 +41,8 @@ def env(monkeypatch):
     R._register_for_test(news, doc="Tin.\n\ntopic: chủ đề\n")
     monkeypatch.setattr("engine.core.trace_logger.TraceLogger.log_trace", staticmethod(lambda *a, **k: None))
     monkeypatch.setattr("engine.core.guardrails.verify_output", lambda n, a: (True, ""))
-    monkeypatch.setattr("engine.turn.prompt.system_prompt", lambda names, answer=False: ("ANS" if answer else "SYS ") + ",".join(names))
+    monkeypatch.setattr("engine.turn.prompt.system_prompt", lambda names, answer=False, ran_tool=False:
+                        ("RESULT" if ran_tool else "ANS" if answer else "SYS ") + ("" if ran_tool else ",".join(names)))
     monkeypatch.setattr("engine.turn.outcome.save_turn",
                         lambda *a, **k: state.setdefault("saved", []).append((a, k)))
     monkeypatch.setattr("engine.turn.corrections.lookup", lambda text: [])
@@ -116,7 +117,7 @@ def test_tool_then_answer_say_before_result_display_once(env):
     assert json.loads(second[-2]["content"])["tool"] == "market_price"
     answer = env["calls"][2]["messages"]
     assert answer[-2] == {"role": "assistant", "content": "Tôi xem giá vàng."}
-    assert "ngài đã thấy bảng này" in answer[-1]["content"] and "Nói ngắn." in answer[-1]["content"]
+    assert 'da_hien="có"' in answer[-1]["content"] and "Nói ngắn." in answer[-1]["content"]
     assert not any("|" in s for s in env.get("tts", []))          # TTS không đọc bảng
     assert ctx.ws.last_turn["steps"][0]["tool"] == "market_price"
     assert ctx.ws.last_turn["final_say"] == "Vàng đang 144,8 triệu thưa ngài."
@@ -635,6 +636,50 @@ def test_system_gate_lets_explicit_check_through():
     assert L._off_target("system_status", "tôi đang xem hệ thống hoạt động ra sao")
 
 
+def test_place_and_service_requests_never_go_to_shop_or_encyclopedia():
+    """honesty_probe 2026-10-17: tìm khách sạn/quán → search_products (mô tả đã ghi "không dùng" vẫn chọn; nói lại
+    yêu cầu đã lỗi thì luật "gọi lại công cụ đó" thắng). Chưa có công cụ tìm địa điểm → code chặn, lượt thành trò chuyện."""
+    for t in ("tìm khách sạn ở Đà Lạt giá rẻ", "vậy tìm đi, tìm quán cà phê ở quận 6 xem", "nhà hàng nào ngon gần đây",
+              "đặt bàn tối nay 4 người", "homestay view đẹp", "đặt giúp tôi vé máy bay đi Hà Nội tối nay"):
+        assert L._off_target("search_products", t) and L._off_target("lookup_knowledge", t), t
+    for t in ("giá airpods pro 3", "mua nồi chiên không dầu", "cà phê hạt rang xay loại nào ngon"):
+        assert not L._off_target("search_products", t), t
+    assert not L._off_target("lookup_knowledge", "Hồ Chí Minh sinh năm nào")
+
+
+def test_place_names_from_model_memory_are_cut_when_no_tool_ran(env):
+    """honesty_probe 2026-10-17: "tìm quán cà phê" → không tool (đúng) nhưng vòng trả lời kể tên quán theo trí nhớ
+    model ("The Note Coffee", "The Coffee House"); prompt đã dặn vẫn kể. Code bỏ dòng tên riêng + câu dẫn ":"."""
+    env["script"] = [{"tool": "none"}, "À, quận 6 có nhiều chỗ lắm, tôi gợi ý mấy quán này nha:\n"
+                                       "* **The Note Coffee:** không gian ấm cúng. Giá ổn.\n"
+                                       "* **Cộng Cà Phê:** phong cách vintage.\n"
+                                       "*   **The Coffee House (Chi nhánh Quận 6):** ngồi xa tiếng ồn.\n"
+                                       "*   **Quán cà phê sách:** thường yên tĩnh.\n"
+                                       "*   **Cà phê Góc Phố:** decor ấm cúng.\n"
+                                       "*   **Quán cà phê ở các con hẻm nhỏ:** ít khách.\n"
+                                       "Ngài nhớ mang áo khoác nha."]
+    out = asyncio.run(L.run_loop("tìm quán cà phê yên tĩnh ở quận 6", _ctx(env)))
+    for gone in ("The Note", "Cộng Cà Phê", "Giá ổn", "gợi ý mấy quán này nha:", "The Coffee House", "Góc Phố"):
+        assert gone not in out, gone
+    assert "Quán cà phê sách" in out and "con hẻm nhỏ" in out  # loại quán chung chung, không phải tên riêng
+    assert "Ngài nhớ mang áo khoác nha." in out and L._NO_PROMISE in out
+    assert not any("The Note" in s for s in env.get("tts", []))
+
+
+def test_capability_labels_are_not_taken_for_place_names(env, monkeypatch):
+    """honesty_probe 2026-10-17: "bạn tìm quán xá ở đâu" → model kể khả năng "* Phát Youtube" → bị bỏ nhầm."""
+    monkeypatch.setattr(R, "label", lambda n: {"open_app": "Mở ứng dụng", "news": "Phát Youtube"}.get(n, n))
+    env["script"] = [{"tool": "none"}, "Tôi chưa có công cụ tìm quán. Tôi làm được:\n* Phát Youtube\n* **Mở ứng dụng:** mở app."]
+    out = asyncio.run(L.run_loop("bạn tìm thông tin quán xá ở đâu vậy", _ctx(env)))
+    assert "Phát Youtube" in out and "Mở ứng dụng" in out and L._NO_PROMISE not in out
+
+
+def test_named_lists_stay_when_the_question_is_not_about_places(env):
+    env["script"] = [{"tool": "none"}, "Mấy vị vua đầu nhà Nguyễn:\n* **Gia Long:** lập triều.\n* **Minh Mạng:** cải cách."]
+    out = asyncio.run(L.run_loop("kể tên vài vị vua nhà Nguyễn", _ctx(env)))
+    assert "Gia Long" in out and "Minh Mạng" in out and "vua đầu nhà Nguyễn:" in out and L._NO_PROMISE not in out
+
+
 def test_webcam_gate():
     """held_out 2026-10-13: "để tôi xem lại cái trang web…" → read_webcam."""
     assert L._off_target("read_webcam", "để tôi xem lại cái trang web load có nhanh không đã")
@@ -696,8 +741,21 @@ def test_answer_never_shows_tool_function_names(env):
     assert not any("open_app" in s or "market_price" in s for s in env.get("tts", []))
 
 
-def test_answer_round_sees_result_header_by_tool_label(env):
+def test_answer_round_sees_result_xml_by_tool_label_and_no_catalog(env):
     env["script"] = [{"tool": "market_price", "say": "Tôi xem giá.", "args": {"item": "vàng"}}, {"tool": "none"}, "Vàng cao."]
     asyncio.run(L.run_loop("giá vàng", _ctx(env)))
-    answer = "\n".join(m["content"] for m in env["calls"][-1]["messages"][1:])
-    assert "[kết quả Giá thị trường (success)" in answer and "market_price" not in answer
+    msgs = env["calls"][-1]["messages"]
+    answer = "\n".join(m["content"] for m in msgs[1:])
+    assert '<ket_qua cong_cu="Giá thị trường" trang_thai="success"' in answer and "market_price" not in answer
+    assert "[kết quả" not in answer and msgs[0]["content"] == "RESULT"  # prompt báo kết quả, không danh mục
+
+
+def test_copied_result_tag_is_cut_like_the_old_header(env):
+    """Vòng trả lời giờ thấy <ket_qua …>: chép thẻ đó ra (có tool) thì bỏ dòng, bịa thẻ (không tool) thì cắt."""
+    env["script"] = [{"tool": "market_price", "say": "Tôi xem giá.", "args": {"item": "vàng"}}, {"tool": "none"},
+                     '<ket_qua cong_cu="Giá thị trường" trang_thai="success">\nVàng đang cao, thưa ngài.']
+    out = asyncio.run(L.run_loop("giá vàng", _ctx(env)))
+    assert "ket_qua" not in out and "Vàng đang cao, thưa ngài." in out
+    env["script"] = [{"tool": "none"}, '<ket_qua cong_cu="Tình trạng máy">\nCPU: 15%\n\nMáy ổn.']
+    out = asyncio.run(L.run_loop("kiểm tra máy", _ctx(env)))
+    assert "CPU" not in out and L._NO_PROMISE in out

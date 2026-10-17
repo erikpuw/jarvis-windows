@@ -188,8 +188,8 @@ def test_local_timezone_and_natural_date_parsing(tmp_path, monkeypatch):
     assert now_local.tzinfo is not None
 
 
-def test_gym_wiki_sync_and_semantic_exclusion(tmp_path, monkeypatch):
-    """Kiểm tra đồng bộ nhật ký ra data/wiki/Gym/<name>.md và loại trừ khỏi semantic memory."""
+def test_gym_wiki_sync(tmp_path, monkeypatch):
+    """Kiểm tra đồng bộ nhật ký ra data/wiki/Gym/<name>.md (đánh dấu no_index)."""
     wiki_dir = tmp_path / "wiki"
     monkeypatch.setattr(gym_engine, "GYM_DATA_DIR", tmp_path / "gym")
     monkeypatch.setattr(gym_engine, "WIKI_GYM_DIR", wiki_dir / "Gym")
@@ -209,11 +209,6 @@ def test_gym_wiki_sync_and_semantic_exclusion(tmp_path, monkeypatch):
     assert "Bench Press" in content
     assert "75.0 kg" in content
     assert "Uống 2L nước" in content
-
-    # 2. Kiểm tra wiki_sync loại trừ file
-    from engine.core import wiki_sync
-    monkeypatch.setattr(wiki_sync, "WIKI_DIR", wiki_dir)
-    assert wiki_file.relative_to(wiki_dir).as_posix().lower().startswith("gym/")
 
 
 def test_gym_memory_control_and_endpoints(tmp_path, monkeypatch):

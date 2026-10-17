@@ -470,15 +470,51 @@ class JarvisScraplingBrowser:
             return None
 
     @staticmethod
-    def _extract_main_text(page) -> str:
+    def _extract_clean_text_from_elements(els) -> str:
+        """Trích xuất text từ danh sách elements, tự động bỏ style/script/noscript/svg."""
+        if not els:
+            return ""
+        parts: list[str] = []
+        for item in els:
+            if hasattr(item, "get_all_text"):
+                t = item.get_all_text(
+                    separator="\n",
+                    strip=True,
+                    ignore_tags=("script", "style", "noscript", "svg", "template"),
+                )
+                if t and str(t).strip():
+                    parts.append(str(t).strip())
+            else:
+                raw = " ".join(item.css("::text").getall() or []).strip()
+                if raw:
+                    parts.append(raw)
+        return "\n\n".join(parts)
+
+    @classmethod
+    def _extract_main_text(cls, page) -> str:
         """Extract primary content, skipping nav/header/footer noise."""
-        for sel in ("article", "main", '[role="main"]', ".post-content", ".entry-content", ".article-body", ".detail-content"):
+        for sel in (
+            ".td-post-content",
+            "article",
+            "main",
+            '[role="main"]',
+            ".post-content",
+            ".entry-content",
+            ".article-body",
+            ".detail-content",
+        ):
             el = page.css(sel)
             if el.length:
-                candidate = " ".join(el.css("::text").getall()) or ""
-                if len(candidate) > 500:
+                candidate = cls._extract_clean_text_from_elements(el)
+                if len(candidate) > 300:
                     return candidate
-        return page.get_all_text() or ""
+        if hasattr(page, "get_all_text"):
+            return str(page.get_all_text(
+                separator="\n",
+                strip=True,
+                ignore_tags=("script", "style", "noscript", "svg", "template"),
+            ) or "")
+        return ""
 
     # ------------------------------------------------------------------
     # Visit Article (news-specific extraction)
@@ -496,6 +532,7 @@ class JarvisScraplingBrowser:
             title = (page.css("title::text").get() or "").strip()
 
             article_selectors = [
+                ".td-post-content",
                 "article .article-content",
                 "article .detail-content",
                 "article .content-detail",
@@ -516,7 +553,7 @@ class JarvisScraplingBrowser:
             for sel in article_selectors:
                 el = page.css(sel)
                 if el.length:
-                    candidate = " ".join(el.css("::text").getall()) or ""
+                    candidate = self._extract_clean_text_from_elements(el)
                     if len(candidate) > 200:
                         text = candidate
                         break
@@ -529,7 +566,7 @@ class JarvisScraplingBrowser:
             return PageContent(
                 title=title,
                 url=getattr(page, "url", None) or url,  # link gốc sau chuyển hướng (news.google.com → bài báo)
-                text_content=text[:5000],
+                text_content=text[:20000],
                 word_count=len(text.split()) if text else 0,
                 image_url=image_url,
             )

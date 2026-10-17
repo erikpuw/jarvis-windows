@@ -356,3 +356,66 @@ def test_greeting_snapshot_from_baomoi_uses_current_hour(monkeypatch):
     monkeypatch.setattr(we, "_vn_hour", lambda: 14)
     snap = asyncio.run(we._baomoi_fetch_snapshot())
     assert snap["temp"] == 26 and snap["source"] == "baomoi" and "mây" in snap["desc"]
+
+
+# ── weather_search: dự báo ngày mai (Báo Mới days[1]) ──
+
+@pytest.mark.parametrize("text,expected", [
+    ("ngày mai hà nội thế nào", True),
+    ("chiều mai có mưa không", True),
+    ("tối mai trời lạnh không", True),
+    ("thời tiết mai châu", False),       # tên nơi, không phải "ngày mai"
+    ("thời tiết hà nội hôm nay", False),
+])
+def test_wants_tomorrow(text, expected):
+    assert we._wants_tomorrow(text) is expected
+
+
+def test_clean_location_strips_tomorrow_words():
+    assert we._clean_location("chiều mai hà nội có mưa không") == "hà nội"
+
+
+def test_tomorrow_uses_baomoi_second_day(monkeypatch, boards_loaded):
+    async def baomoi(slug):
+        assert slug == "ha-noi"
+        return we._baomoi_parse(_page(name="Hà Nội", slug="ha-noi", entries=[
+            _entry("04/10/2026", _hours()), _entry("05/10/2026", _hours(0, 23), pop_day=65, pop_night=15)]))
+
+    monkeypatch.setattr(we, "_baomoi_fetch", baomoi)
+    monkeypatch.setattr(we, "_wttr_snapshot", _forbid("_wttr_snapshot"))
+    monkeypatch.setattr(we, "_fetch_open_meteo", _forbid("_fetch_open_meteo"))
+    monkeypatch.setattr(we, "_fetch_open_meteo_hourly", _forbid("_fetch_open_meteo_hourly"))
+    text = asyncio.run(we.weather_search("mai hà nội mấy giờ mưa"))  # ngày mai thắng theo giờ
+    assert "ngày mai" in text and "05/10/2026" in text and "Hà Nội" in text
+    assert "25–33°C" in text and "65%" in text and "15%" in text
+
+
+@pytest.mark.parametrize("fail", ["down", "one_day"])
+def test_tomorrow_without_forecast_says_so_not_current_weather(monkeypatch, boards_loaded, fail):
+    async def baomoi(slug):
+        if fail == "down":
+            raise httpx.ConnectError("down")
+        return we._baomoi_parse(_page(name="Hà Nội", slug="ha-noi", entries=[_entry("04/10/2026", _hours())]))
+
+    monkeypatch.setattr(we, "_baomoi_fetch", baomoi)
+    monkeypatch.setattr(we, "_wttr_snapshot", _forbid("_wttr_snapshot"))
+    monkeypatch.setattr(we, "_fetch_open_meteo", _forbid("_fetch_open_meteo"))
+    text = asyncio.run(we.weather_search("ngày mai hà nội thế nào"))
+    assert "Chưa có dự báo ngày mai" in text and "Hà Nội" in text
+
+
+def test_tomorrow_unknown_place_says_no_forecast(monkeypatch, boards_loaded):
+    monkeypatch.setattr(we, "_geocode", _forbid("_geocode"))
+    monkeypatch.setattr(we, "_baomoi_fetch", _forbid("_baomoi_fetch"))
+    text = asyncio.run(we.weather_search("ngày mai vũng tàu thế nào"))
+    assert "Chưa có dự báo ngày mai" in text and "vũng tàu" in text
+
+
+def test_tomorrow_intent_read_from_question_when_location_is_bare(monkeypatch, boards_loaded):
+    """Probe 2026-10-17: model truyền location='Hà Nội', bỏ mất 'ngày mai' → ý hỏi lấy từ câu của ngài."""
+    async def baomoi(slug):
+        return we._baomoi_parse(_page(name="Hà Nội", slug="ha-noi"))
+
+    monkeypatch.setattr(we, "_baomoi_fetch", baomoi)
+    text = asyncio.run(we.weather_search("Hà Nội", question="ngày mai Hà Nội thế nào"))
+    assert "ngày mai" in text and "05/10/2026" in text
