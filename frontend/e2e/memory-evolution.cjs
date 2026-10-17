@@ -34,7 +34,7 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   });
   await page.goto(BASE);
   await page.waitForTimeout(1500);
-  await page.evaluate(() => document.getElementById("btn-settings").click());
+  await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="overview"]').click());
   await page.waitForTimeout(500);
   await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="memory"]').click());
   await page.waitForTimeout(400);

@@ -83,7 +83,7 @@ async function open(browser, opts = {}) {
   await page.waitForTimeout(900);
   const kept = await page.evaluate(() => { const b = [...document.querySelectorAll(".chat-bubble.assistant")].pop(); return { text: b.querySelector(".bubble-text")?.textContent || "", cs: getComputedStyle(b).backgroundColor, canvases: b.querySelectorAll("canvas").length }; });
   check(kept.text.includes("Task Manager") && kept.canvases === 0, "2b. sau stream_end nội dung còn đủ, bong bóng không có canvas", JSON.stringify(kept));
-  check(kept.cs !== "rgba(0, 0, 0, 0)", "2c. bong bóng tự có nền (khung cũ, không phải lớp nền riêng)", kept.cs);
+  check(kept.cs === "rgba(0, 0, 0, 0)", "2c. câu trả lời không có nền bong bóng (thiết kế 2026-10-17: chữ trên nền trang, rộng hết cột)", kept.cs);
 
   // 3. đường text (không stream, phiên mới) cũng ra bong bóng thường
   const t = await open(browser);

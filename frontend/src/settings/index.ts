@@ -14,17 +14,16 @@ import type {
 } from "./types";
 import { makeIcon, decorateActionButton, runAction } from "../icons";
 import type { MorphIconElement } from "morphicons/element";
-import { Menu, X, PanelLeftClose, PanelLeft } from "lucide";
+import { House, X, PanelLeftClose, PanelLeft } from "lucide";
 import { formatMarkdown } from "../markdown";
-import { getAvailableBotShapes, getBotShape, setBotShape, drawStaticBotPreview } from "../bot";
 import "./styles.css";
 
 export type { SettingsPageId };
 export { SETTINGS_PAGES, APP_VERSION };
 
 const HEALTH_POLL_INTERVAL_MS = 5000;
-const PAGE_STORAGE_KEY = "jarvis.settings.page";
 const SIDEBAR_COLLAPSED_KEY = "jarvis.settings.sidebar_collapsed";
+const RAIL_BELOW_PX = 1280; // PC windows narrower than this keep the Dashboard menu as an icon rail
 
 let container: HTMLElement | null = null;
 let isOpen = false;
@@ -117,13 +116,11 @@ async function loadDetailedHealth(): Promise<void> {
     const res = await apiGet<any>("/api/health/detailed");
     if (res.status === "online") {
       const llmOk = res.llm?.status === "online";
-      const redisOk = res.redis?.status === "online";
       const dbOk = res.database?.ok === true;
       const ragOk = res.rag?.enabled === true;
 
       updateServiceRow("row-status-llm", llmOk,
         llmOk && res.llm?.response_time_ms ? `${res.llm.response_time_ms}ms` : (res.llm?.status ?? "offline"));
-      updateServiceRow("row-status-redis", redisOk, res.redis?.status ?? "offline");
       updateServiceRow("row-status-db", dbOk,
         res.database?.size_kb ? `${res.database.size_kb} KB` : (dbOk ? "OK" : "offline"));
       updateServiceRow("row-status-rag", ragOk,
@@ -133,7 +130,6 @@ async function loadDetailedHealth(): Promise<void> {
       setInfra("llm", llmOk, llmOk ? "Sẵn sàng" : "Mất kết nối");
       setInfra("rag", ragOk, ragOk ? "Sẵn sàng" : "Không hoạt động");
       setInfra("db", dbOk, dbOk ? "Sẵn sàng" : "Lỗi");
-      setInfra("redis", redisOk, redisOk ? "Sẵn sàng" : "Mất kết nối");
     }
   } catch (e) {
     console.error("[settings] failed to load detailed health:", e);
@@ -286,63 +282,6 @@ async function loadPreferences(): Promise<void> {
   } catch (e) {
     console.error("[settings] failed to load preferences:", e);
   }
-}
-
-function initBotSelector(): void {
-  const grid = byId("bot-selector-grid");
-  if (!grid) return;
-  if (grid.dataset.ready !== "1") {
-    grid.dataset.ready = "1";
-    const shapes = getAvailableBotShapes();
-    const current = getBotShape();
-
-    grid.innerHTML = "";
-    shapes.forEach(({ key, label }) => {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "bot-choice-item" + (key === current ? " active" : "");
-      item.dataset.shape = key;
-      item.title = `Chọn bot ${label}`;
-
-      const canvas = document.createElement("canvas");
-      canvas.className = "bot-choice-canvas";
-      item.appendChild(canvas);
-
-      const name = document.createElement("span");
-      name.className = "bot-choice-label";
-      name.textContent = label;
-      item.appendChild(name);
-
-      item.addEventListener("click", () => {
-        setBotShape(key);
-        grid.querySelectorAll(".bot-choice-item").forEach(el => el.classList.remove("active"));
-        item.classList.add("active");
-        setText("bot-active-status", `Đang hiển thị: ${label}`);
-      });
-
-      grid.appendChild(item);
-      drawStaticBotPreview(canvas, key);
-    });
-
-    const btnReset = byId("btn-reset-bot-square");
-    if (btnReset) {
-      btnReset.addEventListener("click", () => {
-        setBotShape("square");
-        grid.querySelectorAll(".bot-choice-item").forEach(el => {
-          el.classList.toggle("active", (el as HTMLElement).dataset.shape === "square");
-        });
-        setText("bot-active-status", "Đang hiển thị: Square");
-      });
-    }
-  }
-
-  const cur = getBotShape();
-  const shapes = getAvailableBotShapes();
-  const curDef = shapes.find(s => s.key === cur);
-  setText("bot-active-status", `Đang hiển thị: ${curDef?.label || "Square"}`);
-  grid.querySelectorAll(".bot-choice-item").forEach(el => {
-    el.classList.toggle("active", (el as HTMLElement).dataset.shape === cur);
-  });
 }
 
 /** Heavy lists live in /api/settings/catalog (not in the 5s status poll); fetched once per open. */
@@ -722,7 +661,7 @@ async function loadReadme(): Promise<void> {
 // ---------------------------------------------------------------------------
 // Navigation and Switch Page
 // ---------------------------------------------------------------------------
-function switchPage(id: SettingsPageId, remember = true): void {
+function switchPage(id: SettingsPageId): void {
   const previous = currentPage;
   currentPage = id;
   document.querySelectorAll<HTMLElement>(".sd-page").forEach(p => {
@@ -758,13 +697,9 @@ function switchPage(id: SettingsPageId, remember = true): void {
   if (id === "mcp") void loadMcpServers();
   if (id === "info") void loadReadme();
   if (id === "graphfy") void renderGraphfy(loadCatalog);
-  if (id === "user") initBotSelector();
 
-  if (remember) {
-    try { localStorage.setItem(PAGE_STORAGE_KEY, id); } catch {}
-  }
-  const content = byId("settings-content");
-  if (content) content.scrollTop = 0;
+  const body = document.querySelector<HTMLElement>(`.sd-page[data-page="${id}"] .sd-page-body`);
+  if (body) body.scrollTop = 0;
   setDrawer(false);
 }
 
@@ -776,7 +711,7 @@ function setDrawer(open: boolean): void {
   const scrim = byId("settings-scrim");
   if (scrim) scrim.hidden = !open;
   byId("settings-menu-toggle")?.setAttribute("aria-expanded", String(open));
-  if (menuIcon && wasOpen !== open) menuIcon.morphTo(open ? X : Menu);
+  if (menuIcon && wasOpen !== open) menuIcon.morphTo(open ? X : House);
 }
 
 function startHealthPolling(): void {
@@ -1180,7 +1115,7 @@ function exitSetupMode(): void {
 
 function updateSetupStep(): void {
   const pageId = SETUP_FLOW[setupStep];
-  switchPage(pageId, false);
+  switchPage(pageId);
   const nextBtn = byId<HTMLButtonElement>("btn-setup-next");
   if (!nextBtn) return;
   const isLast = setupStep >= SETUP_FLOW.length - 1;
@@ -1194,18 +1129,14 @@ export function openSettings(pageId?: SettingsPageId): void {
   ensureMounted();
   if (!container) return;
   isOpen = true;
-  container.removeAttribute("inert");
   container.classList.add("open");
-  container.removeAttribute("aria-hidden");
   document.getElementById("controls")?.classList.add("hidden");
   // main.ts pauses the orb on this event and resumes it on close unless map/media is full screen.
   window.dispatchEvent(new CustomEvent("jarvis:overlay", { detail: { open: true } }));
   catalogPromise = null;
 
-  let saved: string | null = null;
-  try { saved = localStorage.getItem(PAGE_STORAGE_KEY); } catch { /* storage blocked */ }
-  const target = pageId || (saved as SettingsPageId) || "overview";
-  switchPage(SETTINGS_PAGES.some(p => p.id === target) ? target : "overview", false);
+  // a Dashboard menu item always names its page (no "last page" to restore: there is no general open button any more)
+  switchPage(pageId && SETTINGS_PAGES.some(p => p.id === pageId) ? pageId : "overview");
   void loadStatus();
   void loadPreferences();
   void loadVoices();
@@ -1218,8 +1149,6 @@ export function closeSettings(): void {
     document.activeElement.blur();
   }
   container.classList.remove("open");
-  container.setAttribute("aria-hidden", "true");
-  container.setAttribute("inert", "");
   document.getElementById("controls")?.classList.remove("hidden");
   exitSetupMode();
   stopHealthPolling();
@@ -1232,13 +1161,19 @@ export function ensureMounted(): void {
   if (container) return;
   container = document.createElement("div");
   container.id = "settings-container";
-  container.setAttribute("aria-hidden", "true");
-  container.setAttribute("inert", "");
   container.innerHTML = buildSettingsHTML();
+  // Every page: the head (title, description, search) stays put and only the body under it scrolls, vertically
+  // (user 2026-10-17). A separate scroll box, not a sticky head inside one shared scroll (that drifted on the iPhone).
+  container.querySelectorAll<HTMLElement>(".sd-page").forEach((page) => {
+    const body = document.createElement("div");
+    body.className = "sd-page-body";
+    body.append(...[...page.children].filter((child) => !child.classList.contains("sd-page-head")));
+    page.append(body);
+  });
   document.body.appendChild(container);
 
   // Mount MorphIcons on Topbar
-  menuIcon = makeIcon(Menu, 18);
+  menuIcon = makeIcon(House, 18);
   byId("settings-close")?.appendChild(makeIcon(X, 18));
   byId("settings-menu-toggle")?.appendChild(menuIcon);
 
@@ -1269,7 +1204,10 @@ export function ensureMounted(): void {
     const item = (event.target as HTMLElement).closest<HTMLElement>(".sd-nav-item");
     if (!item) return;
     const id = item.dataset.page as SettingsPageId;
-    if (id) switchPage(id);
+    if (!id) return;
+    if (!isOpen) openSettings(id);
+    else if (id === currentPage) closeSettings();
+    else switchPage(id);
   });
 
   // Setup Next button
@@ -1295,12 +1233,17 @@ export function ensureMounted(): void {
   initLogsPage();
   bindActions();
 
-  // Restore sidebar collapsed preference
-  try {
-    if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1") {
-      setSidebarCollapsed(true, false);
-    }
-  } catch {}
+  // Restore sidebar collapsed preference; a PC window narrower than RAIL_BELOW_PX keeps the menu as an icon rail
+  // (a 200px menu beside the 800px chat column needs 1280px), without overwriting the saved choice
+  let saved = false;
+  try { saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1"; } catch {}
+  const narrow = window.matchMedia(`(min-width: 769px) and (max-width: ${RAIL_BELOW_PX - 1}px)`); // a phone has the drawer
+  const applyWidth = () => setSidebarCollapsed(narrow.matches || saved, false);
+  narrow.addEventListener("change", applyWidth);
+  applyWidth();
+  byId("settings-sidebar-toggle")?.addEventListener("click", () => {
+    if (!narrow.matches) saved = isSidebarCollapsed;
+  });
 }
 
 export async function checkFirstTimeSetup(): Promise<void> {

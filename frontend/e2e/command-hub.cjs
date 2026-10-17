@@ -108,7 +108,7 @@ async function open(browser, opts = {}) {
   // 4. nút mới
   check(!(await page.$("#btn-slash")) && !(await page.$("#btn-mention")), "4a. đã bỏ nút / và @ (gõ thẳng vào ô lệnh)");
   check(!(await page.$("#btn-cmd-mic")), "4c. đã bỏ nút mic trong thanh lệnh (mic đã ở hàng nút trên cùng, gần nút gửi)");
-  check(!!(await page.$("#jarvis-bot canvas")) && !(await page.$("#jarvis-mascot")), "4e. bot linh vật thay mascot cáo");
+  check(!(await page.$("#jarvis-bot")) && !(await page.$("#jarvis-mascot")), "4e. thanh lệnh không còn linh vật (bot gỡ 2026-10-17, mascot cáo gỡ trước đó)");
 
   // 5. nút gửi: viền kim loại tròn, icon nằm giữa
   const ring = await page.evaluate(() => {

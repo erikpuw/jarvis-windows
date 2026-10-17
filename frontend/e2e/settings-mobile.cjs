@@ -46,7 +46,7 @@ async function open(browser, opts) {
   return { page, cdp: await ctx.newCDPSession(page) };
 }
 const openPage = async (page, id) => {
-  await page.evaluate(() => document.getElementById("btn-settings").click());
+  await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="overview"]').click());
   await page.waitForTimeout(500);
   await page.evaluate((id) => document.querySelector(`.sd-nav-item[data-page="${id}"]`).click(), id);
   await page.waitForTimeout(900);

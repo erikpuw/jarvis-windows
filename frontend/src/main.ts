@@ -9,18 +9,19 @@ import { createOrb, type OrbState } from "./orb";
 import { mountWelcome, type WelcomeData } from "./welcome";
 import { createVoiceInput, createAudioPlayer, createInterruptDetector } from "./voice";
 import { createSocket } from "./ws";
-import { openSettings, checkFirstTimeSetup, ensureMounted } from "./settings/index";
+import { checkFirstTimeSetup, ensureMounted } from "./settings/index";
 import { formatMarkdown } from "./markdown";
 import { escapeHtml } from "./settings/api";
 import "./style.css";
-import { mountBot } from "./bot";
 import { showStreamLoader, clearStreamLoader } from "./stream-loader";
+import { isAskCard, showAskPanel } from "./ask-panel";
 import { mountControlsMenu } from "./controls-menu";
 import { mountViewportReset } from "./viewport-reset";
 import { mountNotifyIsland } from "./notify-island";
 import { mountStatusOrb } from "./status-orb";
 import { mountStatusLabel, mountStatusRowFade } from "./status-label";
 import { mountMetalRing } from "./metal-ring";
+import { mountReaderCard } from "./reader-card";
 import { setAnimPaused, setBarHidden } from "./anim-gate";
 
 const DEFAULT_FETCH_TIMEOUT_MS = 15000;
@@ -76,23 +77,26 @@ let activeAssistantText = "";
 let streamTextBuffer = "";
 let streamTargetText = "";
 let streamTypewriterTimer: any = null;
-let lastStreamRenderAt = 0;
-let streamTail: Text | null = null; // last text node of the rendered stream: plain chunks are appended to it
-let streamPendingFull = false; // a full markdown render was skipped (throttle) and is still owed
-let streamDirty = false; // plain chunks were appended since the last full render
-let streamHeld = false; // the last full render left out newlines at the very end of the text (they wait for the next letter)
+let streamTail: Text | null = null; // the line being typed (renderStreamText)
+let streamDirty = false; // letters were shown since the turn started
 let streamLastAppendAt = 0;
 let streamHoldUntil = 0; // the typewriter waits for this time: the loader balls shrink first so they do not cover the first letter
 let wasStreamed = false;
+let isStreamActive = false;
+let isBubbleFinalRendered = false;
 let audioChunkBuffer: Uint8Array[] | null = null;
 // Tải bản gốc upscale: chờ gắn nút icon ⬇ vào bong bóng phản hồi cuối lượt
 // (stream_end), thay vì vẽ rời gây trùng lặp.
-let pendingDownload: { name: string; url: string } | null = null;
 
 const chatHistory = document.getElementById("chat-history")!;
+// A bubble's slide-up is dropped once it has played: iPhone Safari kept a GPU layer per animated bubble, re-blended every frame
+// over the moving orb, so the phone heated up with every bubble added (user 2026-10-17)
+chatHistory.addEventListener("animationend", (e) => {
+  const el = e.target as HTMLElement;
+  if (e.animationName === "slide-up" && el.classList.contains("chat-bubble")) el.style.animation = "none";
+});
 const statusEl = document.getElementById("status-text")!;
 const island = mountNotifyIsland(document.getElementById("error-text")!); // flow tracker + system errors (notify-island.ts)
-mountBot(document.getElementById("command-bar-inner")!);
 mountViewportReset();
 mountControlsMenu(document.getElementById("controls")!, document.getElementById("btn-controls") as HTMLButtonElement);
 mountStatusOrb(document.getElementById("status-orb")!);
@@ -100,6 +104,7 @@ mountStatusLabel(document.getElementById("status-row")!, statusEl);
 mountStatusRowFade(document.getElementById("status-row")!, statusEl);
 mountMetalRing(document.getElementById("cmd-send-wrap")!);
 initChatAutoCeiling();
+mountReaderCard();
 const commandInput = document.getElementById("command-input") as HTMLTextAreaElement;
 const filePinnedContainer = document.getElementById("file-pinned-container")!;
 const filePinnedName = document.getElementById("file-pinned-name")!;
@@ -162,8 +167,13 @@ function updateScrollFade() {
   if (!chatHistory) return;
   // Check if we are within 10px of the bottom
   const isAtBottom = Math.abs(chatHistory.scrollHeight - chatHistory.clientHeight - chatHistory.scrollTop) < 10;
+  const isOverflowing = chatHistory.scrollHeight > chatHistory.clientHeight + 1;
   chatHistory.classList.toggle("at-bottom", isAtBottom);
-  chatHistory.classList.toggle("overflowing", chatHistory.scrollHeight > chatHistory.clientHeight + 1);
+  chatHistory.classList.toggle("overflowing", isOverflowing);
+  const cmdContainer = document.getElementById("command-container");
+  if (cmdContainer) {
+    cmdContainer.classList.toggle("has-chat-fade", isOverflowing && chatHistory.scrollTop > 4);
+  }
 
   // If user scrolled near the bottom, reset the flag so auto-scroll can resume
   if (isAtBottom) {
@@ -222,58 +232,81 @@ const STREAM_BASE_CPS = 60; // characters per second when keeping up
 const STREAM_TEXT_AFTER_LOADER_MS = 200; // first chunk: the four loader balls shrink (300 ms) and the first letter shows when they are almost gone
 const STREAM_CATCHUP_S = 0.3; // otherwise drain the backlog in about this long
 
-// characters that can change how markdown renders (emphasis, code, lists, headings, links, tables, entities)
-const STREAM_MARKUP = /[*_`#\[\]()<>&|~=\\\n\-\d!]/;
-
-function lastTextNode(el: HTMLElement): Text | null {
-  const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-  let last: Text | null = null;
-  for (let n = w.nextNode(); n; n = w.nextNode()) {
-    const t = n as Text;
-    if (!t.textContent?.trim() && t.parentNode === el) continue;
-    last = t;
-  }
-  return last;
-}
-
-/** The last text node, but only when nothing (a <br>, a block) follows it: letters appended to it must land at the very end. */
-function tailAtEnd(el: HTMLElement): Text | null {
-  const t = lastTextNode(el);
-  if (!t) return null;
-  for (let n: Node = t; n !== el; n = n.parentNode!) {
-    let next = n.nextSibling;
-    while (next && next.nodeType === Node.TEXT_NODE && !next.textContent?.trim()) {
-      next = next.nextSibling;
-    }
-    if (next) return null;
-  }
-  return t;
-}
-
 /** Newlines at the very end of the streamed text are not shown yet: they would open blank lines under the last line before the
  *  next paragraph has a single letter, and the letters would then jump to where the blank lines are. They appear with the next letter. */
 const withoutTrailingNewlines = (s: string) => s.replace(/\n+$/, "");
 
 /**
- * Shows the newly revealed `chunk`. Re-parsing all the markdown and rewriting innerHTML every frame re-lays
- * out the whole bubble (and cost grew with the square of the reply length), which read as jitter. So a chunk
- * of plain text is just appended to the last text node; anything that may change the markup, a newline, or
- * the settle after a pause does the full render (throttled as the text grows).
+ * Finalizes the markdown rendering for the current assistant bubble exactly once.
+ * Replaces incomplete table skeletons with real HTML tables and locks further repaints.
  */
-function renderStreamText(container: HTMLElement, chunk: string, now: number, final = false) {
-  if (!final && !streamPendingFull && !streamHeld && streamTail?.isConnected && !STREAM_MARKUP.test(chunk)) {
-    streamTail.appendData(chunk);
-    streamDirty = true;
-    return;
+function finalizeBubbleMarkdown(container: HTMLElement, text: string): void {
+  if (isBubbleFinalRendered) return;
+  isBubbleFinalRendered = true;
+  const shown = withoutTrailingNewlines(text);
+  container.innerHTML = formatMarkdown(shown, { isBubble: true, isStreaming: false });
+  streamTail = streamTailBox = null;
+  scrollToBottomIfNeeded();
+}
+
+/**
+ * Reveals streamed text the way the final render will show it, so the end moves nothing:
+ * - The finished lines are rendered as markdown (isStreaming: true: an unfinished table shows as the skeleton, a finished
+ *   one as the real table at once); the line being typed goes letter by letter into a text node placed where markdown
+ *   will put it: after a <br> in the last paragraph (one newline, breaks: true) or in a new paragraph (a blank line).
+ *   Raw text in pre-wrap showed a two-round answer's blank line (engine/turn/loop.py out.gap()) while the tool ran, and
+ *   the final markdown closed it to a 6px paragraph gap: the text jumped up at the end (user 2026-10-17).
+ * - Markdown is rendered again only when a line is finished, and the bubble rewritten only when that HTML changes: a table
+ *   row being typed stays under the skeleton (a bare "|" stands for it), so rows arriving never rebuild the bubble.
+ * - Final render: Applied once on completion via finalizeBubbleMarkdown (isStreaming: false).
+ */
+let streamLastHead: string | null = null; // the finished lines last rendered as markdown
+let streamLastHtml = "";
+let streamTailBox: Element | null = null; // the <p> or <br> the line being typed was placed with
+
+function placeStreamTail(container: HTMLElement, newBlock: boolean) {
+  streamTail?.remove();
+  streamTailBox?.remove();
+  streamTail = document.createTextNode("");
+  const host = container.querySelector(".bubble-prose") ?? container;
+  const last = host.lastElementChild;
+  if (!newBlock && last?.tagName === "P") {
+    streamTailBox = document.createElement("br");
+    last.append(streamTailBox, streamTail);
+  } else {
+    streamTailBox = document.createElement("p");
+    streamTailBox.append(streamTail);
+    host.appendChild(streamTailBox);
   }
-  const gap = streamTextBuffer.length > 2000 ? 100 : streamTextBuffer.length > 500 ? 50 : 0;
-  if (!final && now - lastStreamRenderAt < gap) { streamPendingFull = true; return; }
-  lastStreamRenderAt = now;
-  streamPendingFull = streamDirty = false;
-  const shown = withoutTrailingNewlines(streamTextBuffer);
-  streamHeld = shown.length < streamTextBuffer.length;
-  container.innerHTML = formatMarkdown(shown, { isBubble: true });
-  streamTail = tailAtEnd(container);
+}
+
+function renderStreamText(container: HTMLElement, chunk: string) {
+  if (isBubbleFinalRendered) return;
+  if (chunk) streamDirty = true;
+
+  const cut = streamTextBuffer.lastIndexOf("\n") + 1;
+  const tail = streamTextBuffer.slice(cut);
+  const typingRow = tail.trimStart().startsWith("|");
+  const typing = !typingRow && tail.trim() !== "";
+  // once a line that is not a row is being typed, a table above is finished: keep the blank line that ends it
+  const head = typingRow ? streamTextBuffer.slice(0, cut) + "|"
+    : typing ? streamTextBuffer.slice(0, cut) + "\n" : withoutTrailingNewlines(streamTextBuffer);
+  const newBlock = cut === 0 || /\n[ \t]*\n$/.test(streamTextBuffer.slice(0, cut));
+  if (head !== streamLastHead) {
+    streamLastHead = head;
+    const html = formatMarkdown(head, { isBubble: true, isStreaming: true });
+    if (html !== streamLastHtml) {
+      streamLastHtml = html;
+      container.innerHTML = html;
+    }
+    if (typing) placeStreamTail(container, newBlock);
+    else {
+      streamTail?.remove();
+      streamTailBox?.remove();
+      streamTail = streamTailBox = null;
+    }
+  }
+  if (typing && streamTail) streamTail.data = tail;
 }
 
 let typeAcc = 0; // characters owed to the reader (fractional)
@@ -284,11 +317,13 @@ function startStreamTypewriter() {
   stopStreamTypewriter();
   streamTextBuffer = "";
   streamTargetText = "";
-  lastStreamRenderAt = 0;
-  streamTail = null;
-  streamPendingFull = streamDirty = streamHeld = false;
+  streamTail = streamTailBox = null;
+  streamDirty = false;
   streamHoldUntil = 0;
   typeAcc = 0;
+  isBubbleFinalRendered = false;
+  streamLastHead = null;
+  streamLastHtml = "";
 }
 
 /** Each text_chunk wakes the loop; it stops by itself once every letter is shown and the final render is done, so nothing runs
@@ -319,9 +354,14 @@ function typeStep(now: number) {
   const backlog = streamTargetText.length - streamTextBuffer.length;
   if (backlog <= 0) {
     typeAcc = 0;
-    if (!streamPendingFull && !streamDirty) return; // all shown and settled: stop
-    // caught up and quiet for a moment: one full render fixes any markdown the plain appends skipped, then stop
-    if (now - streamLastAppendAt > 150) { renderStreamText(textContainer, "", now, true); scrollToBottomIfNeeded(); return; }
+    if (isBubbleFinalRendered) return;
+    // If stream is still active from server, do not prematurely finalize
+    if (isStreamActive) return;
+    // Stream ended and all characters caught up: finalize once
+    if (now - streamLastAppendAt > 100 || !streamDirty) {
+      finalizeBubbleMarkdown(textContainer, streamTextBuffer);
+      return;
+    }
     return again();
   }
 
@@ -332,7 +372,7 @@ function typeStep(now: number) {
     const chunk = streamTargetText.slice(streamTextBuffer.length, streamTextBuffer.length + take);
     streamTextBuffer += chunk;
     streamLastAppendAt = now;
-    renderStreamText(textContainer, chunk, now);
+    renderStreamText(textContainer, chunk);
     scrollToBottomIfNeeded();
   }
   again();
@@ -343,21 +383,13 @@ function stopStreamTypewriter() {
     cancelAnimationFrame(streamTypewriterTimer);
     streamTypewriterTimer = null;
   }
-  // Flush whatever the typewriter had not caught up to yet. It only ever
-  // cleared the timer, so anything still queued when the stream ended was
-  // simply never shown — and throttling the repaint widens that window.
   if (
     activeAssistantBubble &&
     streamTargetText &&
     !streamTargetText.startsWith("[INTERACTIVE_CARD_JSON]:") &&
     streamTextBuffer.length < streamTargetText.length
   ) {
-    const textContainer = activeAssistantBubble.querySelector(".bubble-text") as HTMLElement | null;
-    if (textContainer) {
-      streamTextBuffer = streamTargetText;
-      textContainer.innerHTML = formatMarkdown(withoutTrailingNewlines(streamTextBuffer), { isBubble: true });
-      scrollToBottomIfNeeded();
-    }
+    streamTextBuffer = streamTargetText;
   }
 }
 
@@ -365,6 +397,7 @@ function stopStreamTypewriter() {
  *  would keep its loader forever, and the fallback text gets its own bubble anyway. */
 function dropEmptyAssistantBubble(): void {
   if (!activeAssistantBubble || activeAssistantText) return;
+  isStreamActive = false;
   stopStreamTypewriter();
   activeAssistantBubble.remove();
   activeAssistantBubble = null;
@@ -374,6 +407,7 @@ function dropEmptyAssistantBubble(): void {
  *  stream_end calls it; so do our own cancel and the next stream_start, because a cancelled turn (engine/turn/loop.py out.abort())
  *  gets neither stream_end nor idle, otherwise the goo loader and the typewriter loop kept running in the chat history. */
 function closeAssistantBubble(): void {
+  isStreamActive = false;
   stopStreamTypewriter();
   if (activeAssistantBubble) {
     if (activeAssistantBubble.classList.contains("typing-loader")) {
@@ -389,19 +423,7 @@ function closeAssistantBubble(): void {
       textContainer.className = "bubble-text";
       activeAssistantBubble.appendChild(textContainer);
     }
-    textContainer.innerHTML = formatMarkdown(withoutTrailingNewlines(activeAssistantText), { isBubble: true });
-    // Nút icon ⬇ tải bản gốc upscale: gắn vào chính bong bóng phản hồi cuối
-    // lượt (câu trả lời đã ghi tên tệp), không vẽ rời gây trùng lặp.
-    if (pendingDownload) {
-      const download = document.createElement("a");
-      download.className = "icon-btn";
-      download.href = pendingDownload.url;
-      download.setAttribute("download", pendingDownload.name);
-      download.title = `Tải về ${pendingDownload.name}`;
-      download.textContent = "⬇";
-      textContainer.appendChild(download);
-      pendingDownload = null;
-    }
+    finalizeBubbleMarkdown(textContainer, activeAssistantText || streamTextBuffer);
     scrollToBottomIfNeeded();
   }
   activeAssistantBubble = null;
@@ -427,10 +449,6 @@ function addChatMessage(role: "user" | "assistant", text: string): HTMLElement |
     return lastBubble;
   }
 
-  // Mark existing messages as 'old'
-  const oldBubbles = chatHistory.querySelectorAll(".chat-bubble");
-  oldBubbles.forEach((m) => m.classList.add("old"));
-
   const bubble = document.createElement("div");
   bubble.className = `chat-bubble ${role}`;
   chatHistory.appendChild(bubble);
@@ -442,6 +460,11 @@ function addChatMessage(role: "user" | "assistant", text: string): HTMLElement |
     try {
       const jsonStr = text.substring(prefix.length).trim();
       const cardData = JSON.parse(jsonStr);
+      if (isAskCard(cardData)) {
+        bubble.remove();
+        showAskPanel(cardData, (m) => socket.send(m));
+        return null;
+      }
       renderInteractiveCard(bubble, cardData);
       // Cuộn xuống dưới
       requestAnimationFrame(() => {
@@ -460,24 +483,10 @@ function addChatMessage(role: "user" | "assistant", text: string): HTMLElement |
       scrollToBottomIfNeeded(true);
     });
   } else {
-    // Hiệu ứng stream gõ chữ cho assistant
-    let currentText = "";
-    // Sử dụng regex để tách từ nhưng giữ nguyên các dấu xuống dòng và khoảng trắng
-    const tokens = text.split(/(\s+)/);
-    let i = 0;
-
-    const timer = setInterval(() => {
-      if (i < tokens.length) {
-        currentText += tokens[i];
-        bubble.innerHTML = formatMarkdown(currentText, { isBubble: true });
-        i++;
-
-        // Tự động cuộn xuống dưới
-        scrollToBottomIfNeeded();
-      } else {
-        clearInterval(timer);
-      }
-    }, 15); // Tốc độ tối ưu cho token
+    bubble.innerHTML = formatMarkdown(text, { isBubble: true });
+    requestAnimationFrame(() => {
+      scrollToBottomIfNeeded();
+    });
   }
 
   // No cap on the bubbles: a chat session is one conversation (a reload starts a new one), so it keeps all of it.
@@ -616,6 +625,8 @@ function openImageLightbox(src: string) {
 
 function handleInteractiveCardData(cardData: any) {
   if (!cardData || !cardData.id) return;
+  // a question the backend waits on is a box above the command bar, not a chat bubble
+  if (isAskCard(cardData)) return showAskPanel(cardData, (m) => socket.send(m));
   const existingBubble = document.querySelector(`.chat-bubble[data-card-id="${cardData.id}"]`) as HTMLElement;
   if (existingBubble) {
     renderInteractiveCard(existingBubble, cardData);
@@ -670,6 +681,27 @@ function officeFileIconSvg(ext?: string, label?: string): string {
   </svg>`;
 }
 
+const DOWNLOAD_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>';
+
+/** Plain download icon (no colour), used on a file card and on the corner of an image. */
+function downloadLink(className: string, href: string, name?: string): HTMLAnchorElement {
+  const a = document.createElement("a");
+  a.className = className;
+  a.href = href;
+  a.setAttribute("download", name || "tệp");
+  a.title = `Tải về ${name || "tệp"}`;
+  a.innerHTML = DOWNLOAD_SVG;
+  return a;
+}
+
+/** "240 KB" from the byte count the backend sends with output_file (engine/core/output_delivery.py); "" when unknown. */
+function formatSize(n?: number | null): string {
+  if (!n) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
 function renderInteractiveCard(container: HTMLElement, data: any) {
   const existingCard = container.querySelector(".interactive-card");
   if (existingCard) existingCard.remove();
@@ -686,214 +718,56 @@ function renderInteractiveCard(container: HTMLElement, data: any) {
     card.appendChild(title);
   }
 
-  if (data.type === "select") {
-    const list = document.createElement("div");
-    list.className = "interactive-select-list";
-
-    const selectedValues = new Set<string>();
-
-    data.options.forEach((opt: any) => {
-      const optionEl = document.createElement("div");
-      optionEl.className = "interactive-option";
-      if (opt.selected) {
-        optionEl.classList.add("selected");
-        selectedValues.add(opt.value);
-      }
-
-      const dot = document.createElement("span");
-      dot.className = "interactive-option-dot";
-      optionEl.appendChild(dot);
-
-      const label = document.createElement("span");
-      label.textContent = opt.label;
-      optionEl.appendChild(label);
-
-      optionEl.addEventListener("click", () => {
-        if (data.multiple) {
-          if (selectedValues.has(opt.value)) {
-            selectedValues.delete(opt.value);
-            optionEl.classList.remove("selected");
-          } else {
-            selectedValues.add(opt.value);
-            optionEl.classList.add("selected");
-          }
-        } else {
-          list.querySelectorAll(".interactive-option").forEach(el => el.classList.remove("selected"));
-          selectedValues.clear();
-          selectedValues.add(opt.value);
-          optionEl.classList.add("selected");
-          submitBtn.disabled = false;
-          submitBtn.textContent = data.submitLabel || "Xác nhận";
-        }
-      });
-
-      list.appendChild(optionEl);
-    });
-
-    card.appendChild(list);
-
-    const btnGroup = document.createElement("div");
-    btnGroup.className = "interactive-btn-group";
-
-    const submitBtn = document.createElement("button");
-    submitBtn.className = "interactive-btn approve";
-    submitBtn.textContent = data.submitLabel || "Xác nhận";
-    submitBtn.addEventListener("click", () => {
-      submitBtn.disabled = true;
-      socket.send({
-        type: "interactive_response",
-        cardId: data.id,
-        action: "submit",
-        value: Array.from(selectedValues)
-      });
-      submitBtn.textContent = "Đã gửi";
-    });
-
-    btnGroup.appendChild(submitBtn);
-    card.appendChild(btnGroup);
-
-  } else if (data.type === "input") {
-    if (data.description) {
-      const desc = document.createElement("div");
-      desc.className = "interactive-input-description";
-      desc.textContent = data.description;
-      card.appendChild(desc);
-    }
-
-    const input = document.createElement("textarea");
-    input.className = "interactive-text-input";
-    input.value = typeof data.value === "string" ? data.value : "";
-    input.placeholder = data.placeholder || "Nhập nội dung...";
-    input.rows = 4;
-    input.setAttribute("aria-label", data.title || "Nhập nội dung");
-    card.appendChild(input);
-
-    const btnGroup = document.createElement("div");
-    btnGroup.className = "interactive-btn-group";
-    const cancelBtn = document.createElement("button");
-    cancelBtn.className = "interactive-btn reject";
-    cancelBtn.textContent = data.cancelLabel || "Hủy";
-    const submitBtn = document.createElement("button");
-    submitBtn.className = "interactive-btn approve";
-    submitBtn.textContent = data.submitLabel || "Xác nhận nội dung";
-
-    const lock = () => {
-      input.disabled = true;
-      cancelBtn.disabled = true;
-      submitBtn.disabled = true;
-    };
-    cancelBtn.addEventListener("click", () => {
-      lock();
-      socket.send({ type: "interactive_response", cardId: data.id, action: "cancel" });
-      cancelBtn.textContent = "Đã hủy";
-    });
-    submitBtn.addEventListener("click", () => {
-      lock();
-      socket.send({
-        type: "interactive_response", cardId: data.id, action: "submit", value: input.value
-      });
-      submitBtn.textContent = "Đã gửi";
-    });
-    btnGroup.appendChild(cancelBtn);
-    btnGroup.appendChild(submitBtn);
-    card.appendChild(btnGroup);
-
-  } else if (data.type === "approve") {
-    if (data.description) {
-      const desc = document.createElement("div");
-      desc.className = "interactive-card-desc";
-      desc.textContent = data.description;
-      card.appendChild(desc);
-    }
-
-    const btnGroup = document.createElement("div");
-    btnGroup.className = "interactive-btn-group";
-
-    const rejectBtn = document.createElement("button");
-    rejectBtn.className = "interactive-btn reject";
-    rejectBtn.textContent = data.rejectLabel || "Từ chối";
-
-    const approveBtn = document.createElement("button");
-    approveBtn.className = "interactive-btn approve";
-    approveBtn.textContent = data.approveLabel || "Đồng ý";
-
-    rejectBtn.addEventListener("click", () => {
-      rejectBtn.disabled = true;
-      approveBtn.disabled = true;
-      socket.send({
-        type: "interactive_response",
-        cardId: data.id,
-        action: "reject"
-      });
-      rejectBtn.textContent = "Đã từ chối";
-    });
-
-    approveBtn.addEventListener("click", () => {
-      rejectBtn.disabled = true;
-      approveBtn.disabled = true;
-      socket.send({
-        type: "interactive_response",
-        cardId: data.id,
-        action: "approve"
-      });
-      approveBtn.textContent = "Đã đồng ý";
-    });
-
-    btnGroup.appendChild(rejectBtn);
-    btnGroup.appendChild(approveBtn);
-    card.appendChild(btnGroup);
-
-  } else if (data.type === "image_result") {
-    // Khung xem trước thuần túy: chỉ mỗi ảnh, không khung thẻ (bong bóng chat
-    // đã là một khung), không chữ, không nút, không lớp thêm.
+  if (data.type === "image_result") {
+    // Ảnh nằm ngay trong câu trả lời (kiểu claude.ai): bấm là phóng to; ảnh có bản gốc để tải
+    // (upscale) thì nút tải nhỏ nằm trên góc ảnh. Ảnh chụp màn hình không có nút.
     if (data.url) {
+      const wrap = document.createElement("div");
+      wrap.className = "image-result";
       const img = document.createElement("img");
       img.className = "image-result-preview";
       img.src = data.url;
       img.alt = data.name || "ảnh";
       img.addEventListener("click", () => openImageLightbox(img.src));
       img.addEventListener("load", () => scrollToBottomIfNeeded());
-      card.appendChild(img);
+      wrap.appendChild(img);
+      if (data.downloadUrl) wrap.appendChild(downloadLink("image-download", data.downloadUrl, data.name));
+      card.appendChild(wrap);
     }
   } else if (data.type === "file") {
     // Thẻ tài liệu Office: icon Word/Excel/PowerPoint/PDF + tên tệp + nút
     // Tải về trỏ tới /api/outputs/{token}?download=1. Ảnh không qua đây nữa:
-    // ảnh upscale hiện cùng thẻ tracker với ảnh chụp màn hình (nhánh trên).
+    // ảnh upscale và ảnh chụp màn hình là khung xem trước image_result (nhánh trên).
     card.classList.add("file-card");
-
-    const row = document.createElement("div");
-    row.className = "file-row";
-
+    const name = data.name || "tệp";
+    // PDF xem được ngay trong trình duyệt: bấm thẻ là mở ở tab mới; Word/Excel/PPT bấm thẻ là tải về.
+    const open = document.createElement("a");
+    open.className = "file-open";
+    if ((data.ext || "").toLowerCase() === "pdf" && data.url) {
+      open.href = data.url;
+      open.target = "_blank";
+      open.rel = "noopener";
+    } else {
+      open.href = data.downloadUrl || data.url || "#";
+      open.setAttribute("download", name);
+    }
     const icon = document.createElement("span");
     icon.className = "file-icon";
     icon.innerHTML = officeFileIconSvg(data.ext, data.label);
-    row.appendChild(icon);
-
     const meta = document.createElement("div");
     meta.className = "file-meta";
     const nameEl = document.createElement("div");
     nameEl.className = "file-name";
-    nameEl.textContent = data.name || "tệp";
-    nameEl.title = data.name || "";
-    meta.appendChild(nameEl);
+    nameEl.textContent = name;
+    nameEl.title = name;
+    const line = document.createElement("div");
+    line.className = "file-meta-line";
+    const kind = data.label || (data.ext || "").toUpperCase();
     const caption = (data.caption || "").trim();
-    if (caption) {
-      const captionEl = document.createElement("div");
-      captionEl.className = "file-caption";
-      captionEl.textContent = caption;
-      captionEl.title = caption;
-      meta.appendChild(captionEl);
-    }
-    row.appendChild(meta);
-
-    const download = document.createElement("a");
-    download.className = "file-download";
-    download.href = data.downloadUrl || data.url || "#";
-    download.setAttribute("download", data.name || "tệp");
-    download.textContent = "⬇ Tải về";
-    row.appendChild(download);
-
-    card.appendChild(row);
+    line.textContent = [kind, formatSize(data.size), caption].filter(Boolean).join(" · ");
+    meta.append(nameEl, line);
+    open.append(icon, meta);
+    card.append(open, downloadLink("file-download", data.downloadUrl || data.url || "#", name));
   }
 
   const textContainer = container.querySelector(".bubble-text");
@@ -1202,19 +1076,18 @@ const canvas = document.getElementById("orb-canvas") as HTMLCanvasElement;
 const orb = createOrb(canvas, { enabled: false });
 
 // Orb on/off button (top-right controls). Off = no drawing at all and the WebGL context goes back to the GPU. Locked while the
-// welcome layer shows; the first message opens the orb with a longer-held dot.
+// welcome layer shows; the first message turns the orb on.
 const btnOrb = document.getElementById("btn-orb-toggle") as HTMLButtonElement;
 btnOrb.disabled = true;
 btnOrb.classList.add("orb-off"); // the icon follows this class: off at load
 btnOrb.setAttribute("aria-pressed", "false");
 btnOrb.title = "Bật orb";
-const WELCOME_DOT_HOLD_MS = 1200;
 const welcome = mountWelcome(() => {
   btnOrb.disabled = false;
   btnOrb.classList.remove("orb-off");
   btnOrb.setAttribute("aria-pressed", "true");
   btnOrb.title = "Tắt orb (ngừng vẽ, trả GPU)";
-  orb.setEnabled(true, WELCOME_DOT_HOLD_MS);
+  orb.setEnabled(true);
 });
 btnOrb.addEventListener("click", () => {
   const turnOn = btnOrb.classList.contains("orb-off");
@@ -1476,14 +1349,11 @@ socket.onMessage((msg) => {
   } else if (type === "stream_start") {
     closeAssistantBubble(); // the previous turn was cancelled without a stream_end: do not leave its loader spinning
     wasStreamed = false;
-    pendingDownload = null;
+    isStreamActive = true;
+    isBubbleFinalRendered = false;
     activeAssistantText = "";
     island.resetFlow();
     currentTurnId = Date.now().toString();
-
-    // Mark existing messages as 'old'
-    const oldBubbles = chatHistory.querySelectorAll(".chat-bubble");
-    oldBubbles.forEach((m) => m.classList.add("old"));
 
     // 2. Tạo bong bóng chat cho phản hồi của Assistant (LLM)
     activeAssistantBubble = document.createElement("div");
@@ -1505,6 +1375,7 @@ socket.onMessage((msg) => {
           activeAssistantBubble.appendChild(textContainer);
         }
       }
+      isBubbleFinalRendered = false;
       activeAssistantText += chunkText;
       streamTargetText = activeAssistantText; // Feed typewriter target buffer
       wakeStreamTypewriter();
@@ -1545,6 +1416,7 @@ socket.onMessage((msg) => {
     }
   } else if (type === "stream_end") {
     wasStreamed = true;
+    isStreamActive = false;
     closeAssistantBubble(); // the bubble only: the status label follows the status packets
     // The flow steps that arrive after stream_end still go to the island (island.flowStep).
   } else if (type === "status") {
@@ -1614,20 +1486,16 @@ socket.onMessage((msg) => {
       if (!url.includes("?")) {
         url = `${url}?t=${Date.now()}`;
       }
-      const activeId = (window as any)._activeScreenshotTrackerId || `screenshot_tracker_${currentTurnId}_${Date.now()}`;
       handleInteractiveCardData({
-        id: activeId,
+        id: `screenshot_${currentTurnId}_${Date.now()}`,
         type: "image_result",
         name: "Ảnh chụp màn hình",
         url
       });
-      // Reset ID
-      delete (window as any)._activeScreenshotTrackerId;
     }
   } else if (type === "output_file") {
-    // Ảnh upscale: chỉ vẽ khung xem trước thuần túy (không chữ, không nút).
-    // Nút icon ⬇ tải bản gốc chờ gắn vào bong bóng phản hồi cuối lượt.
-    // Tài liệu Office hiện thẻ tệp có icon Word/Excel/PDF (hàng tên + Tải về).
+    // Ảnh upscale: ảnh nằm trong câu trả lời, nút tải bản gốc trên góc ảnh.
+    // Tài liệu Office: thẻ tệp (icon Word/Excel/PDF + tên + loại · dung lượng + nút tải).
     const kind = msg.kind === "image" ? "image" : "document";
     if (kind === "image") {
       const url = (msg.url as string) || "";
@@ -1637,11 +1505,8 @@ socket.onMessage((msg) => {
           type: "image_result",
           name: (msg.name as string) || "tệp",
           url,
+          downloadUrl: (msg.download_url as string) || url,
         });
-        pendingDownload = {
-          name: (msg.name as string) || "tệp",
-          url: (msg.download_url as string) || url,
-        };
       }
     } else {
       handleInteractiveCardData({
@@ -1654,6 +1519,7 @@ socket.onMessage((msg) => {
         caption: (msg.caption as string) || "",
         url: (msg.url as string) || "",
         downloadUrl: (msg.download_url as string) || "",
+        size: typeof msg.size === "number" ? msg.size : null,
       });
     }
   } else if (type === "interactive") {
@@ -1764,14 +1630,6 @@ btnTtsToggle.addEventListener("click", (e) => {
 });
 
 // Top-right controls: Direct Settings button (no dropdown menu)
-const btnSettings = document.getElementById("btn-settings");
-if (btnSettings) {
-  btnSettings.addEventListener("click", (e) => {
-    e.stopPropagation();
-    openSettings();
-  });
-}
-
 // Global copy button for code blocks & image lightbox in chat bubbles
 document.addEventListener("click", (e) => {
   const copyBtn = (e.target as HTMLElement).closest(".sd-copy-btn") as HTMLButtonElement | null;
@@ -1889,7 +1747,7 @@ function toggleCommandBar(forceShow?: boolean) {
 
   commandContainer.classList.toggle("visible", cmdBarVisible);
   btnCmdBar.classList.toggle("active", cmdBarVisible);
-  setBarHidden(!cmdBarVisible); // the bar only fades out: stop its bot, send-button shader and halo too
+  setBarHidden(!cmdBarVisible); // the bar only fades out: stop its send-button shader and halo too
   if (cmdBarVisible) {
     setTimeout(() => commandInput.focus(), 50);
   } else {

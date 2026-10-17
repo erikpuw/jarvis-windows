@@ -283,7 +283,7 @@ async function run(label, opts, hasHover) {
   await page.waitForTimeout(800);
   flow(send);
   await page.waitForTimeout(500);
-  await page.evaluate(() => document.getElementById("btn-settings").click());
+  await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="overview"]').click());
   await page.waitForTimeout(500);
   s = await st();
   check(s.vis === "hidden" || s.op === 0, `${tag} 28. Cài đặt đang mở: đảo bị che`, JSON.stringify([s.vis, s.op]));

@@ -84,7 +84,7 @@ const orbState = (page) => page.evaluate(() => {
   check(freed, "2b2. tắt: bộ đệm vẽ của canvas cũ được xả về 0×0 trước khi gỡ (không để lại khung hình cuối làm lớp mờ trên iOS Safari)");
   sock().send(JSON.stringify({ type: "status", state: "thinking" })); await page.waitForTimeout(300);
   check((await drawsOver(page, 600)) === 0, "2c. tắt: đổi trạng thái JARVIS (đang nghĩ) cũng không làm orb vẽ lại");
-  await page.evaluate(() => document.getElementById("btn-settings").click()); await page.waitForTimeout(600);
+  await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="overview"]').click()); await page.waitForTimeout(600);
   await page.evaluate(() => document.getElementById("settings-close").click()); await page.waitForTimeout(600);
   check((await drawsOver(page, 800)) === 0 && !(await orbState(page)).canvas && (await orbState(page)).backdrop, "2d. tắt: mở rồi đóng Settings không làm orb sống lại");
 
@@ -131,7 +131,7 @@ const orbState = (page) => page.evaluate(() => {
   await bp.goto(BASE);
   for (let i = 0; i < 50 && !bsock; i++) await bp.waitForTimeout(100);
   await dismissWelcome(bp); // the first message is what tries to build the orb
-  await bp.evaluate(() => document.getElementById("btn-settings")?.click()); await bp.waitForTimeout(600);
+  await bp.evaluate(() => document.querySelector('.sd-nav-item[data-page="overview"]')?.click()); await bp.waitForTimeout(600);
   const opened = await bp.$("#settings-container.open");
   await bp.evaluate(() => { document.getElementById("settings-close")?.click(); document.getElementById("btn-orb-toggle")?.click(); document.getElementById("btn-orb-toggle")?.click(); });
   await bp.waitForTimeout(300);

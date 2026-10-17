@@ -62,7 +62,7 @@ const TOOLS = ["Trạng thái máy", "Bách khoa toàn thư", "Tra cứu pháp l
   check(mid >= 0.30 && mid <= 0.38, "7b. khối chào căn giữa dọc, hơi cao (tâm 30–38% màn hình)", mid.toFixed(3));
 
   // 8. Settings mở: chữ xoay dừng; đóng: chạy lại
-  await page.evaluate(() => document.getElementById("btn-settings").click()); await page.waitForTimeout(600);
+  await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="overview"]').click()); await page.waitForTimeout(600);
   const a = await page.$eval(".welcome-slot", (s) => s.lastElementChild.textContent); await page.waitForTimeout(2600);
   const b = await page.$eval(".welcome-slot", (s) => s.lastElementChild.textContent);
   await page.evaluate(() => document.getElementById("settings-close").click()); await page.waitForTimeout(2800);
@@ -77,14 +77,13 @@ const TOOLS = ["Trạng thái máy", "Bách khoa toàn thư", "Tra cứu pháp l
   const sinceSend = Date.now() - t0;
   const o2 = await page.evaluate(() => ({ disabled: document.getElementById("btn-orb-toggle").disabled, backend: document.getElementById("orb-canvas").dataset.backend }));
   check(!o2.disabled && o2.backend !== "off", "9a. tin đầu: lớp chào biến mất, orb dựng, nút orb mở khoá", JSON.stringify({ ...o2, sinceSend }));
-  // chấm giữ 1.2 s: 0.8 s sau khung đầu vẫn là chấm (dải ngoài lõi tối) — đo bằng điểm ảnh giữa trái màn hình.
-  // Mốc đo theo performance.now() của trang (không theo lúc test thấy data-first: luồng chính bận ~0.8 s sau khung đầu nên
-  // việc phát hiện trễ). Số đo (PNG 80x80, mỗi mẫu gắn mốc ms sau khung đầu, 2026-10-16): chấm giữ = 181 byte (ổn định tới ~1100 ms);
-  // đã bung từ ~1200 ms = 1575..3745 byte. Ngưỡng 1000 nằm giữa hai mức (trên 181 có biên, dưới 1575 có biên).
+  // no opening any more (user 2026-10-17): the orb shows its cloud at once. 0.8 s after its first frame (page clock: the test sees
+  // data-first late) the area left of the centre already has dots. PNG 80x80 measured 2026-10-16: empty/dot = 181 bytes,
+  // cloud = 1575..3745 bytes; the bar of 1000 sits between.
   const firstDraw = await page.$eval("#orb-canvas", (c) => Number(c.dataset.first));
   await page.waitForFunction((t) => performance.now() - t >= 800, firstDraw, { polling: 20, timeout: 5000 });
   const midLeft = await page.screenshot({ clip: { x: 60, y: 380, width: 80, height: 80 } });
-  check(midLeft.length < 1000, "9b. orb sau tin đầu còn giữ chấm (vùng ngoài lõi còn đen ~0.8 s)", String(midLeft.length));
+  check(midLeft.length > 1000, "9b. orb sau tin đầu hiện đám hạt ngay, không còn màn chấm-bung", String(midLeft.length));
 
   // 9c. thời tiết về muộn sau khi đã biến mất: bỏ qua, không hiện lại
   send({ type: "welcome", weather: { desc: "nắng", temp: 30, kind: "clear", place: "Hồ Chí Minh" } });

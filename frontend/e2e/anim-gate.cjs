@@ -1,4 +1,4 @@
-// E2E: mọi vòng lặp hoạt ảnh (orb, orb trạng thái, viền edge-aura, bot linh vật, shader nút gửi)
+// E2E: mọi vòng lặp hoạt ảnh (orb, orb trạng thái, viền edge-aura, shader nút gửi; bot linh vật đã gỡ 2026-10-17)
 //  - dừng hẳn khi Settings / map / media phủ toàn màn hình, chạy lại khi đóng
 //  - orb không vẽ quá 60 khung/s kể cả màn 120Hz; pause()+resume() liền nhau không sinh vòng lặp thứ hai
 // Giả lập: điện thoại 390x844, rAF bị ép 120Hz. WebSocket và /api bị mock.
@@ -23,9 +23,6 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
       window.__raf.set(k, (window.__raf.get(k) || 0) + 1);
       return o(cb);
     };
-    window.__bot = 0; // số lần vẽ lại canvas của bot (chỉ lệnh xóa toàn canvas của bubble-avatar.ts, mỗi khung đúng một lần)
-    const cr = CanvasRenderingContext2D.prototype.clearRect;
-    CanvasRenderingContext2D.prototype.clearRect = function (...a) { if (this.canvas.parentElement?.id === "jarvis-bot" && a[2] === this.canvas.width) window.__bot++; return cr.apply(this, a); };
     for (const C of [WebGL2RenderingContext, WebGLRenderingContext]) {
       const c = C.prototype.clear;
       C.prototype.clear = function (m) { if (this.canvas.id === "orb-canvas") window.__gl++; return c.call(this, m); };
@@ -47,14 +44,14 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
     return page.evaluate((ms) => ({ gl: window.__gl / (ms / 1000), raf: Object.fromEntries([...window.__raf].map(([k, v]) => [k, v / (ms / 1000)])) }), ms);
   };
   const sum = (r, keys) => keys.reduce((a, k) => a + (r.raf[k] || 0), 0);
-  const LOOPS = ["orb.ts", "status-orb.ts", "edge-aura.ts", "bot.ts", "anim-gate.ts", "other"]; // "other" gồm shader nút gửi
+  const LOOPS = ["orb.ts", "status-orb.ts", "edge-aura.ts", "anim-gate.ts", "other"]; // "other" gồm shader nút gửi
 
   const run = await rate();
   check(run.gl <= 62, "1. orb không vẽ quá 60 khung/s trên màn 120Hz", `${run.gl.toFixed(0)}/s`);
-  check((run.raf["anim-gate.ts"] || 0) > 5, "2. bot linh vật có vòng lặp chung (anim-gate) khi bình thường", `${(run.raf["anim-gate.ts"] || 0).toFixed(0)}/s`);
+  check((run.raf["anim-gate.ts"] || 0) > 5, "2. vòng lặp chung (anim-gate) chạy khi bình thường", `${(run.raf["anim-gate.ts"] || 0).toFixed(0)}/s`);
   check((run.raf["anim-gate.ts"] || 0) > 5 && run.gl > 20, "3. orb trạng thái và viền (vòng lặp chung) vẫn chạy khi bình thường", JSON.stringify(run.raf));
 
-  await page.evaluate(() => document.getElementById("btn-settings").click());
+  await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="overview"]').click());
   await page.waitForTimeout(600);
   const open = await rate();
   check(open.gl === 0 && sum(open, LOOPS) <= 2, "4. mở Settings → mọi vòng lặp dừng hẳn", `gl=${open.gl} ${JSON.stringify(open.raf)}`);
@@ -73,29 +70,24 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   const dbl = await rate();
   check(dbl.gl <= 62 && (dbl.raf["anim-gate.ts"] || 0) <= 400, "6. đóng/mở lớp phủ liên tục không sinh vòng lặp thứ hai", `gl=${dbl.gl.toFixed(0)} ${JSON.stringify(dbl.raf)}`);
 
-  // bot linh vật: 60 khung/s cả trên màn cảm ứng (đã bỏ giới hạn 30; xem bot-fps.cjs). Máy test với rAF giả 120Hz chỉ đo được 35–60 kể cả
-  // code cũ (2026-10-15), nên ngưỡng 32 chỉ để bắt lại giới hạn 30
   for (let i = 0; i < 50 && !sock; i++) await page.waitForTimeout(100);
-  // orb đang vẽ (GL phần mềm trong headless) chiếm CPU làm bot rớt ~60→30 khung/s (đo: bot ~47 khi orb tắt). Test 7–8 đo bot/quả cầu/shader nên tắt orb trước
+  // orb đang vẽ (GL phần mềm trong headless) chiếm CPU làm các vòng nhỏ rớt khung; test 8 đo quả cầu/shader nên tắt orb trước
   await page.evaluate(() => { if (document.getElementById("orb-canvas")?.dataset.backend !== "off") document.getElementById("btn-orb-toggle").click(); });
   await page.waitForTimeout(800);
   await page.evaluate(() => document.getElementById("command-container")?.classList.add("visible"));
   await page.waitForTimeout(800);
-  await page.evaluate(() => (window.__bot = 0)); await page.waitForTimeout(1500);
-  const bot = await page.evaluate(() => window.__bot / 1.5);
-  check(bot >= 32 && bot <= 65, "7. bot linh vật vẽ ~60 khung/s trên màn cảm ứng (không còn bị giới hạn 30)", `${bot.toFixed(0)}/s`);
-
-  // 8. ẩn thanh lệnh (nút #btn-cmd-bar): bot, shader vòng kim loại nút gửi và quầng sáng dừng hẳn; quả cầu trạng thái (#status-row) vẫn chạy
+  // 8. ẩn thanh lệnh (nút #btn-cmd-bar): shader vòng kim loại nút gửi và quầng sáng dừng hẳn; quả cầu trạng thái (#status-row) vẫn chạy
   const shader = (r) => r.raf.other || 0; // the send-button shader (@paper-design) shows up as "other"
   const shown = await rate();
   await page.evaluate(() => document.getElementById("btn-cmd-bar").click());
   await page.waitForTimeout(600);
-  await page.evaluate(() => (window.__bot = 0));
   const hid = await rate();
-  const hidState = await page.evaluate(() => ({ bot: window.__bot, halo: !!document.querySelector("#cmd-send-wrap .paused"), vis: getComputedStyle(document.getElementById("command-bar")).visibility }));
-  check(hidState.bot === 0 && shader(hid) === 0 && hidState.halo, "8a. ẩn thanh lệnh: bot, shader nút gửi, quầng sáng dừng hẳn", JSON.stringify({ ...hidState, shader: shader(hid), shaderShown: shader(shown) }));
+  const hidState = await page.evaluate(() => ({ halo: !!document.querySelector("#cmd-send-wrap .paused"), vis: getComputedStyle(document.getElementById("command-bar")).visibility }));
+  check(shader(hid) === 0 && hidState.halo, "8a. ẩn thanh lệnh: shader nút gửi, quầng sáng dừng hẳn", JSON.stringify({ ...hidState, shader: shader(hid), shaderShown: shader(shown) }));
   const statusLoop = hid.raf["anim-gate.ts"] || 0;
-  check(statusLoop >= 50 && statusLoop <= 70, "8b. ẩn thanh lệnh: quả cầu trạng thái vẫn chạy (chỉ còn một vòng chung ~60/s)", `${statusLoop.toFixed(0)}/s · lúc hiện ${(shown.raf["anim-gate.ts"] || 0).toFixed(0)}/s`);
+  // one chain only: the 120 Hz stub (setTimeout 8 ms) lets a light loop tick ~110-125/s; a second chain would read ~240/s. (≤ 70 held
+  // only while the heavy bot slowed every tick; the bot was removed 2026-10-17)
+  check(statusLoop >= 50 && statusLoop <= 130, "8b. ẩn thanh lệnh: quả cầu trạng thái vẫn chạy (chỉ một vòng lặp chung)", `${statusLoop.toFixed(0)}/s · lúc hiện ${(shown.raf["anim-gate.ts"] || 0).toFixed(0)}/s`);
   check(hidState.vis === "hidden", "8c. ẩn thanh lệnh: phần đã mờ hẳn được ẩn (visibility), trình duyệt thôi vẽ lớp trong suốt", hidState.vis);
   await page.evaluate(() => document.getElementById("btn-cmd-bar").click());
   // fade with a 10 px slide (user 2026-10-16; 15 px still tinted the address bar on the iPhone). 20 px pushed the bar (bottom 18 px) past the screen's bottom edge on hide, and
@@ -112,9 +104,9 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   check(yIn > 0 && yIn < 10 && yOut > 0 && yOut < 10 && Math.abs(yHidden - 10) < 0.01, "8e. hiện/ẩn thanh lệnh: mờ dần kèm trượt 10px (không chạm mép dưới)", JSON.stringify({ yIn, yOut, yHidden }));
   await page.evaluate(() => document.getElementById("btn-cmd-bar").click());
   await page.waitForTimeout(600);
-  await page.evaluate(() => (window.__bot = 0)); await page.waitForTimeout(1000);
+  await page.waitForTimeout(1000);
   const again = await rate();
-  check((await page.evaluate(() => window.__bot)) > 30 && shader(again) > 30 && !(await page.$("#cmd-send-wrap .paused")), "8d. hiện lại thanh lệnh: bot, shader, quầng sáng chạy lại", JSON.stringify({ shader: shader(again) }));
+  check(shader(again) > 30 && !(await page.$("#cmd-send-wrap .paused")), "8d. hiện lại thanh lệnh: shader, quầng sáng chạy lại", JSON.stringify({ shader: shader(again) }));
 
   await browser.close();
   console.log(failed ? `\n${failed} FAIL` : "\nALL PASS");

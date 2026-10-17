@@ -109,7 +109,7 @@ const angDiff = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 36
   const near = (a, b, t) => a.every((v, i) => Math.abs(v - b[i]) <= t);
   check(col.length === 4 && col.every((c) => c.a > 0 && near(c.drawn, c.tint, 6)), "12. màu thật vẽ trên canvas quầng sáng đúng bằng màu đã lấy", JSON.stringify(col.map((c) => [c.drawn, c.tint, c.a])));
 
-  await page.evaluate(() => document.getElementById("btn-settings").click());
+  await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="overview"]').click());
   await page.waitForTimeout(1200);
   const p = await film(page, 1300);
   check(new Set(p.map((x) => `${x.op.toFixed(2)}|${x.ang}`)).size === 1, "9. mở Settings (màn hình bị che) thì quầng sáng dừng", JSON.stringify([p[0], p.at(-1)]));

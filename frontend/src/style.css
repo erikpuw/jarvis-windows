@@ -5,6 +5,7 @@
   --chat-gap: 10px;
   --bubble-radius: 18px;
   --bubble-font-size: 13.5px;
+  --chat-text: #e5e7eb; /* Jarvis's answers: near-white body text on the black page; headings/links keep the blue accent */
   --container-width: 800px;
   --controls-inset: 16px; /* #controls distance from the top/right edges (12px on phones) */
   --controls-size: 36px;
@@ -29,6 +30,7 @@
   --z-cam: 60;        /* #webcam-hud */
   --z-media: 70;      /* .media-player */
   --z-island: 80;     /* .island (#error-text), Dynamic Island */
+  --z-reader: 85;     /* #reader-card (floating article preview) */
   --z-lightbox: 90;   /* #image-lightbox */
   --z-settings: 100;  /* #settings-container */
 }
@@ -120,7 +122,7 @@ body:has(#settings-container.open) #controls,
   padding: 0;
   border: 1px solid rgba(14, 165, 233, 0.2);
   border-radius: 50%;
-  background: rgba(14, 165, 233, 0.08);
+  background: rgba(0, 0, 0, 0.9);
   color: rgba(14, 165, 233, 0.5);
   cursor: pointer;
   display: flex;
@@ -164,16 +166,16 @@ body:has(#settings-container.open) #controls,
   color: rgba(14, 165, 233, 0.7);
 }
 
-/* offsets from the main button: inner arc radius 44 at 0°/45°/90°, outer arc radius 78 at 15°/45°/75° (down … left) */
-#btn-settings { --dx: 0px; --dy: 44px; }
-#btn-orb-toggle { --dx: -31px; --dy: 31px; }
-#btn-cmd-bar { --dx: -44px; --dy: 0px; }
+/* offsets from the main button: inner arc radius 44 at 22.5°/67.5°, outer arc radius 78 at 15°/45°/75° (down … left).
+   Settings left the cluster for the Dashboard menu (2026-10-17): two buttons share the inner arc evenly. */
+#btn-orb-toggle { --dx: -17px; --dy: 41px; }
+#btn-cmd-bar { --dx: -41px; --dy: 17px; }
 #btn-tts-toggle { --dx: -20px; --dy: 75px; }
 #btn-mute { --dx: -55px; --dy: 55px; }
 #btn-webcam-toggle { --dx: -75px; --dy: 20px; }
 
 #controls button:hover {
-  background: rgba(14, 165, 233, 0.14);
+  background: rgba(0, 0, 0, 0.9);
   color: rgba(14, 165, 233, 0.8);
   border-color: rgba(14, 165, 233, 0.35);
 }
@@ -270,6 +272,38 @@ html.anim-paused body > :not(#settings-container) * {
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
+/* Dải màu đen trong suốt ngang phủ êm mép trên khung chat khi tin nhắn cuộn lên trần (thay thế CSS mask nặng) */
+#command-container::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.95) 0%, /* same black as the page (#000), not navy */
+    rgba(0, 0, 0, 0.45) 50%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 25;
+  border-radius: 8px 8px 0 0;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+/* only once messages really sit under the top edge (scrolled): "overflowing" alone also holds for a moment while a new bubble
+   slides up, which put the band across the middle of the screen at every stream_start (user 2026-10-16) */
+#command-container.has-chat-fade::before {
+  opacity: 1;
+}
+
+#command-container:not(.visible)::before {
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
 /* Hidden: only the status row (orb + label) stays; chat and bar fade away. */
 #command-container:not(.visible) {
   pointer-events: none;
@@ -296,6 +330,7 @@ html.anim-paused body > :not(#settings-container) * {
   gap: 6px;
   /* Giảm gap giữa các bong bóng chat */
   overflow-y: auto;
+  overflow-x: hidden; /* never pans sideways, even if something inside is too wide (user 2026-10-16) */
   max-height: calc(100dvh - 180px);
   max-height: calc(100vh - 180px);
   overscroll-behavior: contain; /* its scroll never runs on into the page (viewport-reset.ts lockPageDrag) */
@@ -305,8 +340,6 @@ html.anim-paused body > :not(#settings-container) * {
   position: relative;
   z-index: 10;
   touch-action: pan-y;
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 3%, black 100%);
-  mask-image: linear-gradient(to bottom, transparent 0%, black 3%, black 100%);
 }
 
 #chat-history::-webkit-scrollbar {
@@ -323,19 +356,6 @@ html.anim-paused body > :not(#settings-container) * {
   margin-top: auto;
 }
 
-#chat-history.at-bottom {
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 100%);
-  mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 100%);
-}
-
-/* The fade only shows where content reaches the top edge, i.e. once the list overflows (.overflowing, set in
-   main.ts). Before that the mask changes nothing visible but forces the whole list, blurred bubbles
-   included, through an offscreen layer every frame. */
-#chat-history:not(.overflowing) {
-  -webkit-mask-image: none;
-  mask-image: none;
-}
-
 .chat-bubble {
   padding: 6px 12px;
   /* Thắt chặt padding trong bong bóng chat */
@@ -349,13 +369,18 @@ html.anim-paused body > :not(#settings-container) * {
   /* Dark glass effect (80% black opacity) */
   animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: all;
-  /* Keep bubbles interactive */
-  transition: opacity 0.3s ease, transform 0.3s ease, filter 0.3s ease;
   position: relative;
   /* The bubbles are flex items of the scrolling #chat-history. With an explicit min-height (the assistant bubble has 32px) they stop
      being protected by the automatic content minimum, so a list that overflows squeezed every bubble down to 32px and the text spilled
      out of its frame (and no longer pushed the chat up). A bubble never shrinks below its text. */
   flex-shrink: 0;
+}
+
+/* Bubbles cost nothing once drawn (user 2026-10-17: the more bubbles, the hotter the iPhone). Older bubbles skip painting while
+   off screen; the newest one (still streaming) and a pending one paint as usual. The slide-up is dropped when it ends (main.ts). */
+.chat-bubble:not(:last-child):not(.pending) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 48px;
 }
 
 /* Khử khoảng cách margin dư thừa của các đoạn văn bên trong bong bóng chat */
@@ -369,7 +394,14 @@ html.anim-paused body > :not(#settings-container) * {
 }
 
 /* Markdown typography & styling inside chat bubbles */
-.chat-bubble .bubble-text,
+.chat-bubble .bubble-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: inherit;
+  font-size: var(--bubble-font-size, 13.5px);
+  line-height: 1.5;
+}
+
 .chat-bubble .bubble-prose {
   white-space: normal;
   word-break: break-word;
@@ -383,13 +415,14 @@ html.anim-paused body > :not(#settings-container) * {
 .chat-bubble .bubble-prose h3,
 .chat-bubble .bubble-prose h4 {
   color: var(--accent-blue, #0ea5e9);
-  margin: 6px 0 3px 0;
+  margin: 12px 0 4px 0; /* a heading opens a new section: more room above than below */
   font-weight: 600;
   line-height: 1.3;
 }
+.chat-bubble .bubble-prose > :first-child { margin-top: 0; }
 .chat-bubble .bubble-prose h1 { font-size: calc(var(--bubble-font-size, 13.5px) * 1.15); }
 .chat-bubble .bubble-prose h2 { font-size: calc(var(--bubble-font-size, 13.5px) * 1.08); }
-.chat-bubble .bubble-prose h3 { font-size: var(--bubble-font-size, 13.5px); text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.9; }
+.chat-bubble .bubble-prose h3 { font-size: var(--bubble-font-size, 13.5px); }
 
 .chat-bubble .bubble-prose p {
   margin: 0 0 6px 0 !important;
@@ -482,7 +515,8 @@ html.anim-paused body > :not(#settings-container) * {
   color: #38bdf8;
 }
 
-/* Tables inside chat bubbles */
+/* Tables inside chat bubbles scroll sideways inside their own frame (user 2026-10-16: squeezing a wide table into the bubble
+   split words and still spilled on the phone). Known cost: each scroller is a compositing layer (~5 per table, 38651fe). */
 .chat-bubble .sd-table-wrap {
   width: 100%;
   max-width: 100%;
@@ -490,7 +524,7 @@ html.anim-paused body > :not(#settings-container) * {
   margin: 8px 0;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.02);
+  background: #050508; /* solid: answers have no bubble now, the orb must not show through the numbers */
   display: block;
 }
 
@@ -560,27 +594,189 @@ html.anim-paused body > :not(#settings-container) * {
   font-weight: 600;
   white-space: nowrap;
 }
+/* Ảnh trong bảng Markdown (poster phim CGV, banner game Epic) */
+.chat-bubble .sd-table th:has(img),
+.chat-bubble .sd-table td:has(img) {
+  text-align: center !important;
+  vertical-align: middle;
+  min-width: 80px;
+  padding: 6px 8px;
+}
+
+.chat-bubble .sd-table th img,
 .chat-bubble .sd-table td img {
-  max-width: 120px;
-  max-height: 180px;
-  object-fit: contain;
+  width: auto;
+  max-width: 80px;
+  max-height: 110px;
+  min-width: 48px;
+  min-height: 64px;
+  object-fit: cover;
   border-radius: 6px;
   margin: 4px auto;
   display: block;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  cursor: zoom-in;
+  transition: transform 0.15s ease, border-color 0.15s ease;
 }
 
-/* Images & Lightbox zoom in chat bubbles */
+/* Card tables (markdown.ts: one item per column with a row of pictures, CGV movies / Epic games) as a grid of cards that
+   wraps by width: several a row on a PC, 2 a row on a phone. Cards, not a sideways strip. */
+/* a bubble shrinks to its content, and a grid's narrowest form is one column: a bubble with cards takes its full width */
+.chat-bubble .sd-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(130px, 100%), 1fr));
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.chat-bubble .sd-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+  text-align: center;
+  font-size: calc(var(--bubble-font-size, 13.5px) * 0.92);
+  color: #e2e8f0;
+  word-break: normal; /* whole words, like the table cells */
+  overflow-wrap: break-word;
+}
+
+.chat-bubble .sd-card-head {
+  font-weight: 600;
+  color: #ffffff;
+  /* two lines' room: the posters of a row line up whether a title takes one line or two */
+  min-height: 3em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-bubble .sd-card img {
+  width: 100%;
+  max-width: 120px;
+  height: auto;
+  border-radius: 6px;
+  margin: 2px auto;
+  display: block;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  cursor: zoom-in;
+}
+
+/* ==========================================================================
+   shadcn/ui Skeleton Table & Shimmer Animation
+   ========================================================================== */
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Base Skeleton block matching shadcn/ui */
+.chat-bubble .sd-skeleton {
+  display: block;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+}
+
+/* Subtle CSS shimmer sweep traveling across skeleton blocks while aria-busy remains true */
+.chat-bubble [aria-busy="true"] .sd-skeleton,
+.chat-bubble .sd-skeleton[aria-busy="true"] {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.13) 50%,
+    rgba(255, 255, 255, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+/* Skeleton Title Header line */
+.chat-bubble .sd-skeleton-title {
+  height: 14px;
+  border-radius: 4px;
+  margin: 3px auto;
+}
+
+/* Skeleton Image Block (matching 80x110 poster/banner geometry to prevent layout shift) */
+.chat-bubble .sd-skeleton-img {
+  width: 76px;
+  height: 105px;
+  min-width: 48px;
+  min-height: 64px;
+  max-width: 80px;
+  max-height: 110px;
+  border-radius: 6px;
+  margin: 4px auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* Skeleton Text Line with varied natural widths matching eventual copy layout */
+.chat-bubble .sd-skeleton-text {
+  height: 11px;
+  border-radius: 3px;
+  margin: 4px auto;
+}
+
+/* Skeleton Table Wrapper geometry */
+.chat-bubble .sd-table-wrap--skeleton {
+  min-height: 220px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+}
+
+.chat-bubble .sd-table--skeleton th {
+  padding: 8px 12px;
+  background: rgba(14, 165, 233, 0.1);
+  min-width: 90px;
+}
+
+.chat-bubble .sd-table--skeleton td {
+  padding: 6px 10px;
+  vertical-align: middle;
+}
+
+/* Respect user's motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .chat-bubble [aria-busy="true"] .sd-skeleton,
+  .chat-bubble .sd-skeleton[aria-busy="true"] {
+    animation: none;
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* Images & Lightbox zoom in chat bubbles (ảnh markdown ngoài bảng) */
 .chat-bubble img.bubble-img,
 .chat-bubble img {
-  max-width: 100%;
-  max-height: 300px;
-  object-fit: contain;
+  width: auto;
+  max-width: 180px;
+  max-height: 140px;
+  min-height: 50px;
+  object-fit: cover;
   border-radius: 8px;
-  margin: 6px 0;
-  display: block;
+  margin: 6px 4px 6px 0;
+  display: inline-block;
+  vertical-align: top;
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.04);
   cursor: zoom-in;
+  transition: transform 0.15s ease, border-color 0.15s ease;
 }
 
 .chat-bubble .bubble-prose a {
@@ -616,33 +812,27 @@ html.anim-paused body > :not(#settings-container) * {
 @keyframes slide-up {
   from {
     opacity: 0;
-    transform: translateY(10px);
-    filter: blur(4px);
+    transform: translateY(8px);
   }
 
   to {
     opacity: 1;
     transform: translateY(0);
-    filter: blur(0);
   }
 }
 
-/* Messages are always ready to be brightened by the scroll mask */
-.chat-bubble.old {
-  opacity: 0.8;
-  /* Slightly dimmed but readable */
-  transform: scale(1);
-}
-
+/* Jarvis's answers are not bubbles (like the big chat sites): no background, no frame, the full width of the chat column,
+   so a table gets the whole width. Only the user's messages stay bubbles (user 2026-10-17). */
 .chat-bubble.assistant {
-  align-self: flex-start;
-  background: rgba(0, 0, 0, 0.7);
-  border: 1px solid rgba(14, 165, 233, 0.15);
-  color: rgba(14, 165, 233, 0.95);
-  border-bottom-left-radius: 4px;
+  align-self: stretch;
+  max-width: 100%;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--chat-text);
   min-height: calc(var(--bubble-font-size, 13.5px) * 1.5 + 14px); /* one line of text: the same height as the loader bubble (no jump) */
   min-width: 48px;
-  padding: 6px 12px;
+  padding: 6px 0;
   box-sizing: border-box;
 }
 
@@ -652,28 +842,6 @@ html.anim-paused body > :not(#settings-container) * {
   border: 1px solid rgba(255, 255, 255, 0.15);
   color: rgba(255, 255, 255, 0.95);
   border-bottom-right-radius: 4px;
-}
-
-/* ── Liquid glass bubble effect ── */
-.chat-bubble {
-  overflow: visible;
-}
-
-.chat-bubble::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, transparent 40%, rgba(14, 165, 233, 0.01) 80%, transparent 100%);
-}
-
-.chat-bubble.user::before {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, transparent 50%, transparent 100%);
-}
-
-.chat-bubble:not(.old) {
-  animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 #command-bar {
@@ -1139,7 +1307,7 @@ html.anim-paused body > :not(#settings-container) * {
 }
 
 #controls button.active {
-  background: rgba(14, 165, 233, 0.12);
+  background: rgba(0, 0, 0, 0.9);
   border-color: rgba(14, 165, 233, 0.35);
   color: rgba(255, 255, 255, 0.9);
   box-shadow: 0 0 12px rgba(0, 212, 255, 0.15);
@@ -1276,153 +1444,6 @@ html.anim-paused body > :not(#settings-container) * {
   font-weight: 600;
   border-bottom: 1px solid rgba(0, 212, 255, 0.1);
   padding-bottom: 4px;
-}
-
-.interactive-select-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 160px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.interactive-select-list::-webkit-scrollbar {
-  width: 2px;
-}
-
-.interactive-select-list::-webkit-scrollbar-thumb {
-  background: rgba(0, 212, 255, 0.2);
-  border-radius: 1px;
-}
-
-.interactive-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: var(--fs-small);
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.interactive-option:hover {
-  background: rgba(0, 212, 255, 0.08);
-  border-color: rgba(0, 212, 255, 0.25);
-  color: #fff;
-}
-
-.interactive-option.selected {
-  background: rgba(0, 212, 255, 0.12);
-  border-color: rgba(0, 212, 255, 0.4);
-  color: #00d4ff;
-  box-shadow: 0 0 8px rgba(0, 212, 255, 0.1);
-}
-
-.interactive-option input {
-  display: none;
-}
-
-.interactive-option-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(0, 212, 255, 0.4);
-  display: inline-block;
-  position: relative;
-  flex-shrink: 0;
-}
-
-.interactive-option.selected .interactive-option-dot::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 4px;
-  height: 4px;
-  background: #00d4ff;
-  border-radius: 50%;
-  box-shadow: 0 0 6px #00d4ff;
-}
-
-.interactive-btn-group {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.interactive-btn {
-  flex: 0 0 auto;
-  min-width: 96px;
-  min-height: 34px;
-  padding: 7px 16px;
-  border-radius: 8px;
-  font-family: inherit;
-  font-size: var(--fs-small);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.interactive-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
-  color: #fff;
-}
-
-/* Nút chính: nền đặc để nhận ra ngay hành động đề xuất. */
-.interactive-btn.approve {
-  border-color: transparent;
-  background: rgba(74, 222, 128, 0.88);
-  color: #052e16;
-}
-
-.interactive-btn.approve:hover:not(:disabled) {
-  border-color: transparent;
-  background: #4ade80;
-  color: #052e16;
-  box-shadow: 0 0 12px rgba(74, 222, 128, 0.35);
-}
-
-/* Nút phụ: chỉ viền. */
-.interactive-btn.reject {
-  border-color: rgba(248, 113, 113, 0.35);
-  background: transparent;
-  color: #f87171;
-}
-
-.interactive-btn.reject:hover:not(:disabled) {
-  border-color: rgba(248, 113, 113, 0.7);
-  background: rgba(248, 113, 113, 0.1);
-  color: #fca5a5;
-}
-
-.interactive-card-desc {
-  font-size: var(--fs-ui);
-  line-height: 1.5;
-  color: rgba(255, 255, 255, 0.88);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-@media (max-width: 768px) {
-  .interactive-btn {
-    min-height: 40px;
-  }
-}
-
-.interactive-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
 }
 
 /* ── Command Autocomplete Suggestion Dropdown ── */
@@ -1602,21 +1623,88 @@ html.anim-paused body > :not(#settings-container) * {
   box-shadow: 0 0 18px rgba(0, 212, 255, 0.25) !important;
 }
 
-/* ── Output File Card (ảnh upscale / tài liệu Word-Excel-PPT-PDF) ── */
-.interactive-card.file-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
+/* ── Output cards, like claude.ai (user 2026-10-17) ──
+   Image: sits in the answer, rounded, thin border, no glow; click = lightbox; a small download button on its corner.
+   File: a compact card (type icon + name + "PDF · 240 KB") with a plain download icon; no colour, no gradient. */
+.chat-bubble .image-result {
+  position: relative;
+  display: inline-block;
+  align-self: flex-start; /* hug the picture (the card is a flex column): the download button sits on the picture's corner */
+  max-width: min(100%, 420px);
+  line-height: 0;
 }
 
-.file-row {
+.chat-bubble .image-result-preview {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 360px;
+  min-height: 0;
+  margin: 0;
+  object-fit: contain;
+  border-radius: 12px;
+  border: 1px solid #262626;
+  box-shadow: none;
+  background: #0a0a0a;
+  cursor: zoom-in;
+  transition: none;
+}
+
+.chat-bubble.assistant .image-result-preview:hover {
+  transform: none;
+  border-color: #404040 !important;
+  box-shadow: none !important;
+}
+
+.image-download,
+.file-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: #a3a3a3;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.image-download {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(10, 10, 10, 0.8);
+  border: 1px solid #333;
+}
+
+.image-download:hover,
+.file-download:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fafafa;
+}
+
+.interactive-card.file-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  width: min(100%, 360px);
+  box-sizing: border-box;
+  padding: 6px 6px 6px 10px;
+  background: #0a0a0a;
+  border: 1px solid #262626;
+  border-radius: 12px;
+}
+
+.file-open {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
+  color: inherit;
+  text-decoration: none;
 }
 
 .file-icon {
@@ -1628,7 +1716,6 @@ html.anim-paused body > :not(#settings-container) * {
 }
 
 .file-meta {
-  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1638,80 +1725,24 @@ html.anim-paused body > :not(#settings-container) * {
 .file-name {
   font-size: var(--fs-small);
   font-weight: 500;
-  color: #e2f3ff;
-  line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.file-caption {
-  font-size: var(--fs-label);
-  color: rgba(148, 163, 184, 0.95);
+  color: #e5e5e5;
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.file-download {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: var(--fs-small);
-  font-weight: 600;
-  font-family: inherit;
-  color: #06121f;
-  background: linear-gradient(135deg, #38bdf8, #0ea5e9);
-  text-decoration: none;
-  cursor: pointer;
-  transition: filter 0.2s, transform 0.1s;
+.file-meta-line {
+  font-size: var(--fs-label);
+  color: #737373;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.file-download:hover {
-  filter: brightness(1.12);
-}
-
-.file-download:active {
-  transform: translateY(1px);
-}
-
-/* ── Khung xem trước ảnh thuần túy (chỉ ảnh) ── */
-.image-result-preview {
-  display: block;
-  width: 100%;
-  max-height: min(70vh, 720px);
-  object-fit: contain;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-  cursor: pointer;
-}
-
-.icon-btn {
-  background: none;
-  border: none;
-  padding: 0 2px;
-  font-size: var(--fs-input);
-  font-family: inherit;
-  color: #38bdf8;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.icon-btn:hover {
-  filter: brightness(1.2);
-}
-
-/* Nút ⬇ gắn cuối bong bóng phản hồi: icon trần cùng dòng chữ. */
-.bubble-text .icon-btn {
-  display: inline;
-  font-size: var(--fs-input);
-  margin-left: 8px;
-  vertical-align: baseline;
+.file-open:hover .file-name {
+  color: #fafafa;
 }
 
 @keyframes spin {
@@ -1776,60 +1807,6 @@ html.anim-paused body > :not(#settings-container) * {
   scrollbar-color: rgba(0, 212, 255, 0.15) rgba(255, 255, 255, 0.01);
 }
 
-.interactive-input-description {
-  font-size: var(--fs-small);
-  color: rgba(255, 255, 255, 0.75);
-  line-height: 1.4;
-}
-
-.interactive-text-input {
-  width: 100%;
-  box-sizing: border-box;
-  resize: vertical;
-  min-height: 72px;
-  padding: 8px;
-  border: 1px solid rgba(0, 212, 255, 0.25);
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.22);
-  color: rgba(255, 255, 255, 0.9);
-  font: var(--fs-small)/1.4 monospace;
-}
-
-.interactive-text-input:focus {
-  outline: none;
-  border-color: rgba(0, 212, 255, 0.7);
-}
-
-/* The bot (src/bot.ts) is perched right above #cmd-send, resting on the bar's top edge (never over the send button); #status-text owns the left side. */
-#jarvis-bot {
-  position: absolute;
-  right: 4px;
-  bottom: calc(100% - 9.6px);
-  /* sits on the bar's top edge; the send button (z-index 12) stays on top of it */
-  z-index: 11;
-  /* above #chat-history (10) so it stays clickable, below #cmd-send-wrap */
-  width: 32px;
-  height: 32px;
-  cursor: pointer;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-/* the canvas is 1.5x its box (room for hops): pull it back so the box stays 32px */
-#jarvis-bot canvas {
-  position: absolute;
-  left: -8px;
-  top: -16px;
-  display: block;
-  pointer-events: none;
-}
-
-@media (max-width: 768px) {
-  #jarvis-bot {
-    right: 6px;
-  }
-}
-
 /* Phones are portrait only (user 2026-10-15). iOS ignores the manifest's "orientation": "portrait" and Safari will not let a page
    lock it, so a phone on its side (touch, at most 500px tall) gets a cover over the whole page; main.ts pauses every effect behind
    it like under Settings. A short desktop window (mouse) is not covered. e2e/landscape.cjs */
@@ -1882,7 +1859,6 @@ html.anim-paused body > :not(#settings-container) * {
 #cmd-send-wrap {
   position: relative;
   z-index: 12;
-  /* above the bot (#jarvis-bot, 11) that perches over it */
   flex-shrink: 0;
   width: 30px;
   height: 30px;
@@ -2012,10 +1988,8 @@ html.anim-paused body > :not(#settings-container) * {
   transition: opacity 0.25s ease, visibility 0s 0.25s;
 }
 
-/* Khi Settings mở: ẩn đảo động ngay lập tức (không delay) để không bị lộ qua topbar trong suốt */
-.island[data-covered="1"],
-body:has(#settings-container.open) .island,
-#settings-container.open ~ .island {
+/* Che đảo khi có lớp phủ toàn màn hình (data-covered). Dashboard không che: khung trang của nó nằm dưới viên thuốc. */
+.island[data-covered="1"] {
   display: none !important;
   opacity: 0 !important;
   visibility: hidden !important;
@@ -2448,3 +2422,231 @@ body:has(#settings-container.open) .island,
 .welcome-slot span.out-down { transform: translateY(100%); opacity: 0; }
 @keyframes welcome-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 #btn-orb-toggle:disabled { opacity: 0.35; cursor: default; }
+
+/* =============================================================================
+   READER CARD MODAL (Floating between Dynamic Island & Command Bar)
+   - 95% opacity neutral dark background (no blur to preserve performance)
+   - Neutral subtle border with rounded corners
+   - Proportional scale bounded by Dynamic Island & Command Bar
+   ============================================================================= */
+
+#reader-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 84;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s ease, visibility 0s 0.2s;
+}
+
+#reader-backdrop.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.2s ease;
+}
+
+#reader-card {
+  position: fixed;
+  top: calc(52px + env(safe-area-inset-top, 0px));
+  bottom: calc(var(--container-bottom) + 58px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translate(-50%, 8px);
+  width: min(720px, calc(100vw - 28px));
+  z-index: var(--z-reader, 85);
+  background: rgba(10, 12, 16, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.75);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0s 0.2s;
+}
+
+#reader-card.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#reader-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+#reader-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+#reader-source {
+  font-size: var(--fs-label);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+#reader-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#reader-close {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+#reader-close:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+#reader-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.85);
+  -webkit-overflow-scrolling: touch;
+}
+
+#reader-body p {
+  margin-bottom: 12px;
+}
+
+#reader-body p:last-child {
+  margin-bottom: 0;
+}
+
+#reader-footer {
+  padding: 10px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  font-size: var(--fs-small);
+}
+
+.reader-hint {
+  color: var(--text-muted);
+}
+
+#reader-open-external {
+  color: var(--accent-blue);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+#reader-open-external:hover {
+  color: var(--accent-cyan);
+  text-decoration: underline;
+}
+
+.reader-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 16px 0;
+}
+
+/* Reader skeleton loading */
+.reader-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.reader-skeleton-line {
+  height: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  animation: reader-pulse 1.5s ease-in-out infinite;
+}
+
+.reader-skeleton-w80 { width: 85%; }
+.reader-skeleton-w60 { width: 65%; }
+.reader-skeleton-w90 { width: 92%; }
+.reader-skeleton-w70 { width: 75%; }
+.reader-skeleton-w50 { width: 45%; }
+
+@keyframes reader-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.75; }
+}
+
+.reader-error {
+  padding: 12px 0;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.reader-error-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--accent-blue);
+  text-decoration: none;
+}
+
+.reader-error-link:hover {
+  text-decoration: underline;
+}
+
+/* Reader trigger button next to external links in chat bubbles */
+.reader-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 5px;
+  vertical-align: middle;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.reader-trigger-btn:hover {
+  background: rgba(14, 165, 233, 0.2);
+  color: #0ea5e9;
+  border-color: rgba(14, 165, 233, 0.4);
+}
+

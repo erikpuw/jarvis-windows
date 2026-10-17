@@ -1,7 +1,7 @@
-// E2E: orb bật bởi tin nhắn đầu (lớp chào spec 2026-10-16): cả đám hạt là một chấm nhỏ ở tâm (giữ 1.2 s từ khung vẽ đầu, canvas hiện dần),
-//  rồi bung nhanh ra chỗ cũ trong 0.6 s theo đường ease-out (ngài 2026-10-16). Đo độ sáng một dải phía ngoài lõi (cách tâm ~140-260px): lúc 0.9 s tối (chỉ có
-//  chấm ở tâm), lúc 2.9 s đã bung xong (~1.6-2.4, dao động theo đường nối; bản đẩy bằng lực hãm chậm tới 4 s mới ~0.8).
-// WebSocket và /api bị mock. Chạy: PW=<module playwright> node frontend/e2e/orb-burst.cjs   (cần `npm run dev` ở :5173)
+// E2E: orb mở ra là hiện đám hạt ngay, không có màn mở đầu chấm-bung (ngài 2026-10-17 bỏ intro). Cả hai đường: tin nhắn đầu
+//  (lớp chào giữ orb tắt tới lúc đó) và tắt/bật orb. Đo độ sáng một dải phía ngoài lõi (cách tâm ~140-260px) 0.4 s sau khung
+//  vẽ đầu: có hạt ngay (~0.9-1.2); bản có chấm giữ thì đúng 0.00 (đo 2026-10-16).
+// WebSocket và /api bị mock. Chạy: PW=<module playwright> node frontend/e2e/orb-start.cjs   (cần `npm run dev` ở :5173)
 const { chromium } = require(process.env.PW || "playwright");
 const { dismissWelcome } = require("./_welcome.cjs");
 const zlib = require("zlib");
@@ -37,19 +37,24 @@ const outer = async (page) => ((await screenMean(page, 380, 300, 120, 200)) + (a
   await page.routeWebSocket(/\/ws/, () => {});
   await page.route("**/api/**", (r) => r.fulfill({ json: { success: true, env_keys_set: { llama: true } } }));
   await page.goto(BASE);
-  // lớp chào giữ orb tắt tới tin đầu (spec 2026-10-16): gửi tin, rồi orb dựng và giữ chấm 1.2 s (không phải 0.6) trước khi bung
+  // 0.4 s after the canvas's first frame: it has faded in ~2/3 (0.6 s fade); a held dot would still read 0.00 here
+  const atFirst = async (ms) => page.waitForTimeout(Math.max(0, ms - (await page.evaluate(() => performance.now() - Number(document.getElementById("orb-canvas").dataset.first)))));
+  const firstFrame = () => page.waitForFunction(() => { const c = document.getElementById("orb-canvas"); return c.dataset.first && c.dataset.backend !== "off"; }, null, { polling: 10, timeout: 20000 });
+  const sinceFirst = () => page.evaluate(() => Math.round(performance.now() - Number(document.getElementById("orb-canvas").dataset.first)));
+
   await dismissWelcome(page);
   await page.evaluate(() => document.querySelectorAll("#chat-history .chat-bubble").forEach((b) => b.remove()));
-  await page.waitForSelector("#orb-canvas[data-first]", { state: "attached", timeout: 20000 });
-  // mốc đo tính từ khung vẽ đầu (data-first): chấm giữ 1.2 s từ khung vẽ đầu rồi mới bung, nên đo lúc 0.9 s vẫn là chấm (canvas hiện dần trong 0.6 s).
-  const atFirst = async (ms) => page.waitForTimeout(Math.max(0, ms - (await page.evaluate(() => performance.now() - Number(document.getElementById("orb-canvas").dataset.first)))));
-  await atFirst(900);
-  const early = await outer(page), dot = await screenMean(page, 634, 394, 12, 12); // chấm ở giữa (640,400) nhỏ ~2-6px: vùng 12x12 để không bị pha loãng
-  await atFirst(2900);
-  const late = await outer(page);
-  check(late > 1.2, "1. 2.9 giây sau khi orb vẽ khung đầu: hạt đã bung ra tới dải ngoài (nhanh, đám mây như cũ)", late.toFixed(2));
-  check(early < late * 0.4, "2. lúc mới nạp: dải ngoài còn tối, hạt gom ở tâm", JSON.stringify({ early: early.toFixed(2), late: late.toFixed(2) }));
-  check(dot > early * 3 && dot > 3, "3. lúc mới nạp: có một chấm sáng nhỏ ở tâm", JSON.stringify({ dot: dot.toFixed(2), early: early.toFixed(2) }));
+  await firstFrame(); await atFirst(400);
+  const at1 = await sinceFirst(), first = await outer(page);
+  // the old opening held the dot 1200 ms on this path: a sample before that still tells the two apart
+  check(first > 0.3 && at1 < 1200, "1. tin nhắn đầu: orb hiện đám hạt ngay, không chấm-bung", JSON.stringify({ outer: first.toFixed(2), msAfterFirstFrame: at1 }));
+
+  await page.evaluate(() => document.getElementById("btn-orb-toggle").click()); // tắt
+  await page.waitForTimeout(500);
+  await page.evaluate(() => document.getElementById("btn-orb-toggle").click()); // bật
+  await firstFrame(); await atFirst(400);
+  const at2 = await sinceFirst(), again = await outer(page);
+  check(again > 0.3 && at2 < 600, "2. tắt/bật orb: hạt đã ở chỗ ngay khung đầu", JSON.stringify({ outer: again.toFixed(2), msAfterFirstFrame: at2 }));
   await browser.close();
   console.log(failed ? `\n${failed} FAIL` : "\nALL PASS");
   process.exit(failed ? 1 : 0);

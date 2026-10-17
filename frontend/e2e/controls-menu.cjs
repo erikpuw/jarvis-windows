@@ -1,5 +1,5 @@
-// E2E: 6 nút điều khiển (webcam, mic, tiếng TTS, thanh lệnh, orb, cài đặt) gom sau MỘT nút chính tròn ở góc trên phải.
-//  Bấm nút chính → cả 6 nút TRÒN nhỏ (ôm sát icon, 30px) hiện CÙNG LÚC trên hai vòng cung quanh nút chính (3 trong + 3 ngoài), không tràn khỏi màn hình,
+// E2E: 5 nút điều khiển (webcam, mic, tiếng TTS, thanh lệnh, orb) gom sau MỘT nút chính tròn ở góc trên phải (Settings đã thành menu Dashboard, 2026-10-17).
+//  Bấm nút chính → cả 5 nút TRÒN nhỏ (ôm sát icon, 30px) hiện CÙNG LÚC trên hai vòng cung quanh nút chính (2 trong + 3 ngoài), không tràn khỏi màn hình,
 //  không chồng nhau; mỗi nút vẫn làm đúng việc cũ. Không chạm gì 4 giây thì tự thu lại (chạm nút nào cũng đếm lại 4 giây);
 //  bấm nút chính hoặc Escape thì thu lại ngay. Đóng: chỉ còn một nút chính, các nút kia không bấm/không focus được.
 // WebSocket và /api bị mock. Chạy: PW=<module playwright> node frontend/e2e/controls-menu.cjs   (cần `npm run dev` ở :5173)
@@ -8,7 +8,7 @@ const { dismissWelcome } = require("./_welcome.cjs");
 const BASE = process.env.BASE_URL || "http://localhost:5173/";
 let failed = 0;
 const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} ${name}${extra ? " — " + extra : ""}`); if (!ok) failed++; };
-const IDS = ["btn-webcam-toggle", "btn-mute", "btn-tts-toggle", "btn-cmd-bar", "btn-orb-toggle", "btn-settings"];
+const IDS = ["btn-webcam-toggle", "btn-mute", "btn-tts-toggle", "btn-cmd-bar", "btn-orb-toggle"]; // Settings left the cluster for the Dashboard menu (2026-10-17)
 
 async function run(label, opts) {
   const browser = await chromium.launch();
@@ -30,7 +30,7 @@ async function run(label, opts) {
 
   let s = await state();
   check(!!s.main && s.main.w >= 34 && s.main.w <= 40 && s.main.br.startsWith("50%") && s.main.cx > s.vw - 60, `${tag} 1. có nút chính tròn ở góc trên phải`, JSON.stringify(s.main));
-  check(s.items.every((i) => i.op === 0 && i.pe === "none" && i.vis === "hidden"), `${tag} 2. đóng: 6 nút kia ẩn hẳn (không bấm, không focus được)`, JSON.stringify(s.items.map((i) => [i.op, i.pe, i.vis])));
+  check(s.items.every((i) => i.op === 0 && i.pe === "none" && i.vis === "hidden"), `${tag} 2. đóng: ${IDS.length} nút kia ẩn hẳn (không bấm, không focus được)`, JSON.stringify(s.items.map((i) => [i.op, i.pe, i.vis])));
 
   // mở: ghi lại thời điểm từng nút bắt đầu hiện
   await page.evaluate((IDS) => {
@@ -46,12 +46,12 @@ async function run(label, opts) {
   await page.waitForTimeout(700);
   const times = await page.evaluate(() => Object.values(window.__t));
   s = await state();
-  check(s.open && s.expanded === "true" && times.length === 6 && Math.max(...times) - Math.min(...times) <= 50, `${tag} 3. bấm nút chính: cả 6 nút hiện CÙNG LÚC (không hiện lần lượt)`, `lệch nhau ${times.length ? Math.round(Math.max(...times) - Math.min(...times)) : "?"}ms, ${times.length}/6 nút`);
-  check(s.items.every((i) => i.op === 1 && i.pe === "auto" && i.vis === "visible"), `${tag} 4. mở xong: cả 6 nút rõ và bấm được`, JSON.stringify(s.items.map((i) => i.op)));
+  check(s.open && s.expanded === "true" && times.length === IDS.length && Math.max(...times) - Math.min(...times) <= 50, `${tag} 3. bấm nút chính: cả ${IDS.length} nút hiện CÙNG LÚC (không hiện lần lượt)`, `lệch nhau ${times.length ? Math.round(Math.max(...times) - Math.min(...times)) : "?"}ms, ${times.length}/6 nút`);
+  check(s.items.every((i) => i.op === 1 && i.pe === "auto" && i.vis === "visible"), `${tag} 4. mở xong: cả ${IDS.length} nút rõ và bấm được`, JSON.stringify(s.items.map((i) => i.op)));
   check(s.items.every((i) => i.w >= 28 && i.w <= 32 && Math.abs(i.w - i.h) < 0.5 && i.br.startsWith("50%")), `${tag} 5. nút tròn nhỏ, ôm sát icon (28–32px, bo 50%)`, JSON.stringify(s.items.map((i) => [Math.round(i.w), i.br])));
   check(s.items.every((i) => i.cx - 15 >= 0 && i.cx + 15 <= s.vw && i.cy - 15 >= 0 && i.cy + 15 <= s.vh), `${tag} 6. không nút nào tràn khỏi màn hình`, JSON.stringify(s.items.map((i) => [Math.round(i.cx), Math.round(i.cy)])));
   let minD = 1e9;
-  for (let a = 0; a < 6; a++) for (let b = a + 1; b < 6; b++) minD = Math.min(minD, Math.hypot(s.items[a].cx - s.items[b].cx, s.items[a].cy - s.items[b].cy));
+  for (let a = 0; a < IDS.length; a++) for (let b = a + 1; b < IDS.length; b++) minD = Math.min(minD, Math.hypot(s.items[a].cx - s.items[b].cx, s.items[a].cy - s.items[b].cy));
   check(minD >= 31, `${tag} 7. các nút không chồng lên nhau`, `cách nhau gần nhất ${minD.toFixed(1)}px`);
   const dist = s.items.map((i) => Math.hypot(i.cx - s.main.cx, i.cy - s.main.cy));
   check(Math.max(...dist) <= 96 && Math.min(...dist) >= 43, `${tag} 8. xếp trên hai vòng cung ôm nút chính, cụm gọn (bán kính ${Math.round(Math.min(...dist))}–${Math.round(Math.max(...dist))}px)`, JSON.stringify(dist.map(Math.round)));

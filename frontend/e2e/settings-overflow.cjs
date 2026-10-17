@@ -39,7 +39,7 @@ async function audit(browser, label, vp) {
   await page.route("**/api/graphfy", (r) => r.fulfill({ json: MAP }));
   await page.goto(BASE);
   await page.waitForTimeout(1500);
-  await page.evaluate(() => document.getElementById("btn-settings").click());
+  await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="overview"]').click());
   await page.waitForTimeout(500);
   const pages = await page.$$eval(".sd-nav-item[data-page]", (n) => n.map((x) => x.dataset.page));
   for (const id of pages) {
