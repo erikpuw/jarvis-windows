@@ -12,7 +12,7 @@ const config: CapacitorConfig = {
   appId: "com.erikpuw.jarvis",
   appName: "JARVIS",
   webDir: "dist",
-  server: serverUrl ? { url: serverUrl, cleartext: true } : undefined,
+  server: "https://jarvis.tail8b8885.ts.net:8304",
 };
 
 export default config;
