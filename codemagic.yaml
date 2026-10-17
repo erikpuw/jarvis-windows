@@ -29,11 +29,11 @@ workflows:
         script: |
           cd "$CM_BUILD_DIR/frontend/ios/App"
           xcodebuild -project App.xcodeproj -target App -configuration Release -sdk iphoneos \
-            -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+            CONFIGURATION_BUILD_DIR="$PWD/build" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
       - name: Đóng gói file IPA
         script: |
-          cd "$CM_BUILD_DIR/frontend/ios/App/build/Build/Products/Release-iphoneos"
+          cd "$CM_BUILD_DIR/frontend/ios/App/build"
           rm -rf Payload && mkdir Payload && cp -R App.app Payload/
           zip -qr JARVIS.ipa Payload
     artifacts:
-      - frontend/ios/App/build/Build/Products/Release-iphoneos/JARVIS.ipa
+      - frontend/ios/App/build/JARVIS.ipa
