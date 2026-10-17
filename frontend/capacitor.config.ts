@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   appName: "JARVIS",
   webDir: "dist",
   server: {
-    url: "https://example.com",
+    url: "https://jarvis.tail8b8885.ts.net:8340",
     cleartext: true,
   },
 };
