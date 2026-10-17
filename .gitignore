@@ -57,3 +57,10 @@ frontend/.vite/
 # Desktop overlay
 *.db-shm
 *.db-wal
+
+# Capacitor iOS (build trên Mac/Codemagic, không commit kết quả build)
+frontend/ios/App/Pods/
+frontend/ios/App/App/public/
+frontend/ios/App/App/capacitor.config.json
+frontend/ios/App/build/
+frontend/ios/DerivedData/

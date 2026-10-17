@@ -1,0 +1,37 @@
+# Build app iOS (Capacitor) trên máy Mac của Codemagic, KHÔNG ký mã.
+# File .ipa tải về rồi cài lên iPhone bằng Sideloadly (Windows) với Apple ID miễn phí.
+# Trước khi chạy: vào Codemagic → app → Environment variables, thêm JARVIS_SERVER_URL
+# (ví dụ http://100.x.y.z:5173, địa chỉ Tailscale của PC chạy JARVIS).
+workflows:
+  ios-unsigned:
+    name: JARVIS iOS (không ký)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      node: 22
+      xcode: latest
+    scripts:
+      - name: Cài dependency frontend
+        script: |
+          cd "$CM_BUILD_DIR/frontend"
+          npm ci
+      - name: Build giao diện web
+        script: |
+          cd "$CM_BUILD_DIR/frontend"
+          npm run build
+      - name: Đồng bộ Capacitor sang project iOS
+        script: |
+          cd "$CM_BUILD_DIR/frontend"
+          npx cap sync ios
+      - name: Build app iOS không ký
+        script: |
+          cd "$CM_BUILD_DIR/frontend/ios/App"
+          xcodebuild -project App.xcodeproj -target App -configuration Release -sdk iphoneos \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+      - name: Đóng gói file IPA
+        script: |
+          cd "$CM_BUILD_DIR/frontend/ios/App/build/Build/Products/Release-iphoneos"
+          rm -rf Payload && mkdir Payload && cp -R App.app Payload/
+          zip -qr JARVIS.ipa Payload
+    artifacts:
+      - frontend/ios/App/build/Build/Products/Release-iphoneos/JARVIS.ipa
