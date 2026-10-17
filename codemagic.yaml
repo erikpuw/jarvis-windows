@@ -25,6 +25,8 @@ workflows:
         script: |
           cd "$CM_BUILD_DIR/frontend"
           npx cap sync ios
+          echo "Server app sẽ mở:"
+          grep '"url"' ios/App/App/capacitor.config.json || { echo "THIẾU server url trong cấu hình iOS"; exit 1; }
       - name: Build app iOS không ký
         script: |
           cd "$CM_BUILD_DIR/frontend/ios/App"
