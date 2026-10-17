@@ -15,11 +15,15 @@ export interface JarvisSocket {
   isConnected(): boolean;
 }
 
-export function getDeviceType(): 'mobile' | 'desktop' {
+/** The device that opens the session, sent as ?device= and kept per session on the server (Settings → Bộ nhớ shows
+ *  "iPhone/iPad · iOS" instead of a bare web-xxxxxxxx). An iPad asks for the desktop site (Mac UA) but has touch. */
+export function getDeviceType(): 'ios' | 'android' | 'mobile' | 'desktop' {
   const ua = typeof navigator !== 'undefined' ? (navigator.userAgent || '') : '';
-  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
-  const isSmallScreen = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
   const isTouch = typeof navigator !== 'undefined' && (navigator.maxTouchPoints > 0);
+  if (/iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && isTouch)) return 'ios';
+  if (/Android/i.test(ua)) return 'android';
+  const isMobileUA = /webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+  const isSmallScreen = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
   return (isMobileUA || (isSmallScreen && isTouch)) ? 'mobile' : 'desktop';
 }
 

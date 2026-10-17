@@ -11,7 +11,7 @@ import {
   Video, VideoOff, Mic, MicOff, Volume2, VolumeX, SquareTerminal, X,
   Plus, ChevronDown, Paperclip, Send, LoaderCircle, Check, CircleDashed,
   Save, PlugZap, Upload, Trash2, RefreshCw, type IconNode,
-  Orbit, CircleOff, Settings, Menu,
+  Orbit, CircleOff, Menu,
 } from "lucide";
 
 defineMorphIcon();
@@ -36,7 +36,6 @@ const SPECS: Spec[] = [
   { btn: "btn-tts-toggle", on: cls("muted"), off: Volume2, onIcon: VolumeX, size: 18 },
   { btn: "btn-cmd-bar", on: cls("active"), off: SquareTerminal, onIcon: ChevronDown, size: 18 },
   { btn: "btn-orb-toggle", on: cls("orb-off"), off: Orbit, onIcon: CircleOff, size: 18 },
-  { btn: "btn-settings", on: cls("active"), off: Settings, onIcon: Settings, size: 18 },
   { btn: "btn-upload", watch: "file-pinned-container", on: shown, off: Plus, onIcon: Paperclip, size: 14, stroke: 2.5 },
   { btn: "cmd-send", on: cls("sent"), off: Send, onIcon: Check, size: 14 },
 ];

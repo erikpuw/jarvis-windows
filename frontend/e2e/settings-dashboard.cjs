@@ -41,7 +41,7 @@ async function newPage(browser, { width, height, hasKey = true }) {
   await page.route("**/api/**", (r) => json(r, { success: true }));
   await page.route("**/api/settings/status**", (r) => json(r, status(hasKey)));
   await page.route("**/api/health/detailed", (r) => json(r, {
-    llm: { status: "online", response_time_ms: 120 }, redis: { status: "online" },
+    llm: { status: "online", response_time_ms: 120 },
     database: { ok: true, size_kb: 512 }, rag: { enabled: true, total_chunks: 10, files_count: 2 },
   }));
   await page.route("**/api/settings/preferences", (r) => {
@@ -81,7 +81,7 @@ async function newPage(browser, { width, height, hasKey = true }) {
   });
   page.on("dialog", (d) => { calls.push(["dialog", d.type(), d.message()]); d.accept(); });
   await page.goto(BASE);
-  await page.waitForSelector("#btn-settings", { state: "attached" });
+  await page.waitForSelector("#settings-nav", { state: "attached" });
   // lớp chào giữ orb tắt tới tin đầu (spec 2026-10-16): gửi tin để orb dựng xong trước khi test đo khung orb
   await dismissWelcome(page);
   await page.waitForTimeout(1800);
@@ -89,7 +89,7 @@ async function newPage(browser, { width, height, hasKey = true }) {
 }
 
 async function openViaMenu(page) {
-  await page.evaluate(() => document.getElementById("btn-settings").click());
+  await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="overview"]').click());
   await page.waitForSelector("#settings-container.open");
   await page.waitForTimeout(400);
 }
@@ -111,7 +111,7 @@ const LEGACY_IDS = [
   "health-cpu-val", "health-cpu-bar", "health-ram-val", "health-ram-bar", "health-gpus-container",
   "status-intelligence-core", "status-server-engine", "status-llm-server", "status-tts-server",
   "status-server", "status-server-detail",
-  "row-status-llm", "row-status-redis", "row-status-db", "row-status-rag", "apps-list-container",
+  "row-status-llm", "row-status-db", "row-status-rag", "apps-list-container",
   "sysinfo-memory", "sysinfo-turns", "sysinfo-tasks", "sysinfo-skills",
   "sysinfo-commands", "sysinfo-port", "sysinfo-uptime",
   "memory-category-nav", "memory-search-input", "btn-memory-search", "memory-select-all",
@@ -200,7 +200,8 @@ const PAGES = ["overview", "connect", "voice", "user", "system", "memory"];
     const widths = await page.evaluate(() => {
       const grid = document.querySelector(".sd-memory").getBoundingClientRect();
       const detail = document.getElementById("memory-detail-container").getBoundingClientRect();
-      return { grid: Math.round(grid.width), detail: Math.round(detail.width), right: Math.round(grid.right - detail.right) };
+      const pad = parseFloat(getComputedStyle(document.querySelector(".sd-memory")).paddingRight);
+      return { grid: Math.round(grid.width), detail: Math.round(detail.width), right: Math.round(grid.right - detail.right - pad) }; // up to the page's own gutter
     });
     check(widths.detail > widths.grid * 0.4 && widths.right < 4, "12. cột chi tiết Bộ nhớ lấp phần còn lại", JSON.stringify(widths));
     const shouting = await page.evaluate(() => [...document.querySelectorAll("#settings-container *")]
@@ -213,8 +214,8 @@ const PAGES = ["overview", "connect", "voice", "user", "system", "memory"];
     check(await page.$eval("#settings-container", (e) => !e.classList.contains("open")), "6. Esc đóng settings");
     await page.waitForTimeout(400);
     check((await orbFramesIn(page, 500)) > 0, "5b. orb chạy lại sau khi đóng");
+    // (2d "remembers the last page" is gone: the Dashboard menu always opens the page you pick)
     await openViaMenu(page);
-    check((await visiblePage(page)) === "voice", "2d. nhớ trang đang xem", await visiblePage(page));
 
     await page.click('.sd-nav-item[data-page="memory"]');
     await page.fill("#memory-lock-input", "x"); await page.click("#memory-lock-btn"); // Memory Control đòi mật khẩu
@@ -231,19 +232,21 @@ const PAGES = ["overview", "connect", "voice", "user", "system", "memory"];
 
   // ── Mobile 375×812 ──
   {
+    // Dashboard on a phone: the menu is a drawer behind the home button (top left), hidden while a page is open
     const { page } = await newPage(browser, { width: 375, height: 812 });
-    await openViaMenu(page);
     const navVisible = () => page.$eval("#settings-nav", (e) =>
       getComputedStyle(e).visibility === "visible" && e.getBoundingClientRect().right > 1);
     check(!(await navVisible()), "7a. ngăn kéo đóng mặc định");
     await page.click("#settings-menu-toggle");
     await page.waitForTimeout(300);
-    check(await navVisible(), "7b. nút ☰ mở ngăn kéo");
+    check(await navVisible(), "7b. nút ngôi nhà mở ngăn kéo");
     await page.click('.sd-nav-item[data-page="user"]');
     await page.waitForTimeout(300);
     check(!(await navVisible()) && (await visiblePage(page)) === "user", "7c. chọn trang thì đóng ngăn kéo");
     const overflow = [];
     for (const id of PAGES) {
+      await page.click("#settings-close");
+      await page.waitForTimeout(200);
       await page.click("#settings-menu-toggle");
       await page.waitForTimeout(250);
       await page.click(`.sd-nav-item[data-page="${id}"]`);

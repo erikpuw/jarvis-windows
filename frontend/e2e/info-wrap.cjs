@@ -20,7 +20,7 @@ async function run(label, opts) {
   await page.route("**/api/system/readme", (r) => r.fulfill({ json: { success: true, content: README } }));
   await page.goto(BASE);
   await page.waitForTimeout(1200);
-  await page.evaluate(() => document.getElementById("btn-settings").click());
+  await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="overview"]').click());
   await page.waitForTimeout(400);
   await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="info"]').click());
   await page.waitForTimeout(1500);

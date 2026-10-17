@@ -17,22 +17,20 @@
 import type * as T from "three/webgpu";
 
 export type OrbState = "idle" | "listening" | "thinking" | "speaking" | "working";
-export const ORB_INTRO_HOLD_MS = 600; // dot held before the opening burst (page load, orb toggle)
 
 export interface Orb {
   setState(s: OrbState): void;
   setAnalyser(a: AnalyserNode | null): void;
   pause(): void;
   resume(): void;
-  /** Off: stops drawing, hands the GPU device / WebGL context back and swaps the canvas for a flat 1x1 backdrop. On: builds it again on a fresh canvas;
-   *  holdMs = how long the dot is held before the opening burst (default ORB_INTRO_HOLD_MS). */
-  setEnabled(on: boolean, holdMs?: number): void;
+  /** Off: stops drawing, hands the GPU device / WebGL context back and swaps the canvas for a flat 1x1 backdrop. On: builds it again on a fresh canvas. */
+  setEnabled(on: boolean): void;
   destroy(): void;
 }
 
 /** The scene itself (one WebGPU device, or a WebGL 2 context where WebGPU is missing). `Orb.setEnabled` builds and destroys it.
  *  three is imported here, not at the top: main.ts never waits for it and a failed orb leaves the rest of the UI running. */
-async function buildOrb(canvas: HTMLCanvasElement, onLost: () => void, introHold: number): Promise<Omit<Orb, "setEnabled">> {
+async function buildOrb(canvas: HTMLCanvasElement, onLost: () => void): Promise<Omit<Orb, "setEnabled">> {
   const THREE = await import("three/webgpu");
   const { instancedBufferAttribute, uv, smoothstep, float, vec4, materialColor } = await import("three/tsl");
   // Blend straight on the sRGB numbers like the old WebGLRenderer. With colour management on, WebGPURenderer adds faint additive lines
@@ -59,36 +57,34 @@ async function buildOrb(canvas: HTMLCanvasElement, onLost: () => void, introHold
   // Size from the canvas's own box (CSS: fixed, full screen) and follow it. It used to read innerWidth/innerHeight once and write
   // them into the canvas style: at app launch the iPhone can report 0 there, and the orb then drew 60 fps into a 0×0 canvas until
   // a resize or a toggle (e2e/orb-lost.cjs 9). setSize(…, false) leaves the CSS size alone.
+  // The canvas is 100lvh (style.css: the backdrop runs on under Safari's bottom bar) and can be taller than the page (body,
+  // 100dvh): in the iPhone home-screen app the ball then sat low (user 2026-10-16). The camera frames the page's height and the
+  // extra canvas below only extends the view downward, so the ball stays centred on the page at the same size as before.
   const fit = () => {
-    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const w = canvas.clientWidth, h = canvas.clientHeight, page = Math.min(h, document.body.clientHeight || h);
     if (!w || !h) return;
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
+    camera.aspect = w / page;
+    camera.setViewOffset(w, page, 0, 0, w, h);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_RENDER_HEIGHT / h));
     renderer.setSize(w, h, false);
   };
   const sizer = new ResizeObserver(fit);
   sizer.observe(canvas);
+  sizer.observe(document.body); // the page height changes on its own (Safari's toolbar shows/hides)
   fit();
 
   // ── Particles ──
   const pos = new Float32Array(N * 3);
   const vel = new Float32Array(N * 3);
   const phase = new Float32Array(N);
-  const home = new Float32Array(N * 3); // where each dot sits once the opening burst is over
 
-  // Opening (user 2026-10-16): the whole cloud starts as one small dot in the centre (held while the canvas fades in), then
-  // bursts out to its places in 0.6 s on an ease-out curve: fast at first, slowing to a stop, so the physics takes over at rest.
-  const INTRO_DOT = 0.003, INTRO_MS = 600;
-  let introStart = 0;
   for (let i = 0; i < N; i++) {
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(2 * Math.random() - 1);
     const r = Math.pow(Math.random(), 0.5) * 25;
-    home[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-    home[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-    home[i * 3 + 2] = r * Math.cos(phi);
-    for (let k = 0; k < 3; k++) pos[i * 3 + k] = home[i * 3 + k] * INTRO_DOT;
+    pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+    pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+    pos[i * 3 + 2] = r * Math.cos(phi);
     phase[i] = Math.random() * 1000;
   }
 
@@ -281,13 +277,7 @@ async function buildOrb(canvas: HTMLCanvasElement, onLost: () => void, introHold
     const p = posAttr;
     const a = p.array as Float32Array;
 
-    if (!introStart) introStart = now;
-    const introT = now - introStart;
-    if (introT < introHold + INTRO_MS) {
-      const q = Math.max(0, introT - introHold) / INTRO_MS;
-      const k = INTRO_DOT + (1 - INTRO_DOT) * (1 - (1 - q) ** 4); // ease-out quart
-      for (let i = 0; i < N * 3; i++) a[i] = home[i] * k;
-    } else for (let i = 0; i < N; i++) {
+    for (let i = 0; i < N; i++) {
       const i3 = i * 3;
       let x = a[i3], y = a[i3 + 1], z = a[i3 + 2];
       const px = phase[i];
@@ -577,10 +567,7 @@ async function buildOrb(canvas: HTMLCanvasElement, onLost: () => void, introHold
     camera.lookAt(0, 0, cloudZ * 0.2);
 
     renderer.render(scene, camera);
-    if (!canvas.dataset.first) {
-      canvas.dataset.first = String(Math.round(performance.now())); // ?debug=1: when the orb first drew
-      introStart = performance.now(); // the dot is held from the first visible frame, not from the frame that compiled the shaders
-    }
+    if (!canvas.dataset.first) canvas.dataset.first = String(Math.round(performance.now())); // ?debug=1: when the orb first drew
   }
 
   void renderer.setAnimationLoop(animate);
@@ -595,15 +582,18 @@ async function buildOrb(canvas: HTMLCanvasElement, onLost: () => void, introHold
       if (paused) return;
       paused = true;
       loop.stop();
+      void renderer.setAnimationLoop(null);
     },
     resume() {
       if (!paused) return;
       paused = false;
       lastFrame = 0;
+      void renderer.setAnimationLoop(animate);
       loop.start();
     },
     destroy() {
       sizer.disconnect();
+      void renderer.setAnimationLoop(null);
       renderer.dispose(); // also stops three's loop
       // dispose() keeps the GPU device / GL context until the canvas is collected: hand it back now
       const backend = renderer.backend as { gl?: WebGL2RenderingContext; device?: { destroy(): void } };
@@ -617,7 +607,6 @@ export function createOrb(canvas: HTMLCanvasElement, opts: { enabled?: boolean }
   let current: HTMLCanvasElement = canvas;
   let scene: Omit<Orb, "setEnabled"> | null = null;
   let enabled = opts.enabled ?? true;
-  let hold = ORB_INTRO_HOLD_MS;
   let build = 0; // a build still loading when the orb is turned off (or on again) is dropped when it lands
   let state: OrbState = "idle";
   let analyser: AnalyserNode | null = null;
@@ -676,11 +665,10 @@ export function createOrb(canvas: HTMLCanvasElement, opts: { enabled?: boolean }
       console.warn("[orb] dựng quá lâu, dựng lại");
       if (!retry(id)) toBackdrop();
     }, BUILD_TIMEOUT_MS);
-    buildOrb(target, lost, hold).then((s) => {
+    buildOrb(target, lost).then((s) => {
       window.clearTimeout(stuck);
       if (id !== build) { s.destroy(); return; } // a late answer to a build that was given up or replaced
       retries = 0;
-      hold = ORB_INTRO_HOLD_MS;
       scene = s;
       s.setState(state);
       s.setAnalyser(analyser);
@@ -703,7 +691,7 @@ export function createOrb(canvas: HTMLCanvasElement, opts: { enabled?: boolean }
     setAnalyser(a) { analyser = a; scene?.setAnalyser(a); },
     pause() { paused = true; scene?.pause(); },
     resume() { paused = false; scene?.resume(); },
-    setEnabled(on, holdMs = ORB_INTRO_HOLD_MS) {
+    setEnabled(on) {
       if (on === enabled) return;
       enabled = on;
       build++;
@@ -713,7 +701,6 @@ export function createOrb(canvas: HTMLCanvasElement, opts: { enabled?: boolean }
         toBackdrop();
         return;
       }
-      hold = holdMs;
       rebuild(); // the flat backdrop has a 2d context, so the GPU needs a new canvas
     },
     destroy() { build++; scene?.destroy(); scene = null; },

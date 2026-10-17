@@ -40,7 +40,7 @@ const state = (page) => page.evaluate(() => {
   check(!s.cover && !s.paused, "3. xoay lại dọc: hết che, hiệu ứng chạy lại", JSON.stringify(s));
 
   // Settings open while sideways: rotating back must not wake the page behind Settings
-  await page.evaluate(() => document.getElementById("btn-settings").click()); await page.waitForTimeout(600);
+  await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="overview"]').click()); await page.waitForTimeout(600);
   await page.setViewportSize({ width: 844, height: 390 }); await page.waitForTimeout(400);
   await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(400);
   s = await state(page);

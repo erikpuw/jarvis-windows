@@ -4,6 +4,7 @@
    (feGaussianBlur + feColorMatrix "22 -9") on the blob layer, with the blur scaled to these small blobs.
    The filter lives inside the loader's own markup (stream-loader.ts), not in index.html. */
 .chat-bubble.assistant.typing-loader {
+  align-self: flex-start; /* answers span the chat column; the loader stays a small block on the left, not centred on screen */
   display: inline-flex;
   align-items: center;
   justify-content: center;

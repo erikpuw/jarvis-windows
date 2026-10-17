@@ -42,7 +42,7 @@ async function open(browser, opts = {}) {
   await page.route("**/api/logs/security**", gated(log.security, { success: true, logs: SECURITY }));
   await page.route("**/api/logs/tts**", gated(log.tts, { success: true, logs: TTS }));
   const sessions = { sessions: [
-    { session_id: "web-ab12", source: "web", msg_count: 40, started_at: 1790000000, last_msg: 1790000500 },
+    { session_id: "web-ab12", source: "web", device: "ios", msg_count: 40, started_at: 1790000000, last_msg: 1790000500 },
     { session_id: "tg-77", source: "telegram", msg_count: 2, started_at: 1789000000, last_msg: 1789000100 },
     { session_id: "legacy", source: "legacy", msg_count: 9, started_at: 1780000000, last_msg: 1780000900 } ] };
   const detail = (id) => ({ messages: Array.from({ length: id === "web-ab12" ? 40 : 2 }, (_, i) => ({ id: i, role: i % 2 ? "assistant" : "user", content: `tin ${i} của phiên ${id} dai dai dai dai dai dai dai dai dai dai`, created_at: 1790000000 + i * 10 })) });
@@ -63,7 +63,7 @@ async function open(browser, opts = {}) {
   await page.route("**/api/memory-lock/lock", (r) => { log.lock.push(r.request().headers()["x-memory-token"]); r.fulfill({ json: { success: true } }); });
   await page.goto(BASE);
   await page.waitForTimeout(1500);
-  await page.evaluate(() => document.getElementById("btn-settings").click());
+  await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="overview"]').click());
   await page.waitForTimeout(400);
   const go = async (p) => { await page.evaluate((x) => document.querySelector(`.sd-nav-item[data-page="${x}"]`).click(), p); await page.waitForTimeout(600); };
   const enter = async (id, pw) => { await page.fill(`#${id}-lock-input`, pw); await page.click(`#${id}-lock-btn`); await page.waitForTimeout(600); };
@@ -74,7 +74,8 @@ async function open(browser, opts = {}) {
 }
 
 // mép dưới thẻ nội dung phải bằng mép dưới khung sidebar (Bộ nhớ và Nhật ký cùng kiểu), ở mọi cỡ màn hình
-const edge = (page, root) => page.evaluate((r) => { const c = document.querySelector(r + " .sd-card"), n = document.querySelector("nav.sd-nav"); return { dy: Math.round(Math.abs(c.getBoundingClientRect().bottom - n.getBoundingClientRect().bottom)), card: Math.round(c.getBoundingClientRect().bottom), nav: Math.round(n.getBoundingClientRect().bottom) }; }, root);
+// the card fills the Dashboard frame down to the page's own bottom gutter (the frame ends on the menu's bottom edge)
+const edge = (page, root) => page.evaluate((r) => { const c = document.querySelector(r + " .sd-card"), f = document.getElementById("settings-content"), l = c.closest(".memory-control-layout"); const pad = parseFloat(getComputedStyle(l).paddingBottom) + parseFloat(getComputedStyle(f).borderBottomWidth); const n = document.querySelector("nav.sd-nav"); return { dy: Math.round(Math.abs(c.getBoundingClientRect().bottom + pad - f.getBoundingClientRect().bottom)), card: Math.round(c.getBoundingClientRect().bottom), frame: Math.round(f.getBoundingClientRect().bottom), nav: Math.round(n.getBoundingClientRect().bottom) }; }, root);
 const leaked = (page, text) => page.evaluate((t) => document.getElementById("page-logs").innerText.includes(t) || document.getElementById("page-logs").innerHTML.includes(t), text);
 
 (async () => {
@@ -133,6 +134,7 @@ const leaked = (page, text) => page.evaluate((t) => document.getElementById("pag
   check(frames.listShown && frames.readerShown && frames.listRight <= frames.readerLeft && frames.sameTop && frames.listW <= 420 && frames.readerW >= 500 && frames.listBorder === "1px" && frames.readerBorder === "1px", "4k. nút Phiên chat → hai khung riêng cạnh nhau: danh sách phiên (hẹp, bên trái) và khung đọc nội dung (rộng hơn, bên phải), mỗi khung có viền", JSON.stringify(frames));
   const rows = await page.$$eval("#history-sessions-list .sd-session-row", (b) => b.map((x) => x.textContent.replace(/\s+/g, " ").trim()));
   check(rows.length === 3 && /Web/.test(rows[0]) && /web-ab12/.test(rows[0]) && /40 tin/.test(rows[0]) && /Telegram/.test(rows[1]) && /Cũ/.test(rows[2]), "4l. danh sách phiên có nhãn nguồn (Web / Telegram / Cũ) và số tin", rows.join(" | "));
+  check(/Web · iOS/.test(rows[0]), "4l2. phiên web ghi rõ thiết bị (Web · iOS)", rows[0]);
   check(log.sessions.length >= 1 && log.sessions.every((t) => t.tok === TOKEN), "4m. danh sách phiên gọi kèm token", JSON.stringify(log.sessions));
   const first = await page.evaluate(() => ({ selected: document.querySelector("#history-sessions-list .sd-session-row.selected")?.textContent.includes("web-ab12"), msgs: document.querySelectorAll("#history-settings-list .history-item").length }));
   check(first.selected && first.msgs === 40 && log.detail[0]?.id === "web-ab12" && log.detail[0]?.tok === TOKEN, "4n. máy tính: tự mở phiên mới nhất, dòng được tô chọn, khung đọc hiện đủ 40 tin kèm token", JSON.stringify({ first, d: log.detail[0] }));
@@ -220,11 +222,15 @@ const leaked = (page, text) => page.evaluate((t) => document.getElementById("pag
   check((await m.shown()).active === "tts" && (await m.page.$$("#logs-content .log-line")).length === 2, "8c. điện thoại: bấm qua tab Log TTS xem được");
   await m.page.context().close();
 
-  // 9. điện thoại: màn hình khóa KHÔNG được che ngăn kéo điều hướng (trước đây nằm trên sidebar nên mở menu ra không bấm được gì, kẹt ở trang khóa)
+  // 9. điện thoại: trang khoá không giữ chân người dùng. Đang mở một trang thì nút ngôi nhà ẩn; nút đóng của khung phải bấm được
+  //    (màn hình khoá không che nó), rồi mở menu bằng nút ngôi nhà và sang trang khác
   for (const name of ["memory", "logs"]) {
     const d = await open(browser, { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     await d.go(name);
     check(await d.locked(name, `#page-${name}`), `9a. [${name}] điện thoại: trang đang khóa`);
+    const closeHit = await d.page.evaluate(() => { const b = document.getElementById("settings-close").getBoundingClientRect(); return !!document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest("#settings-close"); });
+    check(closeHit, `9a2. [${name}] nút đóng không bị màn hình khoá che`);
+    await d.page.click("#settings-close"); await d.page.waitForTimeout(300);
     await d.page.click("#settings-menu-toggle"); await d.page.waitForTimeout(500);
     const hit = await d.page.evaluate(() => {
       const item = document.querySelector('.sd-nav-item[data-page="overview"]'), r = item.getBoundingClientRect();

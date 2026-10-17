@@ -29,10 +29,12 @@ const TABS: Tab[] = [
 
 interface ChatMessage { role: string; content: string; created_at: number; session_id?: string }
 type Source = "web" | "telegram" | "legacy";
-interface SessionRow { session_id: string; source: Source; msg_count: number; started_at: number; last_msg: number }
+interface SessionRow { session_id: string; source: Source; device?: string; msg_count: number; started_at: number; last_msg: number }
 
 const SOURCE_LABEL: Record<Source, string> = { web: "Web", telegram: "Telegram", legacy: "Cũ (chưa có phiên)" };
 const SOURCE_SHORT: Record<Source, string> = { web: "Web", telegram: "Telegram", legacy: "Cũ" };
+// the device that opened a web session (engine/core/memory.py session_devices; none for sessions older than that)
+const DEVICE_SHORT: Record<string, string> = { ios: "iOS", android: "Android", desktop: "PC", mobile: "Mobile" };
 const SPLIT_MIN_WIDTH = 769; // from here the two frames sit side by side (the settings drawer layout breaks at 768, like Memory Control)
 
 let active: TabId = "history";
@@ -171,7 +173,8 @@ function renderSessions(sessions: SessionRow[]): void {
     btn.dataset.session = s.session_id;
     const src = document.createElement("span");
     src.className = `sd-session-src ${s.source}`;
-    src.textContent = SOURCE_SHORT[s.source];
+    const device = s.source === "web" && s.device ? DEVICE_SHORT[s.device] : "";
+    src.textContent = device ? `${SOURCE_SHORT.web} · ${device}` : SOURCE_SHORT[s.source];
     const id = document.createElement("span");
     id.className = "sd-session-id";
     id.textContent = s.session_id;

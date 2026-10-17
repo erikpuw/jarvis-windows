@@ -96,6 +96,31 @@ function polishMarkdownHtml(raw: string, isBubble = false): string {
     wrap.appendChild(table);
   });
 
+  // Card tables (one item per column, with a row of pictures: CGV movies, Epic games) -> a grid of cards that wraps by width:
+  // several a row on a PC, 2 a row on a phone. One column per movie pushed the table past the bubble on phones (user 2026-10-16),
+  // and cards read better than a sideways strip there.
+  root.querySelectorAll<HTMLTableElement>("table.sd-table:not(.sd-table--skeleton)").forEach((table) => {
+    const rows = [...table.rows];
+    const cols = rows[0]?.cells.length ?? 0;
+    if (cols < 2 || !rows.some((r) => r.cells.length === cols && [...r.cells].every((c) => c.querySelector("img")))) return;
+    const grid = document.createElement("div");
+    grid.className = "sd-card-grid";
+    for (let c = 0; c < cols; c++) {
+      const card = document.createElement("div");
+      card.className = "sd-card";
+      for (const r of rows) {
+        const cell = r.cells[c];
+        if (!cell || (!cell.textContent!.trim() && !cell.querySelector("img"))) continue;
+        const part = document.createElement("div");
+        part.className = r.parentElement?.tagName === "THEAD" ? "sd-card-head" : "sd-card-row";
+        part.append(...cell.childNodes);
+        card.appendChild(part);
+      }
+      grid.appendChild(card);
+    }
+    (table.closest(".sd-table-wrap") ?? table).replaceWith(grid);
+  });
+
   // Preserve table cell alignments (e.g. :---: -> align="center") via inline style
   root.querySelectorAll("th, td").forEach((cell) => {
     const align = cell.getAttribute("align");
@@ -124,6 +149,20 @@ function polishMarkdownHtml(raw: string, isBubble = false): string {
     if (href && !href.startsWith("#")) {
       a.setAttribute("target", "_blank");
       a.setAttribute("rel", "noopener noreferrer");
+
+      // In chat bubbles: attach reading trigger for web articles (skip internal anchors & file links)
+      if (isBubble && (href.startsWith("http://") || href.startsWith("https://"))) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "reader-trigger-btn";
+        btn.dataset.url = href;
+        btn.dataset.title = a.textContent?.trim() || "";
+        btn.title = "Đọc nhanh trong JARVIS";
+        btn.setAttribute("aria-label", "Đọc nhanh bài viết");
+        btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`;
+        a.classList.add("has-reader-btn");
+        a.after(btn);
+      }
     }
   });
 
@@ -133,6 +172,9 @@ function polishMarkdownHtml(raw: string, isBubble = false): string {
       img.classList.add("bubble-img");
       if (!img.getAttribute("loading")) {
         img.setAttribute("loading", "lazy");
+      }
+      if (!img.getAttribute("decoding")) {
+        img.setAttribute("decoding", "async");
       }
     });
   }
@@ -228,18 +270,224 @@ function normalizeMarkdownTables(md: string): string {
 }
 
 /**
+ * Generates a shadcn/ui Skeleton table block matching the exact geometry of final content
+ * (movie/game horizontal cards or standard tabular data) with subtle shimmer animation.
+ */
+export function generateTableSkeleton(cols = 3, isCardTable = true): string {
+  const safeCols = Math.max(1, Math.min(cols, 6));
+  const colWidths = [78, 85, 68, 82, 72, 80];
+  const genreWidths = [65, 75, 60, 70, 68, 62];
+  const durationWidths = [50, 58, 46, 54, 48, 52];
+  const dateWidths = [58, 64, 52, 60, 55, 58];
+
+  let ths = "";
+  for (let c = 0; c < safeCols; c++) {
+    const w = colWidths[c % colWidths.length];
+    ths += `<th><div class="sd-skeleton sd-skeleton-title" style="width: ${w}%;"></div></th>`;
+  }
+
+  let body = "";
+  if (isCardTable) {
+    // Row 1: Poster / Banner images (matching 80x110px exact geometry)
+    let imgCells = "";
+    for (let c = 0; c < safeCols; c++) {
+      imgCells += `<td align="center"><div class="sd-skeleton sd-skeleton-img"></div></td>`;
+    }
+    body += `<tr>${imgCells}</tr>`;
+
+    // Row 2: Genre / Category text line
+    let genreCells = "";
+    for (let c = 0; c < safeCols; c++) {
+      const w = genreWidths[c % genreWidths.length];
+      genreCells += `<td align="center"><div class="sd-skeleton sd-skeleton-text" style="width: ${w}%;"></div></td>`;
+    }
+    body += `<tr>${genreCells}</tr>`;
+
+    // Row 3: Duration text line
+    let durCells = "";
+    for (let c = 0; c < safeCols; c++) {
+      const w = durationWidths[c % durationWidths.length];
+      durCells += `<td align="center"><div class="sd-skeleton sd-skeleton-text" style="width: ${w}%;"></div></td>`;
+    }
+    body += `<tr>${durCells}</tr>`;
+
+    // Row 4: Release Date text line
+    let dateCells = "";
+    for (let c = 0; c < safeCols; c++) {
+      const w = dateWidths[c % dateWidths.length];
+      dateCells += `<td align="center"><div class="sd-skeleton sd-skeleton-text" style="width: ${w}%;"></div></td>`;
+    }
+    body += `<tr>${dateCells}</tr>`;
+
+    // Row 5: Action Link text line
+    let linkCells = "";
+    for (let c = 0; c < safeCols; c++) {
+      linkCells += `<td align="center"><div class="sd-skeleton sd-skeleton-text" style="width: 42%;"></div></td>`;
+    }
+    body += `<tr>${linkCells}</tr>`;
+  } else {
+    // Generic table skeleton: 3 data rows with natural varied text lines
+    for (let r = 0; r < 3; r++) {
+      let cells = "";
+      for (let c = 0; c < safeCols; c++) {
+        const w = [70, 85, 60, 80, 75, 65][(r * 2 + c) % 6];
+        cells += `<td><div class="sd-skeleton sd-skeleton-text" style="width: ${w}%;"></div></td>`;
+      }
+      body += `<tr>${cells}</tr>`;
+    }
+  }
+
+  return `\n\n<div class="sd-table-wrap table-responsive-wrapper sd-table-wrap--skeleton" aria-busy="true" role="status" aria-label="Đang nạp dữ liệu bảng..."><table class="sd-table sd-table--skeleton"><thead><tr>${ths}</tr></thead><tbody>${body}</tbody></table></div>\n\n`;
+}
+
+/**
+ * Detects whether a markdown table is incomplete/loading during typewriter streaming.
+ * While a table is still being streamed or lacks complete information, replaces it with
+ * a shadcn/ui Skeleton table block matching the exact geometry to prevent layout shifts.
+ */
+function replaceStreamingIncompleteTables(md: string, isStreaming: boolean): string {
+  if (!md) return md;
+
+  // Support explicit placeholder
+  if (md.includes("[TABLE_LOADING]")) {
+    md = md.replace(/\[TABLE_LOADING\]/g, () => generateTableSkeleton(3, true));
+  }
+
+  if (!isStreaming || !md.includes("|")) return md;
+
+  const lines = md.split("\n");
+  const isDelimiter = (l: string) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(l);
+  const isTableRow = (l: string) => {
+    const t = l.trim();
+    return t.startsWith("|") || (t.includes("|") && !t.startsWith("```"));
+  };
+
+  let inCodeBlock = false;
+  let inTable = false;
+  let headerLine = "";
+  let hasDelimiter = false;
+  let rowCount = 0;
+  let tableLines: string[] = [];
+
+  const result: string[] = [];
+
+  const flushTable = (isTail: boolean) => {
+    if (!inTable) return;
+    const isEpic = /\b(epic|game)\b/i.test(md) || headerLine.includes("![");
+    const isCgv = /\b(cgv|phim|cinema|movie)\b/i.test(md);
+    const isCardTable = isEpic || isCgv || headerLine.includes("![") || tableLines.some((l) => l.includes("!["));
+
+    // the header line still being typed would change the column count letter by letter (skeleton redrawn, bubble jumps): 3 until it is whole
+    const headerDone = tableLines.length > 1 || !isTail;
+    const cols = (headerDone && headerLine.split("|").map((s) => s.trim()).filter(Boolean).length) || 3;
+
+    // Minimum expected rows:
+    // - CGV: 5 data rows (poster, genre, duration, release, link)
+    // - Epic: 1 data row (since header contains images, 1 row for titles/dates)
+    // - Generic: 1 data row
+    const minRows = isCgv ? 5 : 1;
+    const isComplete = hasDelimiter && rowCount >= minRows && !isTail;
+
+    if (!isComplete) {
+      result.push(generateTableSkeleton(cols, isCardTable));
+    } else {
+      result.push(...tableLines);
+    }
+
+    inTable = false;
+    tableLines = [];
+    headerLine = "";
+    hasDelimiter = false;
+    rowCount = 0;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("```")) {
+      if (inTable) flushTable(false);
+      inCodeBlock = !inCodeBlock;
+      result.push(line);
+      continue;
+    }
+    if (inCodeBlock) {
+      result.push(line);
+      continue;
+    }
+
+    const nextLine = i + 1 < lines.length ? lines[i + 1] : null;
+    // the delimiter line still being typed ("| :--") already marks the line above as a header, or that header shows as raw text for a moment
+    const delimiterTyping = nextLine !== null && i + 1 === lines.length - 1 && /^\s*\|[\s|:-]*$/.test(nextLine);
+    const isHeaderCandidate = isTableRow(line) && nextLine !== null && (isDelimiter(nextLine) || delimiterTyping);
+
+    if (!inTable) {
+      if (isHeaderCandidate || (isTableRow(line) && i === lines.length - 1)) {
+        inTable = true;
+        headerLine = line;
+        hasDelimiter = false;
+        rowCount = 0;
+        tableLines = [line];
+        continue;
+      }
+      result.push(line);
+      continue;
+    }
+
+    // Inside table
+    if (isDelimiter(line)) {
+      hasDelimiter = true;
+      tableLines.push(line);
+      continue;
+    }
+
+    if (isTableRow(line)) {
+      rowCount++;
+      tableLines.push(line);
+      continue;
+    }
+
+    // Line is not a table row -> Table has ended
+    flushTable(false);
+    result.push(line);
+  }
+
+  if (inTable) {
+    // Table at the tail of streaming markdown
+    flushTable(true);
+  }
+
+  return result.join("\n");
+}
+
+/**
  * Main formatMarkdown function used across Jarvis:
  * Parses Markdown, polishes HTML elements, and sanitizes output against XSS.
  */
-export function formatMarkdown(md: string, options?: { isBubble?: boolean }): string {
+export function formatMarkdown(
+  md: string,
+  options?: { isBubble?: boolean; isStreaming?: boolean }
+): string {
   if (!md) return "";
   const isBubble = options?.isBubble ?? false;
+  const isStreaming = options?.isStreaming ?? false;
   try {
-    const normalized = normalizeMarkdownTables(md.replace(/\r\n/g, "\n"));
+    const withSkeletons = replaceStreamingIncompleteTables(md.replace(/\r\n/g, "\n"), isStreaming);
+    const normalized = normalizeMarkdownTables(withSkeletons);
     const raw = marked.parse(normalized, { async: false });
     const polished = polishMarkdownHtml(typeof raw === "string" ? raw : String(raw), isBubble);
     const sanitized = DOMPurify.sanitize(polished, {
-      ADD_ATTR: ["target", "rel", "data-lang", "loading", "style"],
+      ADD_ATTR: [
+        "target",
+        "rel",
+        "data-lang",
+        "loading",
+        "decoding",
+        "style",
+        "aria-busy",
+        "role",
+        "aria-label",
+      ],
     }).trimEnd();
     return isBubble ? `<div class="sd-prose bubble-prose">${sanitized}</div>` : `<div class="sd-prose">${sanitized}</div>`;
   } catch (err) {

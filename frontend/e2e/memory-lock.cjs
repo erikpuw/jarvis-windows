@@ -38,7 +38,7 @@ async function open(browser, { configured = true } = {}) {
   await page.route("**/api/memory-lock/lock", (r) => { log.lock.push(r.request().headers()["x-memory-token"]); r.fulfill({ json: { success: true } }); });
   await page.goto(BASE);
   await page.waitForTimeout(1500);
-  await page.evaluate(() => document.getElementById("btn-settings").click());
+  await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="overview"]').click());
   await page.waitForTimeout(400);
   const go = async (p) => { await page.evaluate((x) => document.querySelector(`.sd-nav-item[data-page="${x}"]`).click(), p); await page.waitForTimeout(600); };
   const enter = async (pw) => { await page.fill("#memory-lock-input", pw); await page.click("#memory-lock-btn"); await page.waitForTimeout(700); };
@@ -97,7 +97,7 @@ async function open(browser, { configured = true } = {}) {
   // 6. tải lại trang → khóa
   state.revoked = false;
   await page.reload(); await page.waitForTimeout(1500);
-  await page.evaluate(() => document.getElementById("btn-settings").click()); await page.waitForTimeout(400);
+  await page.evaluate(() => document.querySelector('.sd-nav-item[data-page="overview"]').click()); await page.waitForTimeout(400);
   await go("memory");
   check(await locked(), "6. tải lại trang rồi vào Bộ nhớ → phải nhập lại mật khẩu");
   await page.close();

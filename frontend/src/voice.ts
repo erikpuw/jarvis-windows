@@ -130,7 +130,6 @@ export function createVoiceInput(
   recognition.onresult = (event: any) => {
     heard = true;
     empty = 0;
-    window.dispatchEvent(new Event("jarvis:heard")); // the bot nods while it hears speech
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const alt = event.results[i][0];
       micStats.results++;

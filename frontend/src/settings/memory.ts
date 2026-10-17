@@ -61,7 +61,8 @@ const MEMORY_CATEGORIES: MemoryCategory[] = [
 
 const EDITABLE_MEMORY_FIELDS: Record<MemoryCategoryId, string[]> = {
   learning: ["type", "semantic_key", "content", "source", "importance", "embedding"],
-  workflow: ["tools", "intent", "tool_chain", "sample_queries", "success_evidence", "validation_count", "wiki_path"],
+  // tools (already in tool_chain) and wiki_path (machine-made, the same file for a tool) are shown read-only in "Thông tin hệ thống"
+  workflow: ["intent", "tool_chain", "sample_queries", "success_evidence", "validation_count"],
   outcome: ["tools", "query", "status", "result", "traces"],
   correction: ["query", "wrong_tool", "right_tool", "count"],
   conversation: ["role", "content", "session_id"],
@@ -143,6 +144,7 @@ function formatFieldLabel(field: string): string {
     embedding: "Vector embedding (JSON, để trống = xoá, gõ recompute = tính lại)",
     embedding_dim: "Số chiều embedding",
     embedding_model: "Model embedding",
+    device: "Thiết bị",
   };
   if (map[field]) return map[field];
   return field
@@ -151,7 +153,17 @@ function formatFieldLabel(field: string): string {
     .join(" ");
 }
 
+// the device that opened a chat session (engine/core/memory.py session_devices; "" = before devices were recorded)
+const DEVICE_LABELS: Record<string, string> = {
+  ios: "iPhone/iPad · iOS",
+  android: "Android",
+  desktop: "Máy tính",
+  mobile: "Điện thoại",
+  telegram: "Telegram",
+};
+
 function formatMetadataValue(key: string, value: unknown): string {
+  if (key === "device") return DEVICE_LABELS[String(value)] || "Không rõ (phiên cũ)";
   if (typeof value === "number" && (key.includes("time") || key.includes("at") || (value > 1500000000 && value < 2500000000))) {
     const millis = value > 1e11 ? value : value * 1000;
     try {
@@ -300,16 +312,12 @@ function renderMemoryField(field: string, value: unknown): string {
   const rows = activeMemoryKind === "evolution" ? 16 : 4; // một file luật dài hơn một bản ghi
   const isLong = ["content", "result", "traces", "tool_chain", "sample_queries", "success_evidence", "embedding"].includes(field);
   const isNumber = ["importance", "validation_count", "memory_id", "count"].includes(field);
-  const typeTag = isNumber ? "Số" : (isLong ? "Văn bản lớn" : "Chuỗi ký tự");
   const control = isLong
     ? `<textarea data-memory-field="${field}" rows="${rows}" class="sd-memory-input sd-memory-textarea" placeholder="Nhập ${escapeMemoryHtml(formatFieldLabel(field))}…">${escapeMemoryHtml(text)}</textarea>`
     : `<input data-memory-field="${field}" type="${isNumber ? "number" : "text"}" value="${escapeMemoryHtml(text)}" class="sd-memory-input" placeholder="Nhập ${escapeMemoryHtml(formatFieldLabel(field))}…" />`;
   return `
-    <div class="sd-mem-field-card">
-      <div class="sd-mem-field-head">
-        <label class="sd-mem-field-label">${escapeMemoryHtml(formatFieldLabel(field))}</label>
-        <span class="sd-mem-field-type">${typeTag}</span>
-      </div>
+    <div class="sd-mem-field-card${isLong ? " grow" : ""}">
+      <label class="sd-mem-field-label">${escapeMemoryHtml(formatFieldLabel(field))}</label>
       ${control}
     </div>
   `;
