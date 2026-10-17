@@ -6,7 +6,6 @@ import asyncio
 import logging
 import re
 import unicodedata
-from urllib.parse import quote_plus
 
 from engine.tools import pharmacy_sources as sources_mod
 from engine.tools.browser import browser
