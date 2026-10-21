@@ -1,0 +1,5 @@
+tags:
+  screens:
+    # screenshot review artifacts (build/screens/*.png), not part of the default run:
+    #   flutter test test/screens --run-skipped
+    skip: "review screenshots: flutter test test/screens --run-skipped"
