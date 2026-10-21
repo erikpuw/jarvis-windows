@@ -1,0 +1,32 @@
+# Jarvis project hints
+Use always defauts language vietnamese
+limit use windows max tokens 16348
+## Project context
+- Project root: `E:\workspace\jarvis`.
+- Python backend: `engine\`; frontend: `frontend\`; server entry point: `server.py`.
+- Default shell is PowerShell. Prefer Windows paths and PowerShell commands; use `rg` for targeted code search.
+
+## Safety and scope
+- Preserve working behavior. Make the smallest compatible change that satisfies the request.
+- Before modifying code, inspect the relevant implementation, callers, callees, and existing patterns.
+- Do not refactor, rename, move files, alter dependencies, or change unrelated code unless explicitly requested.
+- Do not delete code or files without explicit approval.
+- For a requested edit, modify only the requested files and necessary supporting tests.
+- After every edit, verify syntax, imports, relevant references, and the reachable runtime path.
+- If a check cannot be completed, report the missing evidence; never claim success from a compile-only check.
+
+## Tool selection
+- For normal code investigation, use the narrowest suitable tool. Do not repeat a repository-wide scan when the needed evidence is already available.
+- Use GitNexus to inspect symbol relationships and blast radius before a non-trivial change. Do not run GitNexus indexing unless explicitly requested.
+
+## Goose task profiles
+- `check_project`: use Goose builtin `analyze` and its tree/analysis tools for a read-only source scan. Do not load or call Headroom, GitNexus for this profile.
+- `fix_self`: before editing, use GitNexus to inspect the target symbol's callers, callees, and blast radius. If the impact extends beyond the approved file, stop and report it. Use builtin Analyze to inspect and Developer to make only the approved minimal patch. Do not use Headroom or `codebase-memory-mcp`.
+
+## Validation
+- Run the smallest relevant test or verification command after a change.
+- For Python-only syntax proof that must not write bytecode, use the active Python runtime with `-B` and `ast.parse`.
+- Report the files changed and the commands/tests actually run.
+
+
+

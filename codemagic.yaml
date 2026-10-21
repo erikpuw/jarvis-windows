@@ -1,0 +1,40 @@
+workflows:
+  ios-unsigned:
+    name: iOS unsigned IPA (Shorebird)
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - shorebird_credentials
+      flutter: stable
+      xcode: latest
+    scripts:
+      - name: Cài đặt Shorebird CLI
+        script: |
+          curl --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/shorebirdtech/install/main/install.sh -sSf | bash
+          echo "PATH=$HOME/.shorebird/bin:$PATH" >> $CM_ENV
+      - name: Build IPA gốc với Shorebird
+        script: |
+          cd "$CM_BUILD_DIR/frontend/mobile"
+          shorebird release ios --no-codesign
+          mkdir -p Payload
+          cp -r build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app Payload/
+          zip -qr JARVIS-unsigned.ipa Payload
+    artifacts:
+      - "**/JARVIS-unsigned.ipa"
+  ios-patch:
+    name: iOS Shorebird Patch
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - shorebird_credentials
+      flutter: stable
+      xcode: latest
+    scripts:
+      - name: Cài đặt Shorebird CLI
+        script: |
+          curl --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/shorebirdtech/install/main/install.sh -sSf | bash
+          echo "PATH=$HOME/.shorebird/bin:$PATH" >> $CM_ENV
+      - name: Đẩy bản vá iOS (Shorebird Patch)
+        script: |
+          cd "$CM_BUILD_DIR/frontend/mobile"
+          shorebird patch ios --no-codesign --allow-asset-diffs

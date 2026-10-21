@@ -1,0 +1,31 @@
+# Bộ thư viện tối thiểu để chạy pytest trên CI (Linux). KHÔNG dùng khi cài JARVIS thật: dùng requirements.txt.
+# Cài đủ requirements.txt kéo theo ~5GB torch/CUDA (qua headroom-ai/sentence-transformers) nên job đứng >10 phút.
+# Test cần gói nào thì thêm vào đây; các gói nặng chỉ import lười ở runtime (faster-whisper, mediapipe, vieneu,
+# markitdown, headroom-ai, yt-dlp, pywinauto...) đều không cần cho test.
+openai>=1.0.0
+httpx>=0.27.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.0.0
+websockets>=13.0
+tiktoken
+numpy
+turbovec>=0.8.0
+rank-bm25>=0.2.2
+psutil>=5.9
+pypdf>=4.0.0
+redis>=5.0.0
+mcp>=1.2.0
+edge-tts>=7.0.0
+watchdog
+python-dotenv
+pytest
+# scrapling.fetchers import cần các gói dưới (không cài scrapling[all] vì kéo theo trình duyệt/ML)
+scrapling
+curl-cffi
+playwright
+patchright
+browserforge
+msgspec
+opencv-python-headless
+pytest-asyncio

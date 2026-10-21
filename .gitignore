@@ -1,0 +1,58 @@
+# Environment
+.env
+.env.local
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.task
+.goosehints
+.agents/
+
+# Data (user-specific, generated at runtime)
+*.db
+data/
+data/*.jsonl
+data/active_session.json
+data/.jarvis_output.txt
+
+# Certificates
+*.pem
+#Logs
+logs/
+bin/
+docs/
+rules/
+media/
+scratch/
+graphify-out/
+
+# Build
+dist/
+.vite/
+frontend/.vite/
+
+# IDE / System
+.DS_Store
+.vscode/
+.idea/
+.claude/
+.arch/
+.vscode/
+.gemini/
+.goose/
+.gitnexus/
+.opencode/
+.kiro/
+.superpowers/
+
+# Desktop overlay
+*.db-shm
+*.db-wal
