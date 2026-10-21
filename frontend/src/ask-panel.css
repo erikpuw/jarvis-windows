@@ -1,0 +1,130 @@
+/* Question box above the command bar (ask-panel.ts). After cuicui.day "Simple Cookie Banner": a solid dark box, thin
+   neutral border, small grey text, plain small buttons the size of their label. Fixed width, so it never
+   jumps between short and long (at most 400px on a PC). No blur filter (GPU), only a short rise. */
+#command-bar {
+  position: relative; /* the box hangs from the bar's top edge */
+}
+
+.ask-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin-inline: auto; /* centred over the bar (user 2026-10-17: not in the left corner on a PC) */
+  /* the bar's width on a phone; on a PC a compact card, not stretched across the 800px bar (user 2026-10-17) */
+  width: min(100%, 400px);
+  bottom: calc(100% + 8px);
+  z-index: 60;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid #262626;
+  background: #0a0a0a;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  color: #a3a3a3;
+  font-size: var(--fs-small, 13px);
+  line-height: 1.5;
+  pointer-events: auto;
+  animation: ask-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+
+.ask-panel.leaving {
+  pointer-events: none;
+  animation: ask-out 0.16s ease-in forwards;
+}
+
+@keyframes ask-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ask-out {
+  to { opacity: 0; transform: translateY(10px); }
+}
+
+.ask-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #737373;
+}
+
+.ask-desc {
+  margin: 0;
+  color: #e5e5e5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ask-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ask-btn {
+  flex: 0 0 auto;
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: transparent;
+  color: #a3a3a3;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.ask-btn.primary {
+  color: #fafafa;
+  border-color: #525252;
+}
+
+.ask-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fafafa;
+}
+
+.ask-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.ask-option {
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #262626;
+  background: transparent;
+  color: #e5e5e5;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ask-option:hover,
+.ask-option.selected {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: #404040;
+}
+
+.ask-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: #050505;
+  color: #e5e5e5;
+  font: inherit;
+}
+
+.ask-input:focus {
+  outline: none;
+  border-color: #525252;
+}

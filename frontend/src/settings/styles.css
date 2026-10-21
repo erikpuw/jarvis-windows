@@ -1,0 +1,3058 @@
+/* Dashboard (user 2026-10-17, replaces the full-screen Settings overlay): the menu stands on the left of the main screen,
+   between the Dynamic Island and the command bar's bottom edge; a page opens in a frame from the menu to the right edge that
+   covers the chat and the command bar (main.ts pauses the main screen meanwhile). The container spans the screen but takes
+   no touches itself: only the menu, the frame and the phone's home button do. */
+
+#settings-container {
+  --sd-bg: #000000;
+  --sd-surface: #121214;
+  --sd-surface-2: #18181b;
+  --sd-border: rgba(255, 255, 255, 0.08);
+  --sd-border-strong: rgba(255, 255, 255, 0.16);
+  --sd-text: #f4f4f5;
+  --sd-muted: #a1a1aa;
+  --sd-accent: #0ea5e9;
+  --sd-accent-soft: rgba(14, 165, 233, 0.12);
+  --sd-ok: #4ade80;
+  --sd-err: #f87171;
+  --sd-nav-w: 200px;
+  --dash-x: var(--controls-inset);                                   /* left margin of the menu = right margin of the frame */
+  --dash-top: calc(env(safe-area-inset-top, 0px) + 54px);            /* under the island pill (8px + 34px) */
+  --dash-bottom: var(--container-bottom);                            /* the command bar's bottom edge */
+  /* Font tokens — đồng bộ với frontend/src/style.css (html,body + hud/log mono). */
+  --sd-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --sd-font-mono: 'SF Mono', 'Cascadia Code', 'Consolas', 'Menlo', monospace;
+  position: fixed;
+  inset: 0; /* the same box #command-container's bottom is measured in */
+  pointer-events: none;
+  background: none;
+  z-index: var(--z-settings);
+  color: var(--sd-text);
+  font-family: var(--sd-font-sans);
+  font-size: var(--fs-body);
+}
+
+#settings-container [hidden] {
+  display: none !important;
+}
+
+#settings-container *,
+#settings-container *::before,
+#settings-container *::after {
+  box-sizing: border-box;
+}
+
+#settings-container input,
+#settings-container textarea,
+#settings-container select,
+#settings-container button {
+  font-family: inherit;
+}
+
+.sd-root {
+  position: absolute;
+  inset: 0;
+  overscroll-behavior: none;
+}
+
+/* ── Menu head: "Dashboard" + collapse button ── */
+.sd-nav-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 2px 8px 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--sd-border);
+}
+
+.sd-title {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: var(--sd-text);
+  white-space: nowrap;
+  overflow: hidden;
+  transition: opacity 0.15s ease;
+}
+
+.sd-root.sidebar-collapsed .sd-nav-head { padding-left: 2px; justify-content: center; }
+.sd-root.sidebar-collapsed .sd-title { opacity: 0; width: 0; }
+
+.sd-collapse-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--sd-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--sd-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sd-collapse-btn:hover {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--sd-text);
+  border-color: var(--sd-border-strong);
+}
+
+.sd-page-title {
+  display: none;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--sd-text);
+}
+
+.sd-icon-btn {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--sd-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sd-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.sd-icon-btn:hover {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--sd-text);
+}
+
+/* the phone's home button (top left, the same size and look as the control buttons); hidden on a PC and while a page is open */
+.sd-menu-btn {
+  display: none;
+  position: fixed;
+  left: calc(var(--dash-x) + env(safe-area-inset-left, 0px));
+  top: calc(var(--controls-inset) + env(safe-area-inset-top, 0px));
+  width: var(--controls-size);
+  height: var(--controls-size);
+  border: 0;
+  border-radius: 50%;
+  background: rgba(14, 165, 233, 0.14);
+  color: rgba(14, 165, 233, 0.7);
+  pointer-events: auto;
+  z-index: 3; /* above the drawer's scrim (z 1): the X closes the open menu */
+}
+
+/* the generic .sd-icon-btn:hover (white) stuck after a tap on a phone: it keeps the control buttons' blue, as #btn-controls */
+.sd-menu-btn:hover {
+  background: rgba(14, 165, 233, 0.14);
+  color: rgba(14, 165, 233, 0.8);
+}
+
+.sd-menu-btn::after { /* a 44px touch target around the 36px button */
+  content: "";
+  position: absolute;
+  inset: -4px;
+}
+
+#settings-container.open .sd-menu-btn { display: none !important; }
+
+/* ── Body: the menu and the page frame, each placed on the screen ── */
+.sd-body {
+  position: absolute;
+  inset: 0;
+}
+
+.sd-nav {
+  position: absolute;
+  left: calc(var(--dash-x) + env(safe-area-inset-left, 0px));
+  top: var(--dash-top);
+  bottom: var(--dash-bottom);
+  width: var(--sd-nav-w);
+  pointer-events: auto;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 8px;
+  border: 1px solid var(--sd-border);
+  border-radius: 12px;
+  background: var(--sd-surface);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.35);
+  overflow: hidden; /* the list scrolls, not the whole menu: "Dashboard" and the version stay put (user 2026-10-17) */
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sd-nav-head,
+.sd-nav-footer { flex: none; }
+
+.sd-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.sd-nav-list::-webkit-scrollbar { display: none; }
+
+/* group titles (Chung, Dữ liệu, Công cụ, Hệ thống); collapsed to the icon rail they become a thin divider */
+.sd-nav-group {
+  flex: none;
+  padding: 10px 12px 4px;
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sd-nav-group:first-child { padding-top: 2px; }
+
+.sd-root.sidebar-collapsed .sd-nav-group {
+  font-size: 0;
+  height: 1px;
+  padding: 0;
+  margin: 8px 12px;
+  background: var(--sd-border);
+}
+
+.sd-root.sidebar-collapsed .sd-nav-group:first-child { margin-top: 2px; }
+
+.sd-nav-footer {
+  margin-top: auto;
+  padding: 8px 4px 0;
+  border-top: 1px solid var(--sd-border);
+}
+
+.sd-brand-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.sd-brand-name {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: var(--sd-muted);
+  text-align: center;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.sd-version-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  font-size: var(--fs-small);
+  font-weight: 400;
+  color: var(--sd-muted);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  white-space: nowrap;
+  transition: all 0.16s ease;
+}
+
+.sd-version-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--sd-ok);
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
+  flex-shrink: 0;
+}
+
+.sd-root.sidebar-collapsed {
+  --sd-nav-w: 60px;
+}
+
+/* Collapse animates only the nav width: icons keep their x (8+12 open = 6+14
+   collapsed, which also centres the 18px icon in 60px) and labels fade instead
+   of display:none, so nothing jumps or wraps mid-transition. */
+.sd-root.sidebar-collapsed .sd-nav {
+  padding: 12px 6px;
+}
+
+.sd-root.sidebar-collapsed .sd-nav-item {
+  padding: 0 14px;
+}
+
+.sd-root.sidebar-collapsed .sd-nav-label {
+  opacity: 0;
+}
+
+/* the rail's footer: the green dot over the version, no "JARVIS" squeezed into 48px (user 2026-10-18) */
+.sd-root.sidebar-collapsed .sd-brand-name { display: none; }
+
+.sd-root.sidebar-collapsed .sd-version-badge {
+  flex-direction: column;
+  gap: 5px;
+  padding: 2px 0;
+}
+
+.sd-root.sidebar-collapsed .sd-version-label {
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.sd-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sd-muted);
+  font: inherit;
+  font-size: var(--fs-ui);
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sd-nav-label {
+  transition: opacity 0.15s ease;
+}
+
+.sd-version-label {
+  display: inline-block;
+  max-width: 120px;
+  overflow: hidden;
+  transition: opacity 0.15s ease, max-width 0.2s ease;
+}
+
+.sd-nav-item:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--sd-text);
+}
+
+.sd-nav-item[aria-current="page"] {
+  background: var(--sd-accent-soft);
+  color: #e0f2fe;
+}
+
+.sd-nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--sd-accent);
+}
+
+.sd-nav-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sd-nav-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.sd-scrim {
+  display: none;
+}
+
+/* the page frame: from the menu (+8px) to the right edge, the menu's top and bottom; it covers the chat and the command bar */
+.sd-content {
+  display: none;
+  position: absolute;
+  left: calc(var(--dash-x) + env(safe-area-inset-left, 0px) + var(--sd-nav-w) + 8px);
+  right: calc(var(--dash-x) + env(safe-area-inset-right, 0px));
+  top: var(--dash-top);
+  bottom: var(--dash-bottom);
+  pointer-events: auto;
+  overflow: hidden; /* the open page's body scrolls, not the frame */
+  padding: 0;
+  background: var(--sd-bg);
+  border: 1px solid var(--sd-border);
+  border-radius: 12px;
+  transition: left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#settings-container.open .sd-content { display: flex; flex-direction: column; }
+
+/* the close button sits on the frame's top right corner, over the page head */
+.sd-content-head {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+
+#settings-close {
+  margin: 18px 14px 0 0; /* = .sd-page-head top padding */
+  background: var(--sd-bg);
+  pointer-events: auto;
+}
+
+/* ── Pages ── */
+/* Pages fill the entire available dashboard width right to the edge padding (no arbitrary 1440px cap). */
+.sd-page {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  animation: sd-fade 0.15s ease;
+}
+
+/* the open page fills the frame: its head stays, its body (index.ts wraps it) scrolls vertically and never sideways */
+.sd-page:not([hidden]) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sd-page-body {
+  flex: 1;
+  min-height: 0;
+  position: relative; /* the password card of a locked page covers the body, under the head */
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere; /* long paths, keys and file names break instead of widening the page */
+}
+
+/* grid and flex children may shrink below their content, so a long word wraps instead of pushing the page wider */
+.sd-page-body :where(div, section, article, header, li, p, span, label) { min-width: 0; }
+
+/* full-height pages (Memory, chat history, log) lay out their own scrolling panes */
+.sd-page-memory > .sd-page-body {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.sd-page-memory {
+  max-width: none;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* Protected areas (Memory Control, chat history, system log; settings/lock.ts): until the password is accepted the content
+   is blurred and empty (nothing is loaded) under the password card. The backend does the real blocking; the blur is the look. */
+.sd-lockable {
+  position: relative;
+}
+
+.sd-lockable.locked .sd-lock-content {
+  filter: blur(10px);
+  pointer-events: none;
+  user-select: none;
+}
+
+.sd-lock-screen {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0; /* above the blurred content but BELOW the phone nav drawer (z 2) and its scrim (z 1), or the open drawer cannot be tapped */
+  align-items: center;
+  justify-content: center;
+}
+
+.sd-lockable.locked .sd-lock-screen {
+  display: flex;
+}
+
+.sd-lock-card {
+  width: min(340px, 90%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.sd-lock-card h4 {
+  margin: 0;
+  justify-content: center; /* .sd-card h4 is a flex row */
+}
+
+.sd-lock-icon {
+  display: flex;
+  justify-content: center;
+  color: var(--sd-text);
+}
+
+.sd-lock-msg {
+  margin: 0;
+  font-size: var(--fs-small);
+  color: var(--sd-muted, rgba(148, 163, 184, 0.95));
+}
+
+.sd-lock-msg.error {
+  color: #f87171;
+}
+
+.sd-lock-card input {
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--sd-border);
+  background: transparent;
+  color: var(--sd-text);
+  font-size: var(--fs-body);
+  text-align: center;
+}
+
+.sd-memory.sd-logs-layout {
+  grid-template-columns: 200px minmax(0, 1fr); /* tabs on the left, the pane takes the rest (Memory has a third column) */
+}
+
+/* the two panes toggle with [hidden] but are display:flex */
+.sd-history-list[hidden],
+.sd-log-content[hidden] {
+  display: none;
+}
+
+/* Chat history sub-views and the session back bar: a strip above the scrolling list, so it never scrolls away with the messages */
+.sd-subbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 10px;
+  flex-shrink: 0;
+}
+
+.sd-subbar[hidden],
+.sd-session-back[hidden] {
+  display: none;
+}
+
+.sd-subtabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--sd-border);
+  border-radius: 10px;
+}
+
+.sd-subtab {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--sd-muted);
+  font: inherit;
+  font-size: var(--fs-small);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sd-subtab[hidden] {
+  display: none !important;
+}
+
+.sd-subtab.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--sd-text);
+}
+
+.sd-session-back {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sd-session-back-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
+}
+
+.sd-session-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 8px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--sd-text);
+  font: inherit;
+  font-size: var(--fs-ui);
+  text-align: left;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sd-session-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.sd-session-row.selected {
+  background: rgba(14, 165, 233, 0.1);
+  border-color: rgba(14, 165, 233, 0.35);
+}
+
+.sd-session-src {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  background: rgba(148, 163, 184, 0.18);
+  color: #cbd5e1;
+}
+
+.sd-session-src.web { background: rgba(96, 165, 250, 0.18); color: #93c5fd; }
+.sd-session-src.telegram { background: rgba(34, 211, 238, 0.18); color: #67e8f9; }
+
+.sd-session-id {
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  font-size: var(--fs-small);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.sd-session-meta {
+  grid-column: 1 / -1;
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
+}
+
+/* Chat history: "Toàn bộ" is one centred column; "Phiên chat" is two framed panes like Memory Control (session list | reader) */
+.sd-history-split {
+  display: flex;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  margin-top: 10px;
+}
+
+.sd-history-split[hidden] {
+  display: none;
+}
+
+.sd-history-split .sd-history-list {
+  margin-top: 0;
+}
+
+.sd-sessions-list {
+  width: 340px;
+  flex: none;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--sd-border);
+  border-radius: 12px;
+  overscroll-behavior: contain;
+}
+
+.sd-sessions-list[hidden] {
+  display: none;
+}
+
+.sd-history-split[data-view="sessions"] .sd-history-list {
+  max-width: none;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--sd-border);
+  border-radius: 12px;
+}
+
+/* two frames side by side: no back button needed, only the title of the session being read */
+@media (min-width: 769px) {
+  #history-back-btn {
+    display: none;
+  }
+}
+
+.sd-logs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sd-logs-head h4 {
+  margin: 0;
+}
+
+/* System log: long lines wrap instead of scrolling sideways (which also drags the frame about on a phone) */
+.sd-log-content {
+  margin-top: 10px;
+  min-width: 0;
+  flex: 1;
+  min-height: 0;
+  padding: 12px 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  font-size: var(--fs-label);
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.65);
+  white-space: pre-wrap;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+}
+
+.log-line {
+  padding: 1px 0;
+}
+
+.log-line.error { color: #ef4444; }
+.log-line.warning { color: #f59e0b; }
+.log-line.info { color: #38bdf8; }
+
+/* Chat history page */
+.sd-history-list {
+  margin: 10px auto 0;
+  max-width: 860px; /* a centred column: on a wide screen the two speakers must not sit at opposite edges */
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overscroll-behavior: contain;
+}
+
+.history-date-sep {
+  text-align: center;
+  font-size: var(--fs-label);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--sd-muted, rgba(148, 163, 184, 0.7));
+  padding: 6px 0 2px;
+}
+
+.history-item {
+  padding: 7px 11px;
+  border-radius: 12px;
+  font-size: var(--fs-ui);
+  line-height: 1.45;
+  max-width: 85%;
+  width: fit-content;
+  overflow-wrap: anywhere;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.history-content {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.history-content .sd-prose p {
+  margin: 0 0 6px 0;
+}
+
+.history-content .sd-prose p:last-child {
+  margin-bottom: 0;
+}
+
+.history-item.user {
+  align-self: flex-end;
+  background: rgba(14, 165, 233, 0.1);
+  border: 1px solid rgba(14, 165, 233, 0.22);
+  border-bottom-right-radius: 3px;
+}
+
+.history-item.assistant {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-bottom-left-radius: 3px;
+}
+
+.history-time {
+  font-size: var(--fs-label);
+  color: var(--sd-muted, rgba(148, 163, 184, 0.7));
+  align-self: flex-end;
+}
+
+.history-item.assistant .history-time {
+  align-self: flex-start;
+}
+
+.history-empty {
+  text-align: center;
+  padding: 50px 20px;
+  color: var(--sd-muted, rgba(148, 163, 184, 0.7));
+  font-size: var(--fs-small);
+}
+
+@keyframes sd-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* top padding = #settings-close's top margin: the close button and the head row (title + Restart) start on the same line */
+.sd-page-head {
+  background: var(--sd-bg);
+  padding: 18px 24px 14px 24px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--sd-border);
+  flex-shrink: 0;
+}
+
+.sd-page-head-row {
+  min-height: 40px; /* = the close button: the title and Restart centre on it */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+  padding-right: 48px;
+}
+
+.sd-page-head-row h3,
+.sd-page-head h3 {
+  margin: 0;
+  font-size: var(--fs-heading);
+  font-weight: 600;
+  color: var(--sd-text);
+  line-height: 1.25;
+}
+
+.sd-page-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.sd-page-head p {
+  margin: 0;
+  font-size: var(--fs-ui);
+  color: var(--sd-muted);
+  padding-right: 48px;
+}
+
+.sd-page-head .sd-agents-toolbar,
+.sd-page-head .gf-toolbar {
+  margin-top: 14px;
+  margin-bottom: 0;
+  width: 100%;
+}
+
+.sd-grid,
+.sd-agents-grid,
+.sd-info-container,
+.sd-mcp-container {
+  padding-left: 24px;
+  padding-right: 24px;
+  padding-bottom: 32px;
+  box-sizing: border-box;
+}
+
+.memory-control-layout {
+  padding-left: 24px;
+  padding-right: 24px;
+  padding-bottom: 12px;
+  box-sizing: border-box;
+}
+
+.sd-page-body > .sd-card {
+  margin-left: 24px;
+  margin-right: 24px;
+  margin-bottom: 32px;
+}
+
+.sd-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.span-4 { grid-column: span 4; }
+.span-6 { grid-column: span 6; }
+
+.sd-badge-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sd-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-small);
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: var(--sd-surface-2);
+  border: 1px solid var(--sd-border);
+  color: var(--sd-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.sd-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sd-ok);
+  box-shadow: 0 0 4px rgba(74, 222, 128, 0.4);
+}
+
+.sd-card {
+  background: var(--sd-surface);
+  border: 1px solid var(--sd-border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  min-width: 0;
+}
+
+.sd-card h4 {
+  margin: 0 0 14px;
+  font-size: var(--fs-ui);
+  font-weight: 600;
+  color: var(--sd-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sd-h-icon {
+  flex-shrink: 0;
+  color: var(--sd-accent);
+  display: inline-block;
+}
+
+.sd-empty {
+  margin: 0;
+  padding: 12px 0;
+  font-size: var(--fs-ui);
+  color: var(--sd-muted);
+}
+
+/* ── Meters ── */
+.sd-meter-head span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sd-meter-head span:first-child .sd-h-icon {
+  color: var(--sd-accent);
+}
+
+.sd-meter {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(148, 163, 184, 0.14);
+  overflow: hidden;
+}
+
+.sd-meter > span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--sd-accent);
+  transition: width 0.3s ease;
+}
+
+.sd-meter-row {
+  margin-bottom: 14px;
+}
+
+.sd-meter-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: var(--fs-ui);
+  font-variant-numeric: tabular-nums;
+}
+
+.sd-meter-head span:last-child {
+  color: var(--sd-muted);
+}
+
+/* ── Status rows ── */
+.status-list {
+  display: flex;
+  flex-direction: column;
+}
+
+#settings-container .status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--sd-border);
+  font-size: var(--fs-ui);
+}
+
+#settings-container .status-row:last-child {
+  border-bottom: 0;
+}
+
+#settings-container .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #475569;
+}
+
+#settings-container .status-dot.status-green {
+  background: var(--sd-ok);
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
+}
+
+#settings-container .status-dot.status-red {
+  background: var(--sd-err);
+  box-shadow: 0 0 6px rgba(248, 113, 113, 0.45);
+}
+
+.status-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#settings-container .status-detail,
+#settings-container .status-text {
+  margin-left: auto;
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+#settings-container .status-detail + .status-text {
+  margin-left: 12px;
+}
+
+/* label column as wide as its text, the value takes the rest and wraps: with "1fr auto" a long model name took its whole
+   width and the labels broke one letter per line on a phone (2026-10-18) */
+.sd-kv {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px 16px;
+  margin: 0;
+  font-size: var(--fs-ui);
+}
+
+.sd-kv dt {
+  color: var(--sd-muted);
+  white-space: nowrap;
+}
+
+.sd-kv dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ── Tổng quan (pages.ts overviewPage): a flat page. The status line leads, the hardware sits in one row split by
+   hairlines, then sections under a hairline each — no cards, no boxes inside boxes (impeccable critique 2026-10-18). ── */
+.sd-ov {
+  padding: 4px 24px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  box-sizing: border-box;
+}
+.sd-ov-summary {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--fs-input);
+  font-weight: 500;
+  color: var(--sd-text);
+}
+.sd-ov-summary[data-state="checking"] { color: var(--sd-muted); }
+.sd-ov-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--sd-border); /* no bottom rule: the first section's hairline closes the row */
+}
+.sd-ov-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 14px 20px 16px;
+}
+.sd-ov-metric:first-child { padding-left: 0; }
+.sd-ov-metric + .sd-ov-metric { border-left: 1px solid var(--sd-border); }
+.sd-ov-label { font-size: var(--fs-small); color: var(--sd-muted); }
+.sd-ov-value {
+  font-size: var(--fs-heading);
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  color: var(--sd-text);
+}
+.sd-ov-metric .sd-meter { margin-top: 4px; }
+.sd-ov-sub {
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sd-ov-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 28px 48px;
+}
+.sd-ov-section { min-width: 0; padding-top: 14px; border-top: 1px solid var(--sd-border); }
+.sd-ov-section h4 {
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-ui);
+  font-weight: 600;
+  color: var(--sd-text);
+}
+.sd-ov-services .status-row { padding: 8px 0; }
+@media (max-width: 768px) {
+  .sd-ov { padding: 4px 16px 24px; gap: 20px; }
+  /* phone: 2 x 2, the hairline between the two rows instead of a box */
+  .sd-ov-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sd-ov-metric { gap: 2px; padding: 8px 12px 10px; }
+  .sd-ov-metric:nth-child(odd) { padding-left: 0; border-left: 0; }
+  .sd-ov-metric:nth-child(n + 3) { border-top: 1px solid var(--sd-border); }
+  .sd-ov-value { font-size: var(--fs-input); }
+}
+
+/* ── Forms ── */
+
+#settings-container input[type="text"],
+#settings-container input[type="password"],
+#settings-container input[type="search"],
+#settings-container input[type="number"],
+#settings-container select,
+#settings-container textarea {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--sd-border-strong);
+  border-radius: 8px;
+  background: var(--sd-surface-2);
+  color: var(--sd-text);
+  font: inherit;
+  font-size: var(--fs-ui);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+#settings-container textarea {
+  height: auto;
+  min-height: 64px;
+  padding: 8px 12px;
+  resize: vertical;
+}
+
+#settings-container select option,
+#settings-container select optgroup {
+  background: var(--sd-surface);
+  color: var(--sd-text);
+}
+
+#settings-container input:focus-visible,
+#settings-container select:focus-visible,
+#settings-container textarea:focus-visible {
+  border-color: var(--sd-accent);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+}
+
+#settings-container input[type="file"] {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
+}
+
+#settings-container input[type="file"]::file-selector-button {
+  margin-right: 10px;
+  padding: 6px 12px;
+  border: 1px solid var(--sd-border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sd-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings-feedback {
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
+}
+
+.settings-feedback[data-state="ok"] {
+  color: var(--sd-ok);
+}
+
+.settings-feedback[data-state="error"] {
+  color: var(--sd-err);
+  white-space: pre-line;
+}
+
+/* ── Buttons ── */
+.settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--sd-border-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sd-text);
+  font: inherit;
+  font-size: var(--fs-ui);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.settings-btn:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.settings-btn.primary {
+  border-color: transparent;
+  background: var(--sd-accent);
+  color: #04121c;
+  font-weight: 600;
+}
+
+.settings-btn.primary:hover:not(:disabled) {
+  background: #38bdf8;
+}
+
+.settings-btn.danger {
+  border-color: rgba(248, 113, 113, 0.4);
+  color: var(--sd-err);
+}
+
+.settings-btn.danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.settings-btn.danger-restart {
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.08);
+  font-size: var(--fs-label);
+  height: 40px; /* = the close button beside it */
+  box-sizing: border-box;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.settings-btn.danger-restart:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+}
+
+.settings-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.settings-btn.is-busy {
+  pointer-events: none;
+}
+
+.settings-btn.is-busy svg {
+  animation: spin-flow 1s linear infinite;
+}
+
+.settings-btn.is-ok svg {
+  color: var(--sd-ok);
+}
+
+.settings-btn.primary.is-ok svg {
+  color: #04121c;
+}
+
+.settings-btn.is-error svg {
+  color: var(--sd-err);
+}
+
+#settings-container .settings-btn:focus-visible,
+.sd-nav-item:focus-visible,
+.sd-icon-btn:focus-visible {
+  outline: 2px solid var(--sd-accent);
+  outline-offset: 2px;
+}
+
+/* ── Setup mode ── */
+.setup-nav {
+  margin: 20px 0 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sd-root.setup-mode .sd-nav,
+.sd-root.setup-mode .sd-menu-btn {
+  display: none;
+}
+
+/* ── Memory Center ── */
+.sd-memory {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 240px minmax(320px, 400px) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.sd-memory-cats,
+.sd-memory-list,
+#memory-detail-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--sd-surface);
+  border: 1px solid var(--sd-border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.sd-mem-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.sd-mem-panel-head h4 {
+  margin: 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-ui);
+  font-weight: 600;
+  color: var(--sd-text);
+  letter-spacing: -0.01em;
+}
+
+.sd-mem-badge-pill {
+  font-size: var(--fs-small);
+  font-weight: 500;
+  color: var(--sd-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+#logs-category-nav,
+#memory-category-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+/* Category item button */
+.sd-mem-cat-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--sd-muted);
+  font: inherit;
+  font-size: var(--fs-ui);
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.16s ease;
+  user-select: none;
+}
+
+.sd-mem-cat-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--sd-text);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.sd-mem-cat-btn.active {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%);
+  border-color: var(--cat-color, var(--sd-accent));
+  color: #ffffff;
+  box-shadow: 0 0 16px -4px var(--cat-color, rgba(14, 165, 233, 0.3));
+}
+
+.sd-mem-cat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  flex-shrink: 0;
+  transition: transform 0.16s ease;
+}
+
+.sd-mem-cat-btn.active .sd-mem-cat-icon {
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(1.05);
+}
+
+.sd-mem-cat-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-mem-cat-badge {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--sd-muted);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.16s ease;
+}
+
+.sd-mem-cat-btn.active .sd-mem-cat-badge {
+  background: var(--cat-color, var(--sd-accent));
+  color: #04121c;
+  font-weight: 700;
+  border-color: transparent;
+}
+
+/* Search bar */
+.sd-mem-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sd-mem-search-bar input[type="search"] {
+  flex: 1;
+  padding: 0 12px;
+  font-size: var(--fs-ui);
+  height: 38px;
+  border-radius: 8px;
+}
+
+.sd-mem-search-btn {
+  height: 38px;
+  padding: 0 14px;
+  gap: 6px;
+}
+
+/* Toolbar */
+.sd-memory-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px 0 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.sd-btn-bulk-delete {
+  font-size: var(--fs-small);
+  height: 38px;
+  min-height: 38px;
+  padding: 0 14px;
+  gap: 6px;
+  border-radius: 8px;
+}
+
+.sd-btn-bulk-delete:not(:disabled) {
+  background: rgba(248, 113, 113, 0.15);
+  border-color: rgba(248, 113, 113, 0.5);
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.25);
+}
+
+/* Nút "Tính lại tất cả embedding": hàng riêng, co lại theo cột, chữ dài thì cắt "…" thay vì tràn khung */
+.sd-memory-extra {
+  display: flex;
+  margin: -2px 0 10px;
+}
+
+.sd-btn-reembed-all {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-small);
+  height: 38px;
+  min-height: 38px;
+  padding: 0 14px;
+  gap: 6px;
+  border-radius: 8px;
+}
+
+.sd-btn-reembed-all .btn-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Records list container */
+#memory-list-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+/* Record Card */
+.sd-mem-record-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--sd-border);
+  border-left: 3.5px solid var(--item-color, var(--sd-accent));
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--sd-text);
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.14s ease, background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.sd-mem-record-card:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.045);
+  border-color: var(--sd-border-strong);
+}
+
+.sd-mem-record-card.selected {
+  background: linear-gradient(90deg, rgba(0, 210, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
+  border-color: rgba(0, 210, 255, 0.4);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
+.sd-mem-card-check {
+  margin-top: 3px;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--sd-accent);
+}
+
+.sd-mem-card-body {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sd-mem-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sd-mem-card-title {
+  font-size: var(--fs-ui);
+  font-weight: 600;
+  color: #ffffff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-mem-card-type-tag {
+  font-size: var(--fs-small);
+  font-weight: 500;
+  color: var(--sd-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: lowercase;
+  flex-shrink: 0;
+}
+
+.sd-mem-card-preview {
+  font-size: var(--fs-small);
+  line-height: 1.45;
+  color: var(--sd-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+/* Empty states */
+.sd-mem-empty-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 36px 16px;
+  color: var(--sd-muted);
+}
+
+.sd-mem-empty-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  color: var(--sd-muted);
+}
+
+.sd-mem-empty-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.sd-mem-empty-title {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--sd-text);
+  margin-bottom: 4px;
+}
+
+.sd-mem-empty-sub {
+  font-size: var(--fs-small);
+  max-width: 240px;
+  line-height: 1.4;
+  color: var(--sd-muted);
+}
+
+/* Pager */
+.sd-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 12px;
+  margin-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.sd-pager .settings-btn {
+  height: 30px;
+  min-height: 30px;
+  font-size: var(--fs-small);
+  padding: 0 10px;
+  gap: 4px;
+}
+
+.sd-pager-status {
+  font-size: var(--fs-small);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--sd-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 4px 10px;
+  border-radius: 9999px;
+}
+
+/* ── Record Detail & Editor ── */
+#memory-detail-container {
+  overflow-y: auto;
+  gap: 16px;
+}
+
+.sd-mem-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sd-mem-detail-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sd-mem-detail-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--cat-color, var(--sd-accent));
+  background: rgba(255, 255, 255, 0.04);
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 4px;
+}
+
+.sd-mem-detail-badge-icon svg {
+  display: block;
+}
+
+.sd-mem-detail-id {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+
+/* The long fields (content, result, traces…) grow to fill the panel, sharing the room; the panel scrolls only when they do
+   not fit. Before: 4-row boxes with the text cut and an empty quarter of the panel under "Lưu" (user 2026-10-17). */
+.sd-mem-detail-form {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sd-mem-field-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sd-mem-field-card.grow {
+  flex: 1 0 auto;
+}
+
+#memory-detail-container .sd-mem-field-card.grow .sd-memory-textarea { /* id: beats #settings-container textarea (min 64px, resize) */
+  flex: 1 0 auto;
+  min-height: 120px;
+  resize: none;
+}
+
+.sd-mem-field-label {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--sd-text);
+  letter-spacing: 0.01em;
+}
+
+.sd-memory-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--sd-surface-2);
+  border: 1px solid var(--sd-border-strong);
+  border-radius: 8px;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: var(--fs-ui);
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color 0.16s, box-shadow 0.16s;
+}
+
+.sd-memory-input:focus {
+  border-color: var(--sd-accent);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+}
+
+.sd-memory-textarea {
+  min-height: 90px;
+  line-height: 1.6;
+  resize: vertical;
+  font-family: inherit;
+  font-size: var(--fs-ui);
+}
+
+/* Metadata box */
+.sd-mem-meta-card {
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+}
+
+.sd-mem-meta-title {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--sd-muted);
+  margin-bottom: 8px;
+}
+
+.sd-mem-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.sd-mem-meta-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--fs-small);
+}
+
+.sd-mem-meta-key {
+  color: var(--sd-muted);
+  flex-shrink: 0;
+}
+
+.sd-mem-meta-val {
+  color: var(--sd-text);
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+
+/* Actions footer: pinned to the bottom of the panel, also while the form scrolls */
+.sd-mem-detail-actions {
+  position: sticky;
+  bottom: -16px; /* the panel's padding: sit on its edge */
+  margin-bottom: -16px;
+  padding: 10px 0 16px;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--sd-surface);
+}
+
+.sd-mem-detail-actions .settings-btn.primary {
+  min-width: 130px;
+  height: 38px;
+  font-size: var(--fs-ui);
+}
+
+.memory-back-btn {
+  display: none;
+}
+
+/* ── Responsive ── */
+@media (max-width: 1100px) {
+  .span-4,
+  .span-6 { grid-column: span 12; }
+  .sd-memory { grid-template-columns: 200px minmax(0, 1fr); }
+  #memory-detail-container { grid-column: 1 / -1; }
+}
+
+@media (max-width: 768px) {
+  .sd-menu-btn { display: inline-flex; align-items: center; justify-content: center; }
+
+  /* the drawer opens as the icon rail (index.ts keeps it .sidebar-collapsed below RAIL_BELOW_PX); its collapse button slides it
+     out to the full menu with names and back (user 2026-10-18) */
+  .sd-nav {
+    width: var(--sd-nav-w);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+    transform: translateX(calc(-100% - 24px));
+    visibility: hidden;
+    transition: transform 0.2s ease, visibility 0.2s;
+  }
+
+  .sd-root.nav-open .sd-nav {
+    transform: none;
+    visibility: visible;
+  }
+
+  .sd-scrim {
+    display: block;
+    position: absolute;
+    /* only the band the drawer uses, from under the Dynamic Island to the command bar's bottom edge: a painted layer at a
+       screen edge made iOS Safari drop its fade under the status bar and tint it (2026-10-18; notch rules in style.css) */
+    top: var(--dash-top);
+    bottom: var(--dash-bottom);
+    left: 0;
+    right: 0;
+    z-index: 1;
+    pointer-events: auto;
+    background: rgba(0, 0, 0, 0.55);
+  }
+
+  .sd-content {
+    left: calc(var(--dash-x) + env(safe-area-inset-left, 0px));
+    padding: 0;
+  }
+  .sd-grid > * { grid-column: span 12; }
+
+  .settings-btn,
+  #settings-container input[type="text"],
+  #settings-container input[type="password"],
+  #settings-container input[type="search"],
+  #settings-container input[type="number"],
+  #settings-container select { min-height: 40px; height: 40px; }
+
+  .sd-memory {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .sd-card.sd-memory-cats,
+  .sd-memory-cats {
+    flex-shrink: 0;
+    min-height: 56px;
+    height: auto;
+    padding: 8px 10px;
+    box-sizing: border-box;
+    overflow: visible;
+  }
+
+  .sd-memory-list {
+    flex: 1;
+    min-height: 0;
+  }
+
+  #logs-category-nav,
+  #memory-category-nav {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 8px;
+    padding: 2px 2px 4px;
+    height: 42px;
+    min-height: 42px;
+    align-items: center;
+    scrollbar-width: none;
+  }
+
+  #logs-category-nav::-webkit-scrollbar,
+  #memory-category-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  #logs-category-nav .settings-btn,
+  #memory-category-nav .settings-btn,
+  #logs-category-nav .sd-mem-cat-btn,
+  #memory-category-nav .sd-mem-cat-btn {
+    width: auto;
+    flex-shrink: 0;
+    height: 38px;
+    min-height: 38px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
+    border-radius: 8px;
+  }
+
+  .sd-mem-panel-head { display: none; }
+  .sd-memory-cats h4 { display: none; }
+  .memory-back-btn { display: inline-flex; }
+  #memory-detail-container { display: none; }
+  .memory-control-layout.show-detail-mobile .sd-memory-cats,
+  .memory-control-layout.show-detail-mobile .sd-memory-list { display: none; }
+  .memory-control-layout.show-detail-mobile #memory-detail-container { display: flex; flex: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sd-root,
+  .sd-nav,
+  .sd-meter > span { transition: none; }
+  .sd-page { animation: none; }
+  .settings-btn.is-busy svg { animation: none; }
+}
+
+/* ==========================================================================
+   Agents Page
+   ========================================================================== */
+
+.sd-agents-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.sd-agents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); /* min(…,100%): on a phone the column is the screen, never wider */
+  gap: 8px;
+}
+
+.sd-agent-card {
+  min-width: 0; /* a grid item never grows to its longest unbroken string */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--sd-border);
+  border-radius: 12px;
+  padding: 16px;
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.sd-agent-card:hover {
+  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(14, 165, 233, 0.35);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.sd-agent-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sd-agent-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(14, 165, 233, 0.1);
+  color: var(--sd-accent);
+  border: 1px solid rgba(14, 165, 233, 0.2);
+  flex-shrink: 0;
+}
+
+.sd-agent-titles {
+  flex: 1;
+  min-width: 0;
+}
+
+.sd-agent-name {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sd-agent-id {
+  display: block;
+  font-size: var(--fs-small);
+  font-family: var(--sd-font-sans);
+  color: var(--sd-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* long file paths are cut with … (full path in the title) */
+}
+
+.sd-agent-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--sd-ok);
+  background: rgba(74, 222, 128, 0.08);
+  border: 1px solid rgba(74, 222, 128, 0.2);
+  padding: 2px 7px;
+  border-radius: 9999px;
+}
+
+.sd-agent-desc {
+  margin: 0;
+  font-size: var(--fs-small);
+  line-height: 1.5;
+  color: var(--sd-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Tools row — shared across Agents / Hooks / Skills */
+.sd-agent-tools-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 4px;
+  margin-top: 8px;
+  max-height: 46px;
+  overflow: hidden;
+}
+
+.sd-agent-tools-lbl {
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
+  font-weight: 500;
+  white-space: nowrap;
+  margin-right: 2px;
+  flex-shrink: 0;
+}
+
+.sd-tool-tag {
+  font-size: var(--fs-small);
+  color: rgba(148, 163, 184, 0.85);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sd-tool-sep {
+  font-size: var(--fs-small);
+  color: rgba(148, 163, 184, 0.35);
+  line-height: 1;
+  user-select: none;
+}
+
+
+/* ==========================================================================
+   MCP Connect Page
+   ========================================================================== */
+
+.sd-mcp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sd-mcp-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--sd-border);
+  border-radius: 9px;
+  padding: 12px 14px;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.sd-mcp-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--sd-border-strong);
+}
+
+.sd-mcp-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sd-mcp-head .settings-btn {
+  padding: 3px 10px;
+  font-size: var(--fs-small);
+}
+
+.sd-mcp-name {
+  font-size: var(--fs-ui);
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.sd-mcp-cmd {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 6px 10px;
+  overflow-x: auto;
+}
+
+.sd-mcp-cmd code {
+  font-family: var(--sd-font-sans);
+  font-size: var(--fs-small);
+  color: #38bdf8;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Thông tin / README Page
+   ========================================================================== */
+
+.sd-info-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sd-info-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  flex-wrap: wrap;
+}
+
+.sd-info-bar-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sd-info-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-small);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.sd-info-stat-k {
+  color: var(--sd-muted);
+}
+
+.sd-info-stat-v {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.sd-readme-card {
+  padding: 24px;
+  background: var(--sd-surface);
+  border: 1px solid var(--sd-border);
+  border-radius: 12px;
+}
+
+.sd-readme-content {
+  font-size: var(--fs-ui);
+  line-height: 1.7;
+  color: var(--sd-text);
+  max-width: 900px;
+}
+
+.sd-readme-content h1,
+.sd-readme-content h2,
+.sd-readme-content h3,
+.sd-readme-content h4 {
+  color: #ffffff;
+  font-weight: 700;
+  margin-top: 24px;
+  margin-bottom: 12px;
+  letter-spacing: -0.01em;
+}
+
+.sd-readme-content h1 { font-size: var(--fs-heading); border-bottom: 1px solid var(--sd-border); padding-bottom: 8px; }
+.sd-readme-content h2 { font-size: var(--fs-input); border-bottom: 1px solid rgba(255, 255, 255, 0.06); padding-bottom: 6px; }
+.sd-readme-content h3 { font-size: var(--fs-body); }
+
+.sd-readme-content p {
+  margin: 10px 0;
+}
+
+/* lists keep their bullets/numbers inside the text column (a reset left them at padding 0, hanging off the page edge) */
+.sd-readme-content ul,
+.sd-readme-content ol {
+  margin: 10px 0;
+  padding-left: 1.4em;
+}
+
+.sd-readme-content code {
+  font-family: var(--sd-font-mono);
+  font-size: var(--fs-small);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #38bdf8;
+}
+
+.sd-readme-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0;
+  font-size: var(--fs-small);
+}
+
+.sd-readme-content th,
+.sd-readme-content td {
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+}
+
+.sd-readme-content th {
+  background: rgba(14, 165, 233, 0.12);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.sd-readme-content tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+/* ==========================================================================
+   Graphfy (Node Workflow Canvas)
+   ========================================================================== */
+
+/* MCP config JSON & badge styles */
+.sd-mcp-file-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--sd-border);
+  font-size: var(--fs-small);
+}
+.sd-mcp-file-badge code {
+  color: #38bdf8;
+  font-family: var(--sd-font-mono);
+  font-size: var(--fs-small);
+}
+.sd-mcp-json-box {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-top: 14px;
+}
+.sd-mcp-json-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
+  border-bottom: 1px solid var(--sd-border);
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+.sd-json-copy-btn {
+  font-size: var(--fs-small);
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.sd-json-copy-btn:hover {
+  background: rgba(56, 189, 248, 0.25);
+  color: #38bdf8;
+}
+.sd-json-pre {
+  margin: 0;
+  font-family: var(--sd-font-mono);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+  color: #cbd5e1;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Prompt preview modal */
+.sd-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.sd-modal-backdrop[hidden] {
+  display: none !important;
+}
+.sd-modal-dialog {
+  background: #0f172a;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 1000px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+  animation: modalPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes modalPop {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.sd-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--sd-border);
+}
+.sd-modal-head h4 {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: #ffffff;
+}
+.sd-modal-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Info file tag */
+.sd-info-file-tag {
+  color: #38bdf8;
+  font-family: var(--sd-font-mono);
+  font-size: var(--fs-small);
+}
+
+/* Code blocks in markdown */
+.sd-code-block {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid var(--sd-border);
+  border-radius: 8px;
+  margin: 14px 0;
+  overflow: hidden;
+}
+.sd-code-head {
+  background: rgba(255, 255, 255, 0.03);
+  padding: 6px 12px;
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
+  border-bottom: 1px solid var(--sd-border);
+  font-family: var(--sd-font-mono);
+}
+.sd-code-block pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+.sd-code-block code {
+  font-family: var(--sd-font-mono);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+  color: #e2e8f0;
+}
+/* hljs github-dark theme paints token colors; its own background would cover the card's */
+#settings-container .sd-code-block code.hljs { background: transparent; }
+
+/* ==========================================================================
+   Font-sync compat — các class pages.ts / index.ts / memory.ts dùng nhưng
+   chưa có định nghĩa (fallback về font trình duyệt gây lệch font).
+   Tất cả ép về --sd-font-sans, riêng code/mono về --sd-font-mono.
+   ========================================================================== */
+
+#settings-container .sd-page-head { font-family: var(--sd-font-sans); }
+#settings-container .sd-lead {
+  margin: 0 0 0px;
+  font-size: var(--fs-ui);
+  line-height: 1.6;
+  color: var(--sd-muted);
+  font-family: var(--sd-font-sans);
+}
+
+/* Legacy form aliases: pages.ts dùng form-group/sd-input-row/...,
+   styles.css gốc đặt tên settings-field/settings-input-row/... */
+#settings-container .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+  font-family: var(--sd-font-sans);
+}
+#settings-container .form-group > label {
+  font-size: var(--fs-small);
+  font-weight: 500;
+  color: var(--sd-text);
+  font-family: var(--sd-font-sans);
+}
+#settings-container .sd-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#settings-container .sd-input-row > input,
+#settings-container .sd-input-row > select {
+  flex: 1;
+  min-width: 0;
+}
+#settings-container .sd-field-note {
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
+  line-height: 1.5;
+  font-family: var(--sd-font-sans);
+}
+#settings-container .sd-action-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+/* Search + counter (agents/hooks/skills/prompts/commands/plugins/mcp) */
+#settings-container .sd-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 0 12px;
+  height: 38px;
+  border: 1px solid var(--sd-border-strong);
+  border-radius: 8px;
+  background: var(--sd-surface-2);
+  color: var(--sd-muted);
+  font-family: var(--sd-font-sans);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+#settings-container .sd-search-box:focus-within {
+  border-color: var(--sd-accent);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
+  color: var(--sd-text);
+}
+#settings-container .sd-search-box input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  color: var(--sd-text);
+  font: inherit;
+  font-size: var(--fs-ui);
+  font-family: var(--sd-font-sans);
+}
+#settings-container .sd-agents-counter {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--sd-font-sans);
+}
+#settings-container .sd-agents-count-val {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+}
+#settings-container .sd-agents-count-lbl {
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
+}
+
+
+/* GPU / apps list render động từ index.ts */
+#settings-container .sd-gpu-list,
+#settings-container .sd-apps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: var(--sd-font-sans);
+}
+#settings-container .sd-gpu-item { display: flex; flex-direction: column; gap: 4px; }
+#settings-container .sd-gpu-name { font-size: var(--fs-ui); font-weight: 600; color: var(--sd-text); }
+#settings-container .sd-gpu-item .sd-gpu-stat,
+#settings-container .sd-gpu-stat { font-size: var(--fs-small); color: var(--sd-muted); }
+#settings-container .sd-app-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-small);
+  color: var(--sd-text);
+  font-family: var(--sd-font-sans);
+}
+#settings-container .sd-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sd-ok);
+  flex-shrink: 0;
+}
+
+/* Agent command box + copy button (render động) */
+#settings-container .sd-agent-cmd-box { display: flex; flex-direction: column; gap: 5px; }
+#settings-container .sd-agent-cmd-lbl {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--sd-accent);
+  letter-spacing: 0.03em;
+  font-family: var(--sd-font-sans);
+}
+#settings-container .sd-agent-cmd-val {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+#settings-container .sd-agent-cmd-val code {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--sd-font-sans);
+  font-size: var(--fs-ui);
+  font-weight: 500;
+  color: #7dd3fc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#settings-container .sd-copy-cmd-btn {
+  flex-shrink: 0;
+  font-size: var(--fs-small);
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--sd-border-strong);
+  background: transparent;
+  color: var(--sd-text);
+  font-family: var(--sd-font-sans);
+  cursor: pointer;
+}
+#settings-container .sd-copy-cmd-btn:hover { background: rgba(148, 163, 184, 0.1); }
+
+/* Memory layout helpers */
+/* No `display` here: `.sd-memory` owns the 3-column grid (an ID-level `display:flex`
+   here used to override it and squeeze the detail column to its content width). */
+#settings-container .memory-control-layout { min-height: 0; flex: 1; }
+#settings-container .memory-control-scroll { min-height: 0; }
+#settings-container .sd-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
+  font-family: var(--sd-font-sans);
+}
+#settings-container .sd-check input { accent-color: var(--sd-accent); }
+#settings-container .btn-label { font: inherit; }
+#settings-container .btn-view-prompt { font: inherit; }
+#settings-container .sd-loading-state,
+#settings-container .sd-error-state,
+#settings-container .sd-memory-detail {
+  font-family: var(--sd-font-sans);
+}
+#settings-container .sd-mem-detail-badge-icon { display: inline-flex; }
+
+/* MCP summary */
+#settings-container .sd-mcp-container { display: flex; flex-direction: column; gap: 0; }
+#settings-container .sd-mcp-summary {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  font-family: var(--sd-font-sans);
+}
+#settings-container .sd-mcp-stat { display: flex; flex-direction: column; gap: 2px; }
+#settings-container .sd-mcp-stat-num {
+  font-size: var(--fs-heading);
+  font-weight: 700;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+}
+#settings-container .sd-mcp-stat-lbl { font-size: var(--fs-small); color: var(--sd-muted); }
+#settings-container .text-success { color: var(--sd-ok); }
+#settings-container .sd-badge-k { color: var(--sd-muted); }
+#settings-container .sd-mcp-list-card { font-family: var(--sd-font-sans); }
+#settings-container .sd-mcp-list-card h4 {
+  margin: 0 0 12px;
+  font-size: var(--fs-ui);
+  font-weight: 600;
+  font-family: var(--sd-font-sans);
+}
+
+/* Markdown render từ formatMarkdown() trong index.ts */
+#settings-container .sd-prose {
+  font-size: var(--fs-ui);
+  line-height: 1.7;
+  color: var(--sd-text);
+  font-family: var(--sd-font-sans);
+  max-width: 900px;
+}
+/* README links (table of contents): browser default #0000EE was unreadable on the dark bg. */
+#settings-container .sd-prose a { color: #7dd3fc; text-decoration: none; }
+#settings-container .sd-prose a:hover { color: #bae6fd; text-decoration: underline; }
+
+#settings-container .sd-prose h1,
+#settings-container .sd-prose h2,
+#settings-container .sd-prose h3,
+#settings-container .sd-prose h4 {
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+#settings-container .sd-inline-code {
+  font-family: var(--sd-font-mono);
+  font-size: var(--fs-small);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #38bdf8;
+}
+#settings-container .sd-inline-code--nowrap { white-space: nowrap; }
+#settings-container .sd-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0;
+  font-size: var(--fs-small);
+  font-family: var(--sd-font-sans);
+}
+#settings-container .sd-table th,
+#settings-container .sd-table td {
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+}
+#settings-container .sd-table th[align="center"],
+#settings-container .sd-table td[align="center"],
+#settings-container .sd-table th[style*="text-align: center"],
+#settings-container .sd-table td[style*="text-align: center"],
+#settings-container .sd-table th[style*="text-align:center"],
+#settings-container .sd-table td[style*="text-align:center"] {
+  text-align: center !important;
+}
+#settings-container .sd-table th[align="right"],
+#settings-container .sd-table td[align="right"],
+#settings-container .sd-table th[style*="text-align: right"],
+#settings-container .sd-table td[style*="text-align: right"],
+#settings-container .sd-table th[style*="text-align:right"],
+#settings-container .sd-table td[style*="text-align:right"] {
+  text-align: right !important;
+}
+#settings-container .sd-table th[align="left"],
+#settings-container .sd-table td[align="left"] {
+  text-align: left !important;
+}
+#settings-container .sd-table th {
+  background: rgba(14, 165, 233, 0.12);
+  color: #ffffff;
+  font-weight: 600;
+}
+#settings-container .sd-hr { border: 0; border-top: 1px solid var(--sd-border); margin: 14px 0; }
+
+/* Graphfy node variants */
+#settings-container .npu-item { border-style: dashed; }
+
+/* Command / agent call notes + parameter list */
+#settings-container .sd-agent-cmd-note {
+  margin-top: 6px;
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
+}
+#settings-container .sd-agent-cmd-note code {
+  font-family: var(--sd-font-sans);
+  font-weight: 600;
+  color: #7dd3fc;
+}
+
+/* Prompt editor modal */
+#settings-container .sd-prompt-editor {
+  width: 100%;
+  height: 100%;
+  min-height: 52vh;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--sd-border-strong);
+  border-radius: 8px;
+  background: var(--sd-surface-2, #0a0e14);
+  color: var(--sd-text);
+  font-family: var(--sd-font-sans);
+  font-size: var(--fs-ui);
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+}
+#settings-container .sd-prompt-editor:focus-visible {
+  border-color: var(--sd-accent);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+}
+#settings-container .sd-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--sd-border);
+}
+#settings-container .sd-modal-foot .sd-agent-cmd-note {
+  margin: 0 auto 0 0;
+}
+
+/* ── Graphfy: structure map (settings/graphfy.ts) ── */
+#settings-container .sd-page-graphfy { max-width: none; }
+#settings-container .gf-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 4px;
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
+}
+#settings-container .gf-legend { display: inline-flex; align-items: center; gap: 6px; }
+#settings-container .gf-legend i { width: 18px; height: 3px; border-radius: 2px; display: inline-block; }
+#settings-container .gf-hint { margin-left: auto; }
+#settings-container .gf-card { padding: 8px; overflow-x: auto; }
+#settings-container .gf-map { min-width: 900px; }
+#settings-container .gf-svg { display: block; width: 100%; height: auto; user-select: none; touch-action: pan-x pan-y; }
+#settings-container .gf-grid-dot { fill: rgba(148, 163, 184, 0.12); }
+#settings-container .gf-edge { fill: none; stroke: var(--gf-e); stroke-width: 1.2; opacity: 0.08; }
+#settings-container .gf-edge-llm { opacity: 0.4; }
+#settings-container .gf-link, #settings-container .gf-node { transition: opacity 0.15s ease; }
+#settings-container .gf-support { opacity: 0.3; }
+/* edges to the shared hubs (server, tools, UIUX): hidden unless "Hiện tất cả" or one of their nodes is hovered */
+#settings-container .gf-hub { display: none; }
+#settings-container .gf-map.gf-all .gf-hub,
+#settings-container .gf-edges:has(.gf-dim) .gf-hub:not(.gf-dim) { display: inline; }
+#settings-container .gf-link.gf-dim, #settings-container .gf-node.gf-dim { opacity: 0.08; }
+#settings-container .gf-link:not(.gf-dim):not(.gf-support) .gf-edge { transition: opacity 0.15s; }
+#settings-container .gf-edges:has(.gf-dim) .gf-link:not(.gf-dim) .gf-edge { opacity: 0.9; stroke-width: 1.6; }
+#settings-container .gf-brain-lines { fill: none; stroke: #a78bfa; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+#settings-container .gf-brain-trace { fill: none; stroke: #f5f3ff; stroke-width: 1.6; stroke-dasharray: 2 18; animation: gf-brain-flow 1.4s linear infinite; }
+#settings-container .gf-brain-pad, #settings-container .gf-brain-pin { fill: #05070b; stroke: #a78bfa; stroke-width: 2.4; }
+#settings-container .gf-brain-pad { animation: gf-brain-blink 2.4s ease-in-out infinite; }
+#settings-container .gf-brain-aura { fill: none; stroke: #a78bfa; stroke-width: 6; opacity: 0.18; animation: gf-brain-glow 3s ease-in-out infinite; }
+#settings-container .gf-brain-hit { fill: transparent; }
+#settings-container .gf-node:hover .gf-brain-lines { stroke: #c4b5fd; }
+@keyframes gf-brain-flow { to { stroke-dashoffset: -20; } }
+@keyframes gf-brain-blink { 50% { fill: #e9d5ff; } }
+@keyframes gf-brain-glow { 50% { opacity: 0.6; } }
+@media (prefers-reduced-motion: reduce) {
+  #settings-container .gf-brain-trace, #settings-container .gf-brain-pad, #settings-container .gf-brain-aura { animation: none; }
+}
+#settings-container .gf-lane-title { font-size: var(--fs-small); font-weight: 600; letter-spacing: 0.3px; font-family: var(--sd-font-sans); }
+#settings-container .gf-pulse { fill: var(--gf-e); filter: drop-shadow(0 0 4px var(--gf-e)); }
+#settings-container .gf-node { cursor: grab; }
+#settings-container .gf-node.dragging { cursor: grabbing; }
+#settings-container .gf-node-box {
+  fill: var(--sd-surface);
+  stroke: color-mix(in srgb, var(--gf-c) 45%, transparent);
+  stroke-width: 1;
+  transition: stroke 0.15s;
+}
+#settings-container .gf-node:hover .gf-node-box,
+#settings-container .gf-node:focus-visible .gf-node-box { stroke: var(--gf-c); }
+#settings-container .gf-node:focus-visible { outline: none; }
+#settings-container .gf-node-label { fill: var(--sd-text); font-size: var(--fs-small); font-weight: 500; font-family: var(--sd-font-sans); }
+@media (prefers-reduced-motion: reduce) {
+  #settings-container .gf-pulse { display: none; }
+}
+
+/* Status chips: name and state sit together in a small tile instead of one
+   row stretched across the card (overview "Dịch vụ", voice engines). */
+#settings-container .sd-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+#settings-container .sd-status-grid-1 { grid-template-columns: minmax(0, 1fr); margin-bottom: 12px; }
+#settings-container .sd-status-grid .status-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "dot name" ". text";
+  column-gap: 8px;
+  row-gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--sd-border);
+  border-bottom: 1px solid var(--sd-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+#settings-container .sd-status-grid .status-dot { grid-area: dot; align-self: center; }
+#settings-container .sd-status-grid .status-name { grid-area: name; font-size: var(--fs-ui); }
+#settings-container .sd-status-grid .status-text,
+#settings-container .sd-status-grid .status-detail { grid-area: text; margin-left: 0; font-size: var(--fs-small); }
+#settings-container .sd-status-grid .status-detail { display: none; }
+
+/* MCP servers as a card grid instead of full-width rows. */
+#settings-container .sd-mcp-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 8px;
+}
+#settings-container .sd-mcp-item { margin: 0; }
+#settings-container .sd-mcp-cmd code { white-space: normal; word-break: break-all; }
+
+@media (min-width: 769px) and (max-width: 1100px) {
+  #settings-container .span-4 { grid-column: span 6; }
+}
+
+/* Thông tin: một trang liền mạch, không viền thẻ — PC và mobile giống nhau. Nội dung không bao giờ rộng hơn màn hình:
+   bảng cuộn trong khối của nó, khối mã cuộn trong khối mã, chữ dài tự xuống dòng. */
+#settings-container .sd-info-container,
+#settings-container .sd-info-container .sd-readme-card,
+#settings-container .sd-readme-content,
+#settings-container .sd-prose {
+  min-width: 0;
+  max-width: 100%;
+}
+#settings-container .sd-info-container .sd-info-bar,
+#settings-container .sd-info-container .sd-readme-card {
+  border: 0;
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+#settings-container .sd-info-container .sd-info-bar { padding: 0 0 4px; }
+#settings-container .sd-info-container .sd-readme-card { padding: 0; }
+#settings-container .sd-prose { overflow-wrap: anywhere; }
+#settings-container .sd-prose img { max-width: 100%; height: auto; }
+#settings-container .sd-table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 14px 0;
+}
+#settings-container .sd-table-wrap > .sd-table {
+  margin: 0;
+  width: 100%; /* fits the screen and wraps its text; only a table with many columns still scrolls inside its wrapper */
+}
+#settings-container .sd-table th,
+#settings-container .sd-table td {
+  min-width: 7em;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+  .sd-page-head {
+    padding: 14px 16px 12px 16px; /* top = the phone #settings-close margin */
+    margin-bottom: 12px;
+  }
+
+  .sd-grid,
+  .sd-agents-grid,
+  .sd-info-container,
+  .sd-mcp-container {
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-bottom: 24px;
+  }
+
+  .memory-control-layout {
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-bottom: 10px;
+  }
+
+  .sd-page-body > .sd-card {
+    margin-left: 16px;
+    margin-right: 16px;
+    margin-bottom: 24px;
+  }
+
+  .sd-page-head-row,
+  .sd-page-head p {
+    padding-right: 44px;
+  }
+
+  .sd-page-head .sd-agents-toolbar {
+    margin-top: 10px;
+  }
+
+  #settings-close {
+    margin: 14px 10px 0 0; /* = the phone .sd-page-head top padding */
+  }
+
+  .sd-page-head-row {
+    gap: 8px;
+  }
+
+  .sd-page-head-row h3 {
+    font-size: var(--fs-title);
+  }
+
+  .sd-page-head-actions .settings-btn.danger-restart {
+    padding: 0 10px;
+    font-size: var(--fs-label);
+  }
+
+  #page-logs .sd-page-head p {
+    display: none;
+  }
+
+  #card-logs {
+    padding: 12px;
+  }
+
+  .sd-history-split {
+    flex-direction: column;
+  }
+
+  .sd-sessions-list {
+    width: 100%;
+    flex: 1;
+  }
+
+  /* sessions view: the list OR the reader, never both */
+  .sd-history-split[data-view="sessions"][data-reading="0"] .sd-history-list,
+  .sd-history-split[data-view="sessions"][data-reading="1"] .sd-sessions-list {
+    display: none;
+  }
+
+  /* reading a session: only the back bar and the messages, so the reader takes (almost) the whole screen */
+  #card-logs.reading .sd-logs-head,
+  #card-logs.reading .sd-subtabs {
+    display: none;
+  }
+
+  .history-item {
+    max-width: 94%;
+  }
+}
+

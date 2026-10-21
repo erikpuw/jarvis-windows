@@ -1,0 +1,1 @@
+Nhìn màn hình hiện tại và mô tả hoặc trả lời câu hỏi về nội dung đang hiển thị. Dùng khi ngài nhờ xem, đọc, kiểm tra thứ đang có trên màn hình. Không dùng khi ngài chỉ kể mình đang xem gì; chỉ cần ảnh chụp thì dùng capture_screen.

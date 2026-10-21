@@ -1,0 +1,1 @@
+Báo cáo tình trạng máy tính này: CPU, RAM, ổ đĩa, thời gian bật máy, tiến trình nặng nhất, pin. Dùng khi ngài muốn kiểm tra máy, hệ thống, hiệu năng. Không dùng cho an ninh mạng (dùng check_security).

@@ -1,0 +1,613 @@
+"""Vòng lặp sinh có ràng buộc (spec 2026-10-12 mục 3.1): vòng chọn tool — grammar ép {"tool","say","args"}, code stream
+"say", chạy tool, nối [kết quả …], lặp ≤ MAX_ROUNDS; tool=none → vòng trả lời bằng chữ thường, prompt không giao kèo JSON
+(log 2026-10-12 18:08: trả lời trong chuỗi JSON → Gemma chỉ viết câu hứa, không đưa nội dung). Không tool calling gốc."""
+import asyncio
+import json
+import logging
+import re
+
+from engine.tools import registry
+from engine.turn import corrections, skills, history, schema
+from engine.turn.say import SayReader, parse_turn
+
+log = logging.getLogger("jarvis.turn")
+
+MAX_ROUNDS = 4
+RESULT_CHARS = 8000   # log 2026-10-12 03:29: tin 18k ký tự làm vòng sau chậm
+MAX_TOKENS = 1500
+# Người dùng chốt 2026-10-12 (think_mode_probe, held-out 89 câu, QAT): think tắt 64/66 tool, p90 3,4s;
+# budget 128 65/66, p90 2,8s; 256 66/66, p90 4,2s; không giới hạn 66/66, p90 5,6s.
+THINK_BUDGET = 128
+_LLM_ERROR = "Xin lỗi ngài, tôi đang gặp lỗi kết nối với mô hình ngôn ngữ."
+_NOT_DONE = "Tôi chưa làm được việc này vì thiếu thông tin cần thiết, thưa ngài."
+TOOL_ICON = "🛠️ "  # ngài 2026-10-12: câu báo gọi tool có emoji công cụ đứng trước (chỉ hiển thị, TTS không đọc)
+_SUMMARY = "Tổng hợp & trả lời"
+# Chặn hứa bằng code (prompt chỉ giảm: honesty_probe 0/10 → 9/10). Câu hỏi mời ("…không?") không tính.
+# ponytail: theo từ khoá, câu hứa không có các động từ này vẫn lọt; thêm động từ khi probe bắt được.
+_SENTENCE_END = re.compile(r"[.!?…]+[\"')\]]*\s+|\n+")
+_FUTURE = re.compile(r"(?<!\w)(tôi sẽ|để tôi)\s+(nhắc|theo dõi|báo lại)", re.I)  # không có cơ chế làm sau lượt
+_ACT = re.compile(r"(?<!\w)(tôi sẽ|để tôi|tôi đi)\s+(tìm|đặt|gửi|gọi|kiểm tra|tra|lọc|mở|tắt|chạy|cập nhật)", re.I)
+_BULLET = re.compile(r"(?:[*-]|\d+\.)\s")
+_NO_PROMISE = "Lượt này tôi chưa làm việc đó, thưa ngài: tôi chỉ làm được những việc có công cụ, khi ngài yêu cầu."
+_SILENT = "Xin lỗi ngài, tôi chưa trả lời được câu này, ngài thử nói lại giúp tôi."
+# temperature 0 đôi khi kẹt lặp một từ/cụm tới max_tokens (log 2026-10-13 16:10: "quên hết hết hết…" 1500 token):
+# cụm 1-6 từ lặp liên tiếp ≥ 7 lần ở cuối → giữ một lần, dừng stream.
+_REPEAT = re.compile(r"(\S+(?:\s+\S+){0,5}?)(?:\s+\1){6,}\s*$")
+_REPEAT_TAIL = 800
+# Lượt không chạy tool mà model chép khuôn kết quả trong lịch sử (history.result_message) → số liệu bịa
+# (log 2026-10-14 01:19: "[kết quả system_status] CPU: 15%…"). Bỏ từ đó tới hết câu trả lời, báo chưa làm.
+_FAKE_RESULT = re.compile(r"\[kết quả \w+|</?ket_qua\b")
+# Lọc bỏ rò rỉ suy nghĩ CoT/kế hoạch kỹ thuật của model (Drafting, Monologue, Final Polish, Style, Goal...)
+_COT_LEAK = re.compile(
+    r"(?:Draft(?:ing)?\b.*?(?:Response|Output)|Final Polish|Generate Output|Self-Correction|"
+    r"Internal Monologue|Applying Constraints|"
+    r"incorporating\s+[`\"']?(?:giong_dieu|dinh_dang|cach_tra_loi)[`\"']?|"
+    r"\*\*(?:Trang thái|Trạng thái|Cách trả lời|Style|Goal|Target|Output|Constraints?|Polish|Drafting|Refinement):\*\*|"
+    r"\*{1,2}(?:Tone|Greeting|Opening|Greeting/Opening|Content|Refinement|Summary|Target|Style|Goal|"
+    r"Language|Pronouns|Emoji|Cue|Structure|Constraint[s]?|Initial\s+thought):?\*{1,2}:?|"
+    r"\(Check\)"
+    r")",
+    re.I
+)  # 2026-10-17: vòng trả lời thấy kết quả trong <ket_qua>
+_EMPTY_NUM_LINE = re.compile(r"^\s*(?:[*-]|\d+\.)\s*$")
+_COT_PREFIX = re.compile(r"^\s*(?:[*-]|\d+\.)*\s*\*+(?:Adding\s+[^:*]+?):?\*+:?\s*", re.I)
+# Bảng kết quả đã hiển thị (da_hien="có"): model chép lại bảng làm chạm trần 1500 tokens
+_TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$")
+_TABLE_HEADER_LINE = re.compile(r"^\s*(?:#{1,4}\s*)?\*{0,2}(?:📋\s*)?bảng (?:giá|sản phẩm|kết quả|chi tiết)", re.I)
+# Ngài 2026-10-13: "tôi đang xem…" (ngài kể việc mình làm) bị gọi read_screen/system_status; sửa prompt, nạp bài học
+# đều không chặn được (spike tuning 0/2) → code: tool này chỉ chạy khi câu nói tới đúng đối tượng của nó.
+# ponytail: theo từ khoá; câu nhờ thật mà không có các từ này ("máy chậm quá, kiểm tra giúp") cũng bị chặn → dùng @tool.
+_NEEDS_WORD = {
+    "read_screen": re.compile(r"màn hình|screen", re.I),
+    "read_webcam": re.compile(r"webcam|camera|\bcam\b", re.I),
+    # "kiểm tra/check hệ thống|máy", "tình trạng máy" là hỏi máy; "đang xem hệ thống hoạt động" là ngài kể việc mình làm
+    "system_status": re.compile(r"\b(cpu|gpu|ram|ổ|disk|tiến trình|process|bộ nhớ|dung lượng|nhiệt độ)\b"
+                                r"|(kiểm tra|check|tình trạng)\s+(hệ thống|máy)", re.I),
+    # probe 2026-10-18: "ghi nhớ là tôi thích cà phê" (dạy JARVIS, việc của learning) gọi save_note 2/2 → chỉ chạy khi ngài nói ghi chú/ghi lại/lưu
+    "save_note": re.compile(r"ghi chú|ghi lại|\blưu\b", re.I),
+    "save_skill": re.compile(r"\bskill\b|kỹ năng", re.I),  # 2026-10-20: tạo skill chỉ khi ngài nói tới skill/kỹ năng
+}
+# skill dừng ở một bước: ghi rõ vào kết quả, không thì vòng trả lời hứa "giờ tôi chạy tiếp bước sau" (probe 2026-10-20)
+_SKILL_STOP = " Skill dừng ở bước này, các bước sau không chạy."
+_TOOL_IN_RAW = re.compile(r'"tool"\s*:\s*"(\w+)"')
+_RAG_SAVE = "rag_save"
+ANSWERING = {"type": "status", "state": "thinking", "message": "Đang trả lời…"}
+
+
+# honesty_probe 2026-10-17: tìm khách sạn/quán → search_products dù mô tả đã ghi "không dùng"; chưa có công cụ
+# tìm địa điểm/dịch vụ nên chặn hẳn, lượt thành trò chuyện (vòng trả lời nói chưa có công cụ)
+_PLACE = re.compile(r"\b(quán|nhà hàng|khách sạn|homestay|resort|nhà nghỉ|đặt (bàn|phòng|chỗ|vé)|vé máy bay|gọi xe)\b",
+                    re.I)
+_NOT_FOR = {"search_products": _PLACE, "lookup_knowledge": _PLACE}
+
+
+def _off_target(tool: str, text: str) -> bool:
+    rx, never = _NEEDS_WORD.get(tool), _NOT_FOR.get(tool)
+    return bool(rx and not rx.search(text or "")) or bool(never and never.search(text or ""))
+# Phần nghĩ (reasoning_content) không lên UI và không bị cắt (cắt cũ gây "lỗi kết nối", log 15:46); THINK_BUDGET
+# giới hạn nó. Nghĩ xong mà không có JSON → say rỗng → _SILENT.
+
+
+def _user_message(text: str, attachment_context) -> dict:
+    if attachment_context is None:
+        return {"role": "user", "content": text}
+    meta = json.dumps(attachment_context.router_metadata(), ensure_ascii=False)
+    return {"role": "user", "content": f"{text}\n\n[tệp đính kèm: {meta}]"}
+
+
+def _messages(text, conversation_history, attachment_context, turn_msgs, names, examples: str = "", user_id: str | None = None) -> list[dict]:
+    from engine.turn import prompt
+    system = prompt.system_prompt(names, user_id=user_id) + (f"\n\n{examples}" if examples else "")
+    return [{"role": "system", "content": system},
+            *history.for_model(conversation_history), _user_message(text, attachment_context), *(turn_msgs or [])]
+
+
+async def _call(messages, sch, stream: bool):
+    """sch=None: vòng trả lời bằng chữ thường."""
+    from engine.server import llm_server
+    fmt = {} if sch is None else {"response_format": schema.response_format(sch)}
+    return await llm_server.call_llm(messages=messages, thinking=True, thinking_budget=THINK_BUDGET, stream=stream,
+                                     temperature=0.0, max_tokens=MAX_TOKENS, **fmt)
+
+
+async def step(text, conversation_history, attachment_context=None, turn_msgs=None, only=None, user_id: str | None = None) -> dict:
+    """Một vòng không stream (probe, vòng 1 khi có tệp)."""
+    names = [only] if only else registry.chat_names(attachment_context, user_id=user_id)
+    fixes = [] if only else await asyncio.to_thread(corrections.lookup, text)
+    messages = _messages(text, conversation_history, attachment_context, turn_msgs, names,
+                         corrections.examples_block(fixes), user_id=user_id)
+    for attempt in (1, 2):
+        r = await _call(messages, schema.build(attachment_context, only=only, user_id=user_id), stream=False)
+        content = r.choices[0].message.content or ""
+        if content.strip() or getattr(r.choices[0], "finish_reason", "") != "length":
+            break
+        log.warning("[TURN] suy nghĩ lan man (length, không có JSON), gọi lại lần %d", attempt)
+    turn = parse_turn(content)
+    fix = corrections.forced_tool(fixes, turn["tool"], names) if not turn_msgs else None
+    if fix:
+        r = await _call(messages, schema.build(attachment_context, only=fix["right_tool"]), stream=False)
+        turn = parse_turn(r.choices[0].message.content or "")
+    return turn
+
+
+class _Output:
+    """Chữ hiển thị (text_chunk) + TTS cho cả lượt; bảng display chỉ hiển thị, không đọc."""
+
+    def __init__(self, ctx):
+        from engine.server.text_streamer import SentenceSplitter, StreamCueFilter, StreamLatexFilter
+        self.ctx, self.streamer, self.shown = ctx, None, ""
+        self.splitter, self.latex, self.cue = SentenceSplitter(), StreamLatexFilter(), StreamCueFilter()
+
+    async def _send(self, text: str):
+        if text:
+            self.shown += text
+            await self.ctx.send_json(self.ctx.ws, {"type": "text_chunk", "text": text})
+
+    async def say(self, piece: str):
+        if self.streamer is None:
+            from engine.server.voice_streamer import VoiceStreamer
+            self.streamer = VoiceStreamer(self.ctx.ws)
+            task = self.streamer.start()
+            if task is not None and self.ctx.background_tasks is not None:
+                self.ctx.background_tasks.add(task)
+                task.add_done_callback(self.ctx.background_tasks.discard)
+        await self._send(self.cue.filter_chunk(self.latex.filter_chunk(piece)))
+        for sentence in self.splitter.push(piece):
+            await self.streamer.put(sentence)
+
+    async def end_say(self):
+        await self._send(self.cue.filter_chunk(self.latex.flush()) + self.cue.flush())
+        for sentence in self.splitter.flush():
+            await self.streamer.put(sentence)
+
+    async def gap(self):
+        if self.shown and not self.shown.endswith("\n\n"):
+            await self._send("\n\n")
+
+    async def show(self, text: str):
+        await self.gap()
+        await self._send(text)
+
+    async def finish(self):
+        # chữ đã đủ → stream_end ngay; audio vẫn gửi tiếp sau đó. Đợi TTS tổng hợp hết rồi mới stream_end làm chữ đã
+        # xong mà trạng thái kẹt "Đang nghĩ…" (log 2026-10-15 00:12: trễ 22 giây)
+        await self.ctx.send_json(self.ctx.ws, {"type": "stream_end"})
+        if self.streamer is not None:
+            await self.streamer.stop()
+
+    async def abort(self):
+        if self.streamer is not None:
+            await self.streamer.stop(clear_queue=True)
+
+    def text(self) -> str:
+        from engine.server.text_streamer import clean_latex_math, strip_voice_cues
+        return strip_voice_cues(clean_latex_math(self.shown)).strip()
+
+
+def _cancelled(ctx) -> bool:
+    return bool(getattr(ctx.ws, "cancel_requested", False))
+
+
+async def _stream_round(ctx, out: _Output, messages, sch, hide=None, icon: bool = True) -> dict | None:
+    """Stream một vòng; None = bị huỷ. hide(tool) = True: không hiện câu báo của tool đó. icon=False: câu báo không có
+    🛠️ (skill bước 2 trở đi: ngài 2026-10-20 chỉ muốn thấy báo dùng công cụ một lần)."""
+    stream = await _call(messages, sch, stream=True)
+    reader, raw, started, hidden = SayReader(), "", False, False
+    await out.gap()
+    async for chunk in stream:
+        if _cancelled(ctx):
+            return None
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta.content or ""
+        raw += delta
+        piece = reader.feed(delta)
+        if piece:
+            if not started:  # chỉ nhánh tool có "say"; "tool" đứng trước "say" nên đã biết tên tool
+                started = True
+                m = _TOOL_IN_RAW.search(raw)
+                hidden = bool(hide and m and hide(m.group(1)))
+                if not hidden and icon:
+                    await out.show(TOOL_ICON)
+            if not hidden:
+                await out.say(piece)
+    await out.end_say()
+    return parse_turn(raw)
+
+
+_ITEM_HEAD = re.compile(r"(?:[*-]|\d+\.)\s+\**([^:*\n]{2,60})")
+_PLACE_KIND = re.compile(r"(quán( cà phê| cafe| ăn| nhậu)?|cà phê|cafe|nhà hàng|khách sạn|homestay|resort|tiệm)\s+", re.I)
+
+
+def _names_a_place(sentence: str, labels: set[str] = frozenset()) -> bool:
+    """Dòng gạch đầu dòng mở bằng tên riêng: "* **The Note Coffee:** …" (≥ 2 chữ, mọi chữ viết hoa) hoặc loại quán +
+    tên viết hoa "* **Cà phê Góc Phố:** …"; "Quán cà phê ở hẻm nhỏ" là loại quán chung, giữ.
+    ponytail: tên riêng nằm giữa câu thường ("ghé quán X nhé") vẫn lọt; thêm luật khi probe bắt được."""
+    m = _ITEM_HEAD.match(sentence.strip())
+    head = m.group(1).split("(")[0].strip() if m else ""  # "The Coffee House (Chi nhánh Quận 6)": phần ngoặc không tính
+    if head.casefold() in labels:  # tên khả năng của JARVIS ("Phát Youtube"), không phải tên quán
+        return False
+    kind = _PLACE_KIND.match(head)
+    words = [w for w in head[kind.end():].split() if w[0].isalpha()] if kind else [w for w in head.split() if w[0].isalpha()]
+    return len(words) >= (1 if kind else 2) and all(w[0].isupper() for w in words)
+
+
+def _breaks_promise(sentence: str, ran_tool: bool) -> bool:
+    s = sentence.strip()
+    if s.endswith("?"):
+        return False
+    bullet = bool(_BULLET.match(s))  # danh sách khả năng ("* Bảo mật: tôi sẽ kiểm tra…") không phải lời hứa
+    return bool(_FUTURE.search(s) or (not ran_tool and not bullet and _ACT.search(s)))
+
+
+# ngài 2026-10-20: câu trả lời sau tool mở đầu nói lại câu báo / câu hỏi ("Ngài muốn … hả? Được thôi ngài!", "Tôi đã nhận
+# được kết quả…"; 19/60 tin gần đây mở đầu "Ngài muốn … hả"). Chỉ câu ngắn, không số (câu có số là nội dung thật).
+_ECHO_LEAD = re.compile(r"(\[[^\]]*\]\s*)?(ngài (muốn|hỏi|cần|đang hỏi)\b.*(hả|à|sao|đúng không|phải không)\W*$"
+                        r"|(ok|vâng|dạ|à|ừ|được (thôi|rồi))\W*ngài\W*$|(tôi )?(đã )?nhận được kết quả)", re.I)
+
+
+def _echo_lead(sentence: str) -> bool:
+    s = sentence.strip()
+    return len(s) <= 90 and not re.search(r"\d", s) and bool(_ECHO_LEAD.match(s))
+
+
+async def _stream_answer(ctx, out: _Output, text, answer_msgs, names, ran_tool=False) -> str | None:
+    """Vòng trả lời bằng chữ thường, từng câu qua _breaks_promise rồi mới hiện + đọc; None = bị huỷ."""
+    from engine.turn import prompt
+    user_id = getattr(ctx, "user_id", None) or (getattr(ctx.ws, "user_id", None) if getattr(ctx, "ws", None) else None)
+    messages = [{"role": "system", "content": prompt.system_prompt(names, answer=True, ran_tool=ran_tool, user_id=user_id)},
+                *history.for_model(ctx.conversation_history, plain=True),
+                _user_message(text, ctx.attachment_context), *answer_msgs]
+    stream = await _call(messages, None, stream=True)
+    has_displayed = any('da_hien="có"' in str(m.get("content", "")) for m in (answer_msgs or []))
+    raw, pending, dropped, fake, stop_table = "", "", False, False, False
+    # honesty_probe 2026-10-17: hỏi quán/khách sạn mà không có tool → model kể tên theo trí nhớ: bỏ dòng tên riêng
+    # (cả phần còn lại của dòng) và câu dẫn ":" đứng ngay trước
+    place_ask, skip_line, skip_cot_line, held = not ran_tool and bool(_PLACE.search(text or "")), False, False, ""
+    lead: list[str] = []  # câu mở đầu nói lại (sau tool), giữ lại: có nội dung sau thì bỏ, không có thì vẫn hiện
+    labels = {registry.label(n).casefold() for n in names} if place_ask else set()
+    await out.gap()
+
+    async def show(sentence: str):
+        nonlocal raw
+        if not raw:  # câu đầu ra: model đang viết câu trả lời (ngài chốt 2026-10-15; log iPhone 02:15 viết 8,4 giây)
+            await ctx.send_json(ctx.ws, ANSWERING)
+        raw += sentence
+        await out.say(sentence)
+
+    async def emit(sentence: str):
+        nonlocal dropped, fake, skip_line, skip_cot_line, held, stop_table
+        sentence = registry.humanize(sentence)  # tên hàm còn sót (chép từ lịch sử cũ) → tên gọi, trước khi hiện + đọc
+        if skip_cot_line:
+            if "\n" in sentence:
+                skip_cot_line = False
+            return
+        if _EMPTY_NUM_LINE.match(sentence.strip()):
+            log.info("[TURN] bỏ dòng số thứ tự rỗng: %r", sentence.strip())
+            return
+        if _COT_PREFIX.match(sentence):
+            sentence = _COT_PREFIX.sub("", sentence)
+            if not sentence.strip():
+                return
+        if has_displayed:
+            stripped = sentence.strip()
+            if stripped.startswith("|") and stripped.endswith("|"):
+                log.info("[TURN] bỏ dòng bảng chép lại vì đã có da_hien: %r, cắt dừng stream", stripped[:60])
+                stop_table = True
+                return
+            if _TABLE_HEADER_LINE.match(stripped):
+                log.info("[TURN] bỏ dòng tiêu đề bảng thừa: %r", stripped[:60])
+                return
+        if _COT_LEAK.search(sentence):
+            log.info("[TURN] bỏ dòng CoT rò rỉ: %r", sentence.strip()[:80])
+            skip_cot_line = not sentence.endswith("\n")
+            return
+        if _FAKE_RESULT.search(sentence):
+            if ran_tool:  # chép dòng tiêu đề [kết quả …] của tool vừa chạy (log 2026-10-15 17:29): chỉ bỏ dòng đó
+                log.info("[TURN] bỏ dòng tiêu đề kết quả bị chép: %r", sentence.strip()[:80])
+                return
+            log.warning("[TURN] bịa kết quả tool khi không chạy tool: %r, cắt và dừng", sentence.strip()[:80])
+            dropped = fake = True
+            return
+        if ran_tool and not raw and _echo_lead(sentence):
+            lead.append(sentence)
+            return
+        if lead:
+            log.info("[TURN] bỏ câu mở đầu nói lại: %r", "".join(lead).strip()[:120])
+            lead.clear()
+        if _breaks_promise(sentence, ran_tool):
+            log.info("[TURN] bỏ câu hứa: %r", sentence.strip()[:120])
+            dropped = True
+            return
+        if place_ask:
+            if skip_line or _names_a_place(sentence, labels):
+                if not skip_line:
+                    log.info("[TURN] bỏ tên địa điểm không có kết quả tool: %r", sentence.strip()[:80])
+                skip_line, held, dropped = not sentence.endswith("\n"), "", True
+                return
+            if held:
+                await show(held)
+                held = ""
+            if sentence.rstrip().endswith(":"):
+                held = sentence
+                return
+        await show(sentence)
+    async for chunk in stream:
+        if _cancelled(ctx):
+            return None
+        if not chunk.choices:
+            continue
+        pending += chunk.choices[0].delta.content or ""
+        cut = max(0, len(pending) - _REPEAT_TAIL)
+        if rep := _REPEAT.search(pending, cut):
+            log.warning("[TURN] trả lời kẹt lặp %r, cắt và dừng", rep.group(1)[:40])
+            pending = pending[:rep.start()] + rep.group(1)
+            if hasattr(stream, "aclose"):  # đóng kết nối: llama-server ngừng sinh tiếp
+                await stream.aclose()
+            break
+        while not (fake or stop_table) and (m := _SENTENCE_END.search(pending)):
+            sentence, pending = pending[:m.end()], pending[m.end():]
+            await emit(sentence)
+        if fake or stop_table:
+            if hasattr(stream, "aclose"):
+                await stream.aclose()
+            break
+    if pending and not (fake or stop_table):
+        await emit(pending)
+    if held and not stop_table:
+        await show(held)
+    for sentence in lead if not raw else []:  # cả câu trả lời chỉ có câu nói lại: vẫn hiện, không im lặng
+        await show(sentence)
+    if dropped:
+        note = (" " if raw.strip() else "") + _NO_PROMISE
+        raw += note
+        await out.say(note)
+    await out.end_say()
+    return raw.strip()
+
+
+def _answers_question(conversation_history) -> bool:
+    """Lượt trước JARVIS hỏi/mời → câu này ("ừ", "làm đi") chỉ có nghĩa theo ngữ cảnh: không lưu workflow."""
+    prev = history.for_model(conversation_history, plain=True)
+    return bool(prev) and prev[-1]["role"] == "assistant" and prev[-1]["content"].rstrip().endswith("?")
+
+
+async def _pick_file_tool(ctx) -> str | None:
+    """Có tệp mà model không chọn tool tệp: hỏi ngài chọn cách xử lý (giữ hành vi 2026-09-28)."""
+    from engine.main.ask_verifi import ask_user_selection
+    att = ctx.attachment_context
+    options = [{"id": t, "label": registry.description(t)} for t in registry.file_tools_for(att)]
+    from engine.core.rag_watcher import SUPPORTED_EXTENSIONS
+    if (att.extension or "").lower() in SUPPORTED_EXTENSIONS:  # 2026-10-14: lưu hẳn vào kho (= @rag lưu) + tổng hợp
+        options.append({"id": _RAG_SAVE, "label": "Lưu vào kho tài liệu"})
+    options.append({"id": "cancel", "label": "Không xử lý tệp"})
+    selected = await ask_user_selection(ctx.ws, ctx.send_json, "attachment_route",
+                                        f"Ngài muốn xử lý tệp {att.filename} theo cách nào?", options)
+    return None if not selected or selected == "cancel" else selected
+
+
+async def _run_tool(ctx, out, tool_ctx, tool: str, args: dict, say: str, cua_replay=None,
+                    show: bool = True) -> tuple[dict, dict, dict] | None:
+    """Chạy một tool đã validate: status working → tool → thinking → hiện bảng display. None = bị huỷ. thay đổi trạng thái status-label tại đây
+    Trả (bước, kết quả cho vòng chọn tool, kết quả cho vòng trả lời — tiêu đề bằng tên gọi, không tên hàm)."""
+    await ctx.send_json(ctx.ws, {"type": "status", "state": "working", "message": f"Công cụ: {registry.label(tool)}"}) 
+    tool_ctx.trace = [] if tool == "win_control" else None
+    tool_ctx.replay_steps = cua_replay if tool == "win_control" else None
+    async with ctx.flow_tracker.step(f"Chạy {registry.label(tool)}"):
+        res = await registry.run(tool, args, tool_ctx)
+    await ctx.send_json(ctx.ws, {"type": "status", "state": "thinking"})
+    if _cancelled(ctx):
+        return None
+    # show=False: lượt skill không hiện bảng giữa chừng (log 2026-10-20 02:29: bảng giá vàng chen giữa), tổng hợp báo số
+    displayed = show and registry.display(tool) and res.outcome == "success"
+    if displayed:
+        await out.show(res.text)
+    step_rec = history.step_record(say, tool, args, res.text, res.outcome)
+    if tool_ctx.trace and None not in tool_ctx.trace:
+        step_rec["cua_steps"] = tool_ctx.trace
+    result = history.result_message(tool, res.text, res.outcome, displayed, registry.answer_rules(tool), RESULT_CHARS)
+    answer = history.answer_result(registry.label(tool), res.text, res.outcome, displayed, registry.answer_rules(tool),
+                                   RESULT_CHARS)
+    return step_rec, result, answer
+
+
+async def run_loop(text: str, ctx, only: str | None = None, replay: dict | None = None,
+                   skill: dict | None = None, skip_tool_round: bool = False) -> str:
+    """skill (entry, engine/turn/skills.match): vòng i bị ép đúng tool bước i, xong bước cuối → vòng trả lời."""
+    att = ctx.attachment_context
+    names = [only] if only else registry.chat_names(att, user_id=getattr(ctx, "user_id", None))
+    out = _Output(ctx)
+    steps, turn_msgs, answer_msgs, ran, final_say = [], [], [], set(), ""
+    tool_ctx = registry.ToolContext(ws=ctx.ws, send_json=ctx.send_json, attachment_context=att,
+                                    conversation_history=list(ctx.conversation_history or []), user_text=text)
+    fixes = [] if (only or replay or skill) else await asyncio.to_thread(corrections.lookup, text)
+    examples = corrections.examples_block(fixes)
+    plan = [tool for tool, *_ in skill["steps"]] if skill else []
+
+    def _hide(tool: str) -> bool:
+        return not only and not plan and (_off_target(tool, text) or corrections.forced_tool(fixes, tool, names) is not None)
+
+    def _stop() -> str:
+        ctx.ws.last_turn = {"steps": steps, "final_say": ""}
+        return out.text()
+
+    verified = 0  # skill: số bước có kết quả và đạt kiểm chứng
+
+    # ngài 2026-10-12: vòng kiểm tra sau tool (thường ra none) không hiện thành "Chọn công cụ" thứ hai — bước
+    # "Tổng hợp & trả lời" mở từ vòng đó, kéo dài qua vòng trả lời; chỉ đổi nhãn khi model gọi thêm tool.
+    if replay:  # spec 2026-10-13 mục 5: câu trùng workflow đã lưu → chạy thẳng chuỗi tool, không vòng chọn
+        log.info("[TURN] replay workflow=#%s tools=%s", replay["id"], replay["tools"])
+        await ctx.flow_tracker.track(f"Phát lại workflow #{replay['id']}", "completed")
+        for st in replay["tool_chain"]:
+            say = st.get("say") or f"Tôi làm lại {st['tool']}."
+            await out.gap()
+            await out.show(TOOL_ICON)
+            await out.say(say)
+            await out.end_say()
+            args, err = registry.validate(st["tool"], st.get("args") or {}, set(names))
+            if err:
+                steps.append(history.step_record(say, st["tool"], st.get("args") or {}, f"Lỗi: {err}", "failed"))
+                answer_msgs.append(history.answer_result(registry.label(st["tool"]), f"Lỗi: {err}", "failed", False, "",
+                                                         RESULT_CHARS))
+                break
+            ran_step = await _run_tool(ctx, out, tool_ctx, st["tool"], args, say, st.get("cua_steps"))
+            if ran_step is None:
+                await out.abort()
+                return _stop()
+            steps.append(ran_step[0])
+            answer_msgs += [{"role": "assistant", "content": say}, ran_step[2]]
+            if ran_step[0]["outcome"] != "success":
+                break
+    round_no, answer, summary = 0, True, None
+    while not skip_tool_round and not replay and round_no < (len(plan) or MAX_ROUNDS) and not (only and round_no):  # @tool: một vòng
+        round_no += 1
+        sch = schema.build(att, only=plan[round_no - 1] if plan else only if round_no == 1 else None, user_id=getattr(ctx, "user_id", None))
+        # skill: vòng chọn không cần kết quả bước trước (tool bị ép, tham số từ lời ngài + việc của bước; kết quả đã có
+        # báo cáo riêng); thấy kết quả thì câu báo kể lại (skill_use_probe 2026-10-20: 2/2)
+        user_id = getattr(ctx, "user_id", None) or (getattr(ctx.ws, "user_id", None) if getattr(ctx, "ws", None) else None)
+        messages = _messages(text, ctx.conversation_history, att, [] if plan else turn_msgs, names,
+                             skills.block(skill, round_no) if plan else examples, user_id=user_id)
+        flow = ctx.flow_tracker.step("Chọn công cụ" if round_no == 1 else _SUMMARY)
+        await flow.__aenter__()
+        try:
+            if round_no == 1 and att is not None and registry.file_tools_for(att) and not only:
+                turn = await step(text, ctx.conversation_history, att, user_id=user_id)
+                if turn["tool"] == "none":
+                    picked = await _pick_file_tool(ctx)
+                    if picked is None:
+                        await flow.__aexit__(None, None, None)
+                        await out.show("Đã huỷ xử lý tệp vì chưa có lựa chọn phù hợp.")
+                        answer = False
+                        break
+                    if picked == _RAG_SAVE:  # kết quả lưu + tổng hợp hiện thẳng, không vòng trả lời kể thêm
+                        from engine.rag import runner
+                        flow.label = "Lưu vào kho tài liệu"
+                        await out.show(await runner.save_document(att))
+                        await flow.__aexit__(None, None, None)
+                        answer = False
+                        break
+                    first = registry.params(picked)[:1]
+                    turn = {"say": "", "tool": picked, "args": {first[0]: text} if first else {}}
+                elif turn["say"]:
+                    await out.show(TOOL_ICON + turn["say"])
+            else:
+                # skill bước 2+: câu báo do code viết đúng việc của bước (log 02:29: bước tin tức nói "đang xem thời
+                # tiết", bước 2 báo lại "bắt đầu chạy skill") → không hiện câu của model
+                turn = await _stream_round(ctx, out, messages, sch, (lambda _t: True) if plan and round_no > 1 else _hide,
+                                           icon=not plan or round_no == 1)
+                fix = corrections.forced_tool(fixes, turn["tool"], names) if turn and round_no == 1 else None
+                if fix:
+                    log.info("[TURN] sửa theo corrections #%s: %s → %s", fix["id"], fix["wrong_tool"], fix["right_tool"])
+                    turn = await _stream_round(ctx, out, messages, schema.build(att, only=fix["right_tool"]))
+        except Exception as exc:
+            await flow.__aexit__(type(exc), exc, None)
+            log.warning("[TURN] LLM failed round=%d: %s", round_no, exc)
+            await out.show(_LLM_ERROR)
+            answer = False
+            break
+        if turn is None or _cancelled(ctx):
+            await out.abort()
+            return _stop()
+        if plan and round_no > 1:
+            turn["say"] = f"Giờ tôi tra {skill['steps'][round_no - 1][1]}, ngài đợi giây lát nha."
+            await out.gap()
+            await out.say(turn["say"])
+            await out.end_say()
+        log.info("[TURN] round=%d tool=%s args=%s say=%r", round_no, turn["tool"], turn["args"], turn["say"][:80])
+        if not only and not plan and _off_target(turn["tool"], text):
+            log.info("[TURN] chặn %s: câu không nói tới đối tượng của tool → trò chuyện", turn["tool"])
+            turn = {"say": "", "tool": "none", "args": {}}
+        if turn["tool"] == "none" and round_no > 1:
+            summary = flow  # vòng trả lời chạy tiếp trong bước này
+            break
+        flow.label = f"Chọn công cụ → {'không cần' if turn['tool'] == 'none' else registry.label(turn['tool'])}"
+        await flow.__aexit__(None, None, None)
+        if turn["tool"] == "none":
+            break
+        args, err = registry.validate(turn["tool"], turn["args"], set(names))
+        if err and plan:  # skill: bước thiếu tham số = không có kết quả → dừng, vòng trả lời báo lỗi bước đó
+            log.warning("[TURN] skill dừng ở %s %r: %s", turn["tool"], turn["args"], err)
+            steps.append(history.step_record(turn["say"], turn["tool"], turn["args"], f"Lỗi: {err}", "failed"))
+            answer_msgs.append(history.answer_result(registry.label(turn["tool"]), f"Lỗi: {err}.{_SKILL_STOP}", "failed",
+                                                     False, "", RESULT_CHARS))
+            break
+        if err:
+            log.warning("[TURN] invalid call %s %r: %s", turn["tool"], turn["args"], err)
+            await out.show(_NOT_DONE)
+            answer = False
+            break
+        key = (turn["tool"], json.dumps(args, sort_keys=True, ensure_ascii=False))
+        if key in ran:
+            log.info("[TURN] repeated call %s → vòng trả lời", turn["tool"])
+            summary = ctx.flow_tracker.step(_SUMMARY)
+            await summary.__aenter__()
+            break
+        ran.add(key)
+        ran_step = await _run_tool(ctx, out, tool_ctx, turn["tool"], args, turn["say"], show=not plan)
+        if ran_step is None:
+            await out.abort()
+            return _stop()
+        step_rec, result, answer_result = ran_step
+        steps.append(step_rec)
+        turn_msgs += [history.assistant_message(turn["say"], turn["tool"], args), result]
+        # skill: không đưa câu báo bước ("đang làm…, đợi") vào vòng trả lời, nó chép lại câu đó (probe 2026-10-20)
+        answer_msgs += ([{"role": "assistant", "content": turn["say"]}, answer_result] if turn["say"] and not plan
+                        else [answer_result])
+        if plan:  # ngài 2026-10-20: có kết quả (outcome) + đạt kiểm chứng của bước → mới gọi tool bước sau; không báo
+            # cáo từng bước (log 02:08-02:10): vòng trả lời có sẵn tổng hợp một lần khi xong hoặc khi dừng
+            check = skill["steps"][round_no - 1][2]
+            ok, why = (await skills.verify(check, step_rec["result"]) if step_rec["outcome"] == "success"
+                       else (False, "công cụ không trả kết quả"))
+            if not ok:
+                log.info("[TURN] skill dừng: %s không đạt kiểm chứng (%s)", turn["tool"], why)
+                step_rec["outcome"] = "failed"
+                answer_msgs[-1] = history.answer_result(
+                    registry.label(turn["tool"]), f"Kết quả bước này không đạt kiểm chứng \"{check}\": {why}.{_SKILL_STOP}", "failed",
+                    False, "", RESULT_CHARS)
+                break
+            verified += 1
+    if plan and verified == len(plan):  # một lần báo cáo cho cả skill, theo tiêu chí tổng hợp (sau đó được kiểm chứng)
+        last = answer_msgs[-1]
+        answer_msgs[-1] = {**last, "content": f"{last['content']}\n<tong_hop>Đây là kết quả bước cuối của skill; câu trả "
+                                              f"lời là báo cáo một lần cho cả skill và phải {skill['tong_hop']}.</tong_hop>"}
+    if answer:
+        if summary is None:
+            summary = ctx.flow_tracker.step(_SUMMARY if steps else "Trả lời")
+            await summary.__aenter__()
+        try:
+            final_say = await _stream_answer(ctx, out, text, answer_msgs, registry.chat_names(att, user_id=getattr(ctx, "user_id", None)), bool(steps))
+            await summary.__aexit__(None, None, None)
+        except Exception as exc:
+            await summary.__aexit__(type(exc), exc, None)
+            log.warning("[TURN] LLM failed answer: %s", exc)
+            await out.show(_LLM_ERROR)
+            final_say = ""
+        if final_say is None or _cancelled(ctx):
+            await out.abort()
+            return _stop()
+        log.info("[TURN] answer=%r", final_say[:80])
+        if plan and verified == len(plan) and final_say:  # câu tổng hợp của skill: kiểm chứng theo tiêu chí tổng hợp
+            async with ctx.flow_tracker.step("Kiểm chứng tổng hợp"):
+                ok, why = await skills.verify(skill["tong_hop"], final_say)
+            if not ok:
+                log.info("[TURN] skill %s: tổng hợp không đạt kiểm chứng (%s)", skill["name"], why)
+                await out.show(f"\n\n⚠️ Tổng hợp chưa đạt kiểm chứng ({skill['tong_hop']}): {why}.")
+        if not final_say and not steps:  # không bao giờ im lặng (e2e 2026-10-12: "tăng âm lượng" rỗng)
+            await out.show(_SILENT)
+    # LLM xong, không còn gửi gì: status về idle ngay (ngài 2026-10-15). Status là trạng thái LLM, không gắn với bộ gõ chữ
+    # (stream_start/text_chunk/stream_end); đọc là status riêng của TTS (speaking/idle source=tts)
+    await ctx.send_json(ctx.ws, {"type": "status", "state": "idle"})
+    # trước khi chờ TTS (out.finish chờ tổng hợp hết): gửi sau thì island đã thu lại rồi bật lên giữa lúc đọc
+    await ctx.flow_tracker.track("Hoàn thành", "completed")
+    await out.finish()
+    ctx.ws.last_turn = {"steps": steps, "final_say": final_say}
+    if steps:  # sau stream_end: ngài không phải chờ; lỗi ghi DB không làm hỏng lượt
+        from engine.turn import outcome
+        try:
+            await asyncio.to_thread(outcome.save_turn, text, steps, final_say,
+                                    replay["id"] if replay else None,
+                                    only is None and not plan and att is None
+                                    and not _answers_question(ctx.conversation_history))
+        except Exception as exc:
+            log.warning("[TURN] lưu outcome/workflow lỗi: %s", exc)
+    return out.text()

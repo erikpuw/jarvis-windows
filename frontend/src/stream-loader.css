@@ -1,0 +1,132 @@
+/* Stream loader shown between `stream_start` and the first text: the Arc Reactor liquid layer (4 blobs round
+   pinned pivots, teal, slow hue shift). The design is unchanged; only the liquid (goo) effect is new, taken from
+   "Loader" by david_7366 on uiverse.io (https://uiverse.io/david_7366/tall-turkey-48, MIT): blur + alpha threshold
+   (feGaussianBlur + feColorMatrix "22 -9") on the blob layer, with the blur scaled to these small blobs.
+   The filter lives inside the loader's own markup (stream-loader.ts), not in index.html. The blobs are SVG rects inside the
+   SVG whose <g> holds the filter (iOS WebKit did not filter spinning HTML boxes, 2026-10-19). */
+.chat-bubble.assistant.typing-loader {
+  align-self: flex-start; /* answers span the chat column; the loader stays a small block on the left, not centred on screen */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(var(--bubble-font-size, 13.5px) * 1.5 + 14px); /* = one line of text, see .chat-bubble.assistant */
+  min-width: 48px;
+  padding: 6px 12px;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+.stream-bubble-host {
+  position: relative;
+  width: 22px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* the gooey blobs spill outside their bubble (that is the effect). The whole cluster is zoomed (blob sizes keep their
+     ratio): 0.77 = a ~29px spin area, about 1px past each side of the 8px the chat keeps under the last bubble */
+  transform: scale(0.77);
+}
+
+.loader-layer-pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 38px;
+  height: 38px;
+  margin-top: -5px;
+  margin-left: -5px;
+  pointer-events: none;
+  filter: drop-shadow(0 0 6px rgba(0, 245, 212, 0.45));
+  animation: stream-colorize 6.6s ease-in-out infinite;
+}
+
+/* the 66px blob layer round the 38px pin, as before; the SVG paints outside its box (that is the effect) */
+.sl-svg {
+  position: absolute;
+  inset: -14px;
+  overflow: visible;
+}
+
+/* each blob spins round its own pivot (transform-origin of its own box, like the old HTML boxes) */
+.blob-c {
+  transform-box: fill-box;
+}
+
+.bc-1 {
+  transform-origin: 50% 105%;
+  animation: stream-spin 2.2s linear infinite reverse;
+}
+
+.bc-2 {
+  transform-origin: 50% -5%;
+  animation: stream-spin 2.2s linear infinite;
+  animation-delay: -0.73s;
+}
+
+.bc-3 {
+  transform-origin: -5% 50%;
+  animation: stream-spin 2.2s linear infinite reverse;
+  animation-delay: -1.22s;
+}
+
+.bc-4 {
+  transform-origin: 105% 50%;
+  animation: stream-spin 2.2s linear infinite;
+  animation-delay: -1.46s;
+}
+
+/* Exit animation when the text stream begins (300 ms; the text starts to type at STREAM_TEXT_AFTER_LOADER_MS in main.ts, when the balls are
+   almost gone, so the first letter is not hidden under them): the four balls keep flying (stream-spin is untouched) and, as one cluster,
+   shrink back to the centre and fade. No zoom. Nothing else changes: same place (the host is positioned where the flex-centred loader host
+   sat), same balls, same sizes, still four separate balls until they are tiny. */
+.stream-bubble-host.collapsing {
+  position: absolute;
+  top: 8px; /* = where the flex-centred loader host sat: 1px border + 6px padding + 1px to centre 14px in 18px */
+  left: 12px; /* 1px border + 12px padding - 1px: the host is 22px wide in a 46px-wide inner box */
+  pointer-events: none;
+  z-index: 2;
+  animation: stream-collapse-host 0.3s cubic-bezier(0.45, 0, 0.25, 1) forwards;
+}
+
+@keyframes stream-collapse-host {
+  from {
+    transform: scale(0.77);
+    opacity: 1;
+  }
+  to {
+    transform: scale(0.02);
+    opacity: 0;
+  }
+}
+
+@keyframes stream-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes stream-colorize {
+  0% {
+    filter: hue-rotate(0deg);
+  }
+  25% {
+    filter: hue-rotate(35deg);
+  }
+  50% {
+    filter: hue-rotate(-25deg);
+  }
+  75% {
+    filter: hue-rotate(45deg);
+  }
+  100% {
+    filter: hue-rotate(0deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bc-1, .bc-2, .bc-3, .bc-4, .loader-layer-pin, .stream-bubble-host.collapsing {
+    animation: none;
+    transition: none;
+  }
+}
