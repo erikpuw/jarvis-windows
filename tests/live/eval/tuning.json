@@ -1,0 +1,578 @@
+[
+ {
+  "kind": "act",
+  "text": "Mở giúp tôi task manager",
+  "history": [],
+  "tool": "open_app",
+  "args": {
+   "app_name": [
+    "task manager",
+    "taskmgr"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "Task manager tắt đi",
+  "history": [
+   {
+    "role": "user",
+    "content": "Mở giúp tôi task manager"
+   },
+   {
+    "role": "assistant",
+    "content": "Task Manager đã mở thưa ngài.",
+    "steps": [
+     {
+      "say": "",
+      "tool": "open_app",
+      "args": {
+       "app_name": "task manager"
+      },
+      "result": "Thành công",
+      "outcome": "success"
+     }
+    ],
+    "final_say": "Task Manager đã mở thưa ngài."
+   }
+  ],
+  "tool": "close_app",
+  "args": {
+   "app_name": [
+    "task manager",
+    "taskmgr"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "Đóng giúp tôi task manager",
+  "history": [
+   {
+    "role": "user",
+    "content": "Mở giúp tôi task manager"
+   },
+   {
+    "role": "assistant",
+    "content": "Task Manager đã mở thưa ngài.",
+    "steps": [
+     {
+      "say": "",
+      "tool": "open_app",
+      "args": {
+       "app_name": "task manager"
+      },
+      "result": "Thành công",
+      "outcome": "success"
+     }
+    ],
+    "final_say": "Task Manager đã mở thưa ngài."
+   },
+   {
+    "role": "user",
+    "content": "Tắt giúp tôi task manager"
+   },
+   {
+    "role": "assistant",
+    "content": "Tôi đã đóng Task Manager theo yêu cầu của ngài.",
+    "steps": [],
+    "final_say": "Tôi đã đóng Task Manager theo yêu cầu của ngài."
+   }
+  ],
+  "tool": "close_app",
+  "args": {
+   "app_name": [
+    "task manager",
+    "taskmgr"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "mở notepad",
+  "history": [],
+  "tool": "open_app",
+  "args": {
+   "app_name": [
+    "notepad"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "bật chrome lên",
+  "history": [],
+  "tool": "open_app",
+  "args": {
+   "app_name": [
+    "chrome"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "tắt spotify giùm",
+  "history": [],
+  "tool": "close_app",
+  "args": {
+   "app_name": [
+    "spotify"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "mở word",
+  "history": [],
+  "tool": "open_app",
+  "args": {
+   "app_name": [
+    "word"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "thời tiết hà nội hôm nay",
+  "history": [],
+  "tool": "weather",
+  "args": {
+   "location": [
+    "hà nội",
+    "hanoi"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "ngoài trời đà nẵng có mưa không",
+  "history": [],
+  "tool": "weather",
+  "args": {
+   "location": [
+    "đà nẵng"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "mở bài see tình",
+  "history": [],
+  "tool": "play_media",
+  "args": {
+   "query": [
+    "see tình"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "phát nhạc lofi thư giãn trên youtube",
+  "history": [],
+  "tool": "play_media",
+  "args": {
+   "query": [
+    "lofi"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "xem phim đấu phá thương khung phần 5",
+  "history": [],
+  "tool": "play_media",
+  "args": {
+   "query": [
+    "đấu phá thương khung phần 5"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "giá vàng hôm nay bao nhiêu",
+  "history": [],
+  "tool": "market_price",
+  "args": {
+   "item": [
+    "vàng"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "tỷ giá đô la hôm nay",
+  "history": [],
+  "tool": "market_price",
+  "args": {
+   "item": [
+    "usd",
+    "đô"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "tin tức mới nhất về bão",
+  "history": [],
+  "tool": "search_news",
+  "args": {
+   "topic": [
+    "bão"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "chụp màn hình gửi tôi",
+  "history": [],
+  "tool": "capture_screen",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "máy tính đang dùng bao nhiêu ram",
+  "history": [],
+  "tool": "system_status",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "hôm nay âm lịch ngày mấy",
+  "history": [],
+  "tool": "lunar_today",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "tử vi cung bọ cạp hôm nay",
+  "history": [],
+  "tool": "zodiac",
+  "args": {
+   "sign": [
+    "bọ cạp",
+    "scorpio",
+    "thiên yết",
+    "hổ cáp"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "mở lại đi",
+  "history": [
+   {
+    "role": "user",
+    "content": "tắt notepad"
+   },
+   {
+    "role": "assistant",
+    "content": "Đã đóng Notepad.",
+    "steps": [
+     {
+      "say": "",
+      "tool": "close_app",
+      "args": {
+       "app_name": "notepad"
+      },
+      "result": "Thành công",
+      "outcome": "success"
+     }
+    ],
+    "final_say": "Đã đóng Notepad."
+   }
+  ],
+  "tool": "open_app",
+  "args": {
+   "app_name": [
+    "notepad"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "còn ở sài gòn thì sao",
+  "history": [
+   {
+    "role": "user",
+    "content": "thời tiết hà nội"
+   },
+   {
+    "role": "assistant",
+    "content": "Hà Nội 28 độ.",
+    "steps": [
+     {
+      "say": "",
+      "tool": "weather",
+      "args": {
+       "location": "hà nội"
+      },
+      "result": "28°C",
+      "outcome": "success"
+     }
+    ],
+    "final_say": "Hà Nội 28 độ."
+   }
+  ],
+  "tool": "weather",
+  "args": {
+   "location": [
+    "sài gòn",
+    "hồ chí minh",
+    "saigon"
+   ]
+  }
+ },
+ {
+  "kind": "know",
+  "text": "Napoleon là ai",
+  "history": [],
+  "tool": "KNOW",
+  "args": {}
+ },
+ {
+  "kind": "know",
+  "text": "Thành cát tư hãn là ai",
+  "history": [],
+  "tool": "KNOW",
+  "args": {}
+ },
+ {
+  "kind": "know",
+  "text": "tại sao bầu trời màu xanh",
+  "history": [],
+  "tool": "KNOW",
+  "args": {}
+ },
+ {
+  "kind": "know",
+  "text": "python là gì",
+  "history": [],
+  "tool": "KNOW",
+  "args": {}
+ },
+ {
+  "kind": "know",
+  "text": "công thức tính diện tích hình tròn",
+  "history": [],
+  "tool": "KNOW",
+  "args": {}
+ },
+ {
+  "kind": "multi",
+  "text": "mở notepad rồi mở chrome",
+  "history": [],
+  "multi": [
+   "open_app",
+   "open_app"
+  ]
+ },
+ {
+  "kind": "multi",
+  "text": "xem thời tiết hà nội rồi mở nhạc lofi",
+  "history": [],
+  "multi": [
+   "weather",
+   "play_media"
+  ]
+ },
+ {
+  "kind": "multi",
+  "text": "chụp màn hình xong mở word",
+  "history": [],
+  "multi": [
+   "capture_screen",
+   "open_app"
+  ]
+ },
+ {
+  "kind": "multi",
+  "text": "tắt spotify và mở youtube nghe sơn tùng",
+  "history": [],
+  "multi": [
+   "close_app",
+   "play_media"
+  ]
+ },
+ {
+  "kind": "multi",
+  "text": "giá vàng hôm nay rồi tin tức về vàng",
+  "history": [],
+  "multi": [
+   "market_price",
+   "search_news"
+  ]
+ },
+ {
+  "kind": "multi",
+  "text": "mở excel rồi đóng word",
+  "history": [],
+  "multi": [
+   "open_app",
+   "close_app"
+  ]
+ },
+ {
+  "kind": "chat",
+  "text": "Tôi đang xem là cái quả cầu ở giao diện chính đang tối ưu xem coi trên mobile nó có bị nóng lên không",
+  "history": []
+ },
+ {
+  "kind": "chat",
+  "text": "tôi đang xem hệ thống hoạt động ra sao",
+  "history": []
+ },
+ {
+  "kind": "act",
+  "text": "nhìn màn hình xem có gì",
+  "history": [],
+  "tool": "read_screen",
+  "args": {}
+ },
+ {
+  "kind": "act",
+  "text": "chạy quá tốc độ 20km/h thì bị phạt mấy tiền",
+  "history": [],
+  "tool": "legal_lookup",
+  "args": {
+   "query": [
+    "tốc độ"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "không đội mũ bảo hiểm bị xử phạt thế nào",
+  "history": [],
+  "tool": "legal_lookup",
+  "args": {
+   "query": [
+    "mũ bảo hiểm"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "độ tuổi kết hôn theo luật là bao nhiêu",
+  "history": [],
+  "tool": "legal_lookup",
+  "args": {
+   "query": [
+    "kết hôn"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "hợp đồng thử việc tối đa mấy tháng theo quy định",
+  "history": [],
+  "tool": "legal_lookup",
+  "args": {
+   "query": [
+    "thử việc"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "có tin gì về bão số 3 không",
+  "history": [],
+  "tool": "search_news",
+  "args": {
+   "topic": [
+    "bão"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "báo hôm nay viết gì về giá nhà đất",
+  "history": [],
+  "tool": "search_news",
+  "args": {
+   "topic": [
+    "nhà đất"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "tai nghe sony wh-1000xm6 bán giá bao nhiêu",
+  "history": [],
+  "tool": "search_products",
+  "args": {
+   "query": [
+    "sony"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "so sánh giá nồi chiên không dầu",
+  "history": [],
+  "tool": "search_products",
+  "args": {
+   "query": [
+    "nồi chiên"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "sáng nay cân được 71 ký",
+  "history": [],
+  "tool": "gym",
+  "args": {
+   "action": [
+    "record_bodyweight"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "hôm nay tập squat 4 hiệp 8 cái 80kg ghi lại giúp",
+  "history": [],
+  "tool": "gym",
+  "args": {
+   "action": [
+    "log_workout"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "xem tổng kết tập luyện tháng này",
+  "history": [],
+  "tool": "gym",
+  "args": {
+   "action": [
+    "stats",
+    "history"
+   ]
+  }
+ },
+ {
+  "kind": "act",
+  "text": "tìm bài tập cho cơ vai",
+  "history": [],
+  "tool": "gym",
+  "args": {
+   "action": [
+    "search_exercises"
+   ]
+  }
+ },
+ {
+  "kind": "know",
+  "text": "Đinh Bộ Lĩnh là ai",
+  "history": [],
+  "tool": "KNOW",
+  "args": {}
+ },
+ {
+  "kind": "know",
+  "text": "sông Mê Kông dài bao nhiêu km",
+  "history": [],
+  "tool": "KNOW",
+  "args": {}
+ }
+]
