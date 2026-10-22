@@ -70,13 +70,7 @@ def main() -> int:
             print("\n🚨 DỪNG LẠI: Phát hiện lỗi kiểm thử! KHÔNG ĐƯỢC push để tránh báo đỏ CI!\n")
             return 1
 
-    print("\n🎉 HOÀN TẤT: Toàn bộ kiểm thử Mobile đều XANH 100%! Bạn có thể yên tâm commit và git push.\n")
-    print("📋 HƯỚNG DẪN COMMIT & PUSH (tự làm tay):")
-    print(f"  1. git status --short                # xem lại các tệp thay đổi (nhánh {TARGET_BRANCH})")
-    print("  2. git add -A")
-    print('  3. git commit -m "feat(mobile): <mô tả ngắn thay đổi>"')
-    print(f"  4. git push origin {TARGET_BRANCH}")
-    print(f"  5. Lên GitHub tạo Pull Request: {TARGET_BRANCH} → main\n")
+    print("\n🎉 HOÀN TẤT: Toàn bộ kiểm thử Mobile đều XANH 100%!\n")
     return 0
 
 

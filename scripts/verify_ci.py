@@ -1,15 +1,19 @@
 """Giả lập toàn bộ quy trình CI của GitHub Actions ngay trên máy local.
 
-Chạy: python scripts/verify_ci.py
-Nếu script báo XANH toàn bộ, code đẩy lên GitHub chắc chắn 100% XANH!
+Chạy: python scripts/verify_ci.py (sync_from_jarvis.py tự gọi script này trước khi commit)
+Lưu ý: GitHub chạy Ubuntu + requirements-ci.txt; máy local có thể có thêm gói (vd vieneu) nên local xanh
+chưa chắc GitHub xanh.
 """
+from pathlib import Path
 import subprocess
 import sys
+
+REPO_DIR = Path(__file__).resolve().parents[1]
 
 
 def run_step(name: str, cmd: list[str]) -> bool:
     print(f"\n🔹 [CI CHECK] {name}...")
-    res = subprocess.run(cmd)
+    res = subprocess.run(cmd, cwd=REPO_DIR)
     if res.returncode != 0:
         print(f"❌ [THẤT BẠI] Bước '{name}' bị lỗi (exit code {res.returncode})!")
         return False
@@ -30,13 +34,7 @@ def main() -> int:
             print("\n🚨 DỪNG LẠI: Phát hiện lỗi, KHÔNG ĐƯỢC push lên GitHub để tránh báo đỏ CI!\n")
             return 1
 
-    print("\n🎉 HOÀN TẤT: Toàn bộ 4 bước CI đều XANH! Bạn có thể yên tâm commit và git push.\n")
-    print("📋 HƯỚNG DẪN COMMIT & PUSH (tự làm tay):")
-    print("  1. git checkout main                 # đảm bảo đang ở nhánh main")
-    print("  2. git status --short                # xem lại các tệp thay đổi")
-    print("  3. git add -A")
-    print('  4. git commit -m "sync: <mô tả ngắn thay đổi>"')
-    print("  5. git push origin main\n")
+    print("\n🎉 HOÀN TẤT: Toàn bộ 4 bước CI đều XANH!\n")
     return 0
 
 

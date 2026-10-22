@@ -6,12 +6,17 @@
   (.dart_tool/, build/, .gradle/, ephemeral/, *.iml, local.properties...) không bao giờ bị chép sang.
 - File đích đang được git theo dõi nhưng đã bị xóa ở nguồn sẽ bị xóa theo (test/mã cũ không nằm lại).
 - Chỉ cập nhật những file thực sự có thay đổi nội dung.
+- Sau khi chép: chạy scripts/verify_mobile_ios.py; XANH thì git add + commit, ĐỎ thì không commit.
+  Push + tạo Pull Request vẫn tự làm tay (lệnh in ra ở cuối).
 
-Cách dùng:
-  python scripts/sync_mobile_ios.py          # Đồng bộ thật
+Cách dùng (đường dẫn đã cố định, nhưng nên đứng ở repo GitHub cho khỏi nhầm):
+  cd E:\\workspace\\jarvis-windows
+  git checkout feat/mobile-ios
+  python scripts/sync_mobile_ios.py          # Đồng bộ + test + commit
   python scripts/sync_mobile_ios.py --dry-run # Xem trước danh sách thay đổi
 """
 import argparse
+from datetime import datetime
 from pathlib import Path
 import shutil
 import subprocess
@@ -21,18 +26,20 @@ TARGET_BRANCH = "feat/mobile-ios"
 PRIMARY_SOURCE = Path(r"E:\workspace\jarvis-mobile\mobile")
 FALLBACK_SOURCE = Path(r"E:\workspace\jarvis-mobile")
 TARGET_DIR = Path(r"E:\workspace\jarvis-windows\frontend\mobile")
+REPO_DIR = TARGET_DIR.parents[1]
+GITHUB_URL = "https://github.com/erikpuw/jarvis-windows"
+
+
+def git(*args: str, cwd: Path = REPO_DIR) -> str:
+    return subprocess.check_output(["git", *args], cwd=cwd, text=True, encoding="utf-8").strip()
 
 
 def verify_branch() -> bool:
     try:
-        branch = subprocess.check_output(
-            ["git", "branch", "--show-current"],
-            cwd=TARGET_DIR.parents[1],
-            text=True
-        ).strip()
+        branch = git("branch", "--show-current")
         if branch != TARGET_BRANCH:
             print(f"❌ [LỖI BẢO VỆ]: Nhánh hiện tại là '{branch}', KHÔNG PHẢI '{TARGET_BRANCH}'.")
-            print(f"👉 Vui lòng chuyển sang nhánh iOS trước: git checkout {TARGET_BRANCH}")
+            print(f"👉 cd {REPO_DIR} ; git checkout {TARGET_BRANCH}")
             return False
         return True
     except Exception as exc:
@@ -89,13 +96,16 @@ def sync(source_dir: Path, target_dir: Path, dry_run: bool = False) -> int:
 
     action = "Sẽ" if dry_run else "Đã"
     print(f"\n✨ {action} chép {copied} tệp, xóa {removed} tệp.")
-    if not dry_run:
-        print("👉 Bước tiếp theo: chạy `python scripts/verify_mobile_ios.py` để chạy toàn bộ test iOS trước khi push!\n")
     return 0
 
 
 def main(dry_run: bool) -> int:
+    print(f"🎯 Repo GitHub: {REPO_DIR}  (nhánh {TARGET_BRANCH})\n")
     if not verify_branch():
+        return 1
+    if not dry_run and git("status", "--porcelain"):
+        print(f"❌ Repo {REPO_DIR} đang có thay đổi chưa commit, dừng để không commit lẫn.")
+        print("👉 Commit chúng trước, hoặc bỏ đi bằng: git restore .")
         return 1
     source_dir = resolve_source()
     if not source_dir:
@@ -104,7 +114,29 @@ def main(dry_run: bool) -> int:
     if not TARGET_DIR.exists():
         print(f"❌ Không tìm thấy thư mục đích: {TARGET_DIR}")
         return 1
-    return sync(source_dir, TARGET_DIR, dry_run=dry_run)
+    if git("status", "--porcelain", "--", ".", cwd=source_dir):
+        print(f"⚠️  Nguồn {source_dir} có thay đổi CHƯA commit, chỉ bản đã git theo dõi được chép.\n")
+
+    rc = sync(source_dir, TARGET_DIR, dry_run=dry_run)
+    if rc or dry_run:
+        return rc
+    if not git("status", "--porcelain"):
+        print("✅ Repo không có gì thay đổi, không cần commit.")
+        return 0
+
+    if subprocess.run([sys.executable, str(REPO_DIR / "scripts" / "verify_mobile_ios.py")]).returncode != 0:
+        print("🚨 TEST ĐỎ: KHÔNG commit. Tệp đã chép vẫn nằm trong repo.")
+        print(f"👉 Sửa ở nguồn {source_dir}, rồi trong {REPO_DIR}: git restore . ; chạy lại script này.")
+        return 1
+
+    git("add", "-A")
+    git("commit", "-q", "-m", f"feat(mobile): sync tu jarvis-mobile {datetime.now():%Y-%m-%d %H:%M}")
+    print(f"✅ Đã commit: {git('log', '--oneline', '-1')}")
+    print("\n📤 BƯỚC CUỐI (tự làm tay):")
+    print(f"  cd {REPO_DIR}")
+    print(f"  git push origin {TARGET_BRANCH}")
+    print(f"  Tạo Pull Request vào main: {GITHUB_URL}/compare/main...{TARGET_BRANCH}\n")
+    return 0
 
 
 if __name__ == "__main__":
