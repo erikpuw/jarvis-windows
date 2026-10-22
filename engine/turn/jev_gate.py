@@ -37,12 +37,28 @@ _RETRY_SECONDS = 5.0
 
 # ANSI Color codes đặc biệt cho log riêng của Jev
 _RESET = "\033[0m"
-_BOLD = "\033[1m"
 _TAG_JEV = "\033[1;95m[⚡ JEV-ROUTER]\033[0m"
 _CYAN = "\033[96m"
 _GREEN = "\033[1;92m"
 _YELLOW = "\033[1;93m"
+_BLUE = "\033[1;94m"
+_WHITE = "\033[1;97m"
 _GRAY = "\033[90m"
+
+
+def print_decision(source: str, text: str, answer: str, conf: float, dt_ms: float, min_confidence: float):
+    """Một dòng console cho mỗi quyết định: Jev chọn gì, chắc bao nhiêu, lượt đi đường nào."""
+    if answer == "chat":
+        label = f"{_GREEN}CHAT{_RESET}"
+        if conf >= min_confidence:
+            route = f"{_GREEN}⚡ BYPASS → trả lời ngay{_RESET}"
+        else:
+            route = f"{_BLUE}→ router thường{_RESET} {_GRAY}(chưa đủ {min_confidence:.0%}){_RESET}"
+    else:
+        label = f"{_YELLOW}TOOL{_RESET}"
+        route = f"{_YELLOW}→ router chọn tool{_RESET}"
+    print(f"{_TAG_JEV}{_GRAY}[{source}]{_RESET} {_CYAN}'{text[:50]}'{_RESET} ➔ {label} {_WHITE}{conf:.1%}{_RESET} "
+          f"{route} {_GRAY}[{dt_ms:.0f}ms]{_RESET}", flush=True)
 
 _OPTIONS = {
     "chat": "Trò chuyện, chào hỏi, tâm sự, hỏi về bản thân trợ lý (bạn là ai, ai tạo ra bạn), hỏi đáp kiến thức bách khoa, dịch thuật, thơ ca, giải thích khái niệm",
@@ -177,13 +193,8 @@ def _classify_via_remote(clean: str, min_confidence: float) -> tuple[bool, float
                 conf = float(data.get("confidence", 0.0))
                 answer = data.get("answer", "")
 
-                tag = f"{_TAG_JEV}[remote]"
-                if is_chat:
-                    print(f"{tag} {_CYAN}'{clean[:50]}'{_RESET} ➔ {_GREEN}CHAT BYPASS ({conf:.1%}) [{dt_ms:.1f}ms]{_RESET} {_GRAY}→ Bỏ qua vòng tool, trả lời ngay{_RESET}", flush=True)
-                else:
-                    print(f"{tag} {_CYAN}'{clean[:50]}'{_RESET} ➔ {_YELLOW}TOOL REQUEST ({conf:.1%}) [{dt_ms:.1f}ms]{_RESET} {_GRAY}→ Chuyển sang router chọn tool{_RESET}", flush=True)
-
-                log.info("[JEV_GATE] Remote '%s' -> %s (conf=%.1f%%, dt=%.1fms, is_chat=%s)",
+                print_decision("remote", clean, answer, conf, dt_ms, min_confidence)
+                log.info("[JEV_GATE] Remote '%s' -> %s (conf=%.1f%%, dt=%.1fms, bypass=%s)",
                          clean[:50], answer, conf * 100, dt_ms, is_chat)
                 return is_chat, conf
     except Exception as exc:
@@ -229,13 +240,8 @@ def classify_chat(text: str, min_confidence: float = 0.85) -> tuple[bool, float]
         conf = float(res.get("top_probability", 0.0))
         is_chat = (answer == "chat" and conf >= min_confidence)
 
-        tag = f"{_TAG_JEV}[local]"
-        if is_chat:
-            print(f"{tag} {_CYAN}'{clean[:50]}'{_RESET} ➔ {_GREEN}CHAT BYPASS ({conf:.1%}) [{dt_ms:.1f}ms]{_RESET} {_GRAY}→ Bỏ qua vòng tool, trả lời ngay{_RESET}", flush=True)
-        else:
-            print(f"{tag} {_CYAN}'{clean[:50]}'{_RESET} ➔ {_YELLOW}TOOL REQUEST ({conf:.1%}) [{dt_ms:.1f}ms]{_RESET} {_GRAY}→ Chuyển sang router chọn tool{_RESET}", flush=True)
-
-        log.info("[JEV_GATE] Local '%s' -> %s (conf=%.1f%%, dt=%.1fms, is_chat_fastpath=%s)",
+        print_decision("local", clean, answer, conf, dt_ms, min_confidence)
+        log.info("[JEV_GATE] Local '%s' -> %s (conf=%.1f%%, dt=%.1fms, bypass=%s)",
                  clean[:50], answer, conf * 100, dt_ms, is_chat)
         return is_chat, conf
     except Exception as exc:

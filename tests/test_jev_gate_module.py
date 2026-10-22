@@ -40,3 +40,18 @@ def test_local_engine_defaults_to_cpu(monkeypatch, tmp_path):
         assert constructor.call_args.kwargs["n_gpu_layers"] == 0
     finally:
         jev_gate._ENGINE = None
+
+
+@pytest.mark.parametrize("answer, conf, shows, hides", [
+    ("chat", 0.567, ["CHAT", "56.7%", "router thường"], ["TOOL", "BYPASS"]),  # chat chưa đủ chắc
+    ("chat", 0.979, ["CHAT", "97.9%", "BYPASS"], ["TOOL", "router"]),
+    ("tool", 0.956, ["TOOL", "95.6%", "router chọn tool"], ["CHAT", "BYPASS"]),
+])
+def test_decision_line_shows_real_answer(capsys, answer, conf, shows, hides):
+    """Dòng in phải ghi đúng lựa chọn của Jev, không gọi mọi trường hợp không bypass là TOOL."""
+    jev_gate.print_decision("remote", "chưa cần đâu", answer, conf, 1070.3, 0.85)
+    out = capsys.readouterr().out
+    for word in shows:
+        assert word in out
+    for word in hides:
+        assert word not in out

@@ -20,16 +20,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from engine.turn.jev.jev_style_decision_gguf import JevStyleDecisionGGUF
+from engine.turn.jev_gate import print_decision
 
 log = logging.getLogger("jarvis.jev_server")
 
 # ANSI Color codes đặc biệt cho log riêng của Jev
 _RESET = "\033[0m"
 _TAG_JEV = "\033[1;95m[⚡ JEV-ROUTER]\033[0m"
-_CYAN = "\033[96m"
 _GREEN = "\033[1;92m"
 _YELLOW = "\033[1;93m"
-_GRAY = "\033[90m"
 
 RUN_MODEL_DIR = Path(os.environ.get("RUN_MODEL_DIR", r"E:\Run_Model"))
 DEFAULT_MODEL_DIR = Path(__file__).parent
@@ -198,11 +197,7 @@ def classify(req: ClassifyRequest):
     answer = res.get("answer", "")
     conf = float(res.get("top_probability", 0.0))
     is_chat = (answer == "chat" and conf >= req.min_confidence)
-
-    if is_chat:
-        print(f"{_TAG_JEV} {_CYAN}'{clean[:50]}'{_RESET} ➔ {_GREEN}CHAT BYPASS ({conf:.1%}) [{dt_ms:.1f}ms]{_RESET} {_GRAY}→ Bỏ qua vòng tool, trả lời ngay{_RESET}", flush=True)
-    else:
-        print(f"{_TAG_JEV} {_CYAN}'{clean[:50]}'{_RESET} ➔ {_YELLOW}TOOL REQUEST ({conf:.1%}) [{dt_ms:.1f}ms]{_RESET} {_GRAY}→ Chuyển sang router chọn tool{_RESET}", flush=True)
+    print_decision("service", clean, answer, conf, dt_ms, req.min_confidence)
 
     return {
         "is_chat": is_chat,
