@@ -170,7 +170,8 @@ def test_ask_streams_chunks_and_sources(monkeypatch):
     async def send(ws, data):
         sent.append(data)
         return True
-    ctx = TurnContext(ws=SimpleNamespace(), send_json=send)
+    # Test luồng văn bản không được gọi TTS server đang chạy trên máy.
+    ctx = TurnContext(ws=SimpleNamespace(tts_disabled=True), send_json=send)
     out = asyncio.run(runner.handle(SimpleNamespace(query="câu hỏi"), ctx))
     assert "Đoạn 1 Đoạn 2" in out
     assert "sample.pdf (trang 1)" in out
