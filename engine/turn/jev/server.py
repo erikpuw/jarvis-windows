@@ -8,6 +8,7 @@ Cung cấp REST API (CPU ~0.9s, GPU ~40ms) cho mô hình Jev-Style-0.8B Decision
 """
 
 import os
+import threading
 import time
 import logging
 from pathlib import Path
@@ -41,6 +42,9 @@ _OPTIONS = {
 _ENGINE: Optional[JevStyleDecisionGGUF] = None
 _DEVICE = "CPU"
 _MODEL_NAME = "unknown"
+_INIT_LOCK = threading.Lock()
+_LAST_INIT_FAILURE = float("-inf")
+_RETRY_SECONDS = 5.0
 
 
 def find_jev_binary(use_cpu: bool = False) -> Optional[Path]:
@@ -112,15 +116,36 @@ def close_engine():
         _ENGINE = None
 
 
+def ensure_engine() -> Optional[JevStyleDecisionGGUF]:
+    """Engine đang sống; jev-score chết hoặc lần nạp trước lỗi thì nạp lại (cách nhau ≥5 giây)."""
+    global _LAST_INIT_FAILURE
+    with _INIT_LOCK:
+        if _ENGINE is not None and _ENGINE.is_alive():
+            return _ENGINE
+        close_engine()
+        if time.monotonic() - _LAST_INIT_FAILURE < _RETRY_SECONDS:
+            return None
+        try:
+            engine = init_engine(use_cpu=os.getenv("JEV_USE_CPU", "1").strip().lower() in ("1", "true", "yes"))
+        except Exception as exc:
+            _LAST_INIT_FAILURE = time.monotonic()
+            log.error("[JEV_SERVER] Khởi động thất bại: %s", exc)
+            print(f"{_TAG_JEV} {_YELLOW}Lỗi khởi động: {exc}{_RESET}", flush=True)
+            return None
+        print(f"{_TAG_JEV} {_GREEN}Khởi tạo thành công {_MODEL_NAME} trên {_DEVICE} (thường trực RAM/VRAM){_RESET}", flush=True)
+        return engine
+
+
+def _ready_engine() -> JevStyleDecisionGGUF:
+    engine = ensure_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Jev engine chưa sẵn sàng")
+    return engine
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    use_cpu = os.getenv("JEV_USE_CPU", "1").strip().lower() in ("1", "true", "yes")
-    try:
-        init_engine(use_cpu=use_cpu)
-        print(f"{_TAG_JEV} {_GREEN}Khởi tạo thành công {_MODEL_NAME} trên {_DEVICE} (thường trực RAM/VRAM){_RESET}", flush=True)
-    except Exception as exc:
-        log.error("[JEV_SERVER] Khởi động thất bại: %s", exc)
-        print(f"{_TAG_JEV} {_YELLOW}Lỗi khởi động: {exc}{_RESET}", flush=True)
+    ensure_engine()
     yield
     close_engine()
 
@@ -149,7 +174,7 @@ class DecideRequest(BaseModel):
 @app.get("/health")
 def health():
     return {
-        "status": "ok" if _ENGINE is not None else "error",
+        "status": "ok" if ensure_engine() is not None else "error",
         "device": _DEVICE,
         "model": _MODEL_NAME,
     }
@@ -157,16 +182,14 @@ def health():
 
 @app.post("/classify")
 def classify(req: ClassifyRequest):
-    global _ENGINE
-    if _ENGINE is None:
-        raise HTTPException(status_code=503, detail="Jev engine chưa sẵn sàng")
+    engine = _ready_engine()
 
     clean = (req.text or "").strip()
     if not clean:
         return {"is_chat": False, "confidence": 0.0, "answer": "", "dt_ms": 0.0}
 
     t0 = time.perf_counter()
-    res = _ENGINE.decide(
+    res = engine.decide(
         state=f"Người dùng: {clean}",
         question="Xác định đây là trò chuyện hay yêu cầu dùng công cụ:",
         options=_OPTIONS,
@@ -192,12 +215,10 @@ def classify(req: ClassifyRequest):
 
 @app.post("/decide")
 def decide(req: DecideRequest):
-    global _ENGINE
-    if _ENGINE is None:
-        raise HTTPException(status_code=503, detail="Jev engine chưa sẵn sàng")
+    engine = _ready_engine()
 
     t0 = time.perf_counter()
-    res = _ENGINE.decide(
+    res = engine.decide(
         state=req.state,
         question=req.question,
         options=req.options,

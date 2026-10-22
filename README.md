@@ -39,9 +39,11 @@ Hệ thống được thiết kế theo kiến trúc **định tuyến công c�
 
 JEV mặc định chạy CPU (không đặt `JEV_USE_CPU` = CPU), dành VRAM cho LLM và TTS. Đặt `JEV_USE_CPU=0` để chạy GPU. Đo trên máy dev: CPU ~0,85 giây/câu, GPU ~40 ms/câu. Model và ngưỡng chat bypass 0,85 không đổi.
 
-Gate ưu tiên dịch vụ `run_jev.py` (cổng 8083); dịch vụ không phản hồi thì nạp model trong tiến trình. Lỗi phân loại luôn trả về router thường, không bypass.
+Gate ưu tiên dịch vụ `run_jev.py` (cổng 8083). Chỉ khi `run_jev.py` không chạy, gate mới nạp model trong tiến trình. Dịch vụ có chạy nhưng lỗi hoặc bận thì lượt đó đi router thường, không nạp model thứ hai; health được kiểm tra lại sau 5 giây. Lỗi phân loại luôn trả về router thường, không bypass.
 
-Kiểm thử không nạp model: `rtk python -m pytest -q tests/test_jev_gate.py tests/test_jev_gate_module.py tests/test_jev_fastpath_integration.py tests/test_jev_scoring_analysis.py tests/turn/test_jev.py`. Các test live chỉ chạy khi đặt `JEV_LIVE_TESTS=1`. Thay đổi source chỉ có hiệu lực với tiến trình đã khởi động lại.
+Tự hồi phục: `jev-score` chết thì gate và `run_jev.py` tự nạp lại (nạp lỗi thì thử lại sau 5 giây); `/health` chỉ báo `ok` khi tiến trình còn sống. Một câu không có trả lời sau 10 giây thì `jev-score` bị dừng và nạp lại, lượt đó đi router thường.
+
+Kiểm thử không nạp model: `rtk python -m pytest -q tests/test_jev_recovery.py tests/test_jev_gate.py tests/test_jev_gate_module.py tests/test_jev_fastpath_integration.py tests/test_jev_scoring_analysis.py tests/turn/test_jev.py`. Các test live chỉ chạy khi đặt `JEV_LIVE_TESTS=1`. Thay đổi source chỉ có hiệu lực với tiến trình đã khởi động lại.
 
 ### 2. Bảo mật đa người dùng & Phân quyền chặt chẽ (RBAC)
 - **Tách biệt Admin & Member**: Bảng `users` trong cơ sở dữ liệu định danh từng người dùng.

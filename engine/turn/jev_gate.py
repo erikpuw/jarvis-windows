@@ -30,7 +30,10 @@ JEV_SERVER_URL = os.getenv("JEV_SERVER_URL", "http://127.0.0.1:8083").rstrip("/"
 _ENGINE = None
 _LOCK = threading.Lock()
 _REMOTE_AVAILABLE = None  # None = chưa check, True = online, False = offline
+_REMOTE_REACHABLE = False  # run_jev.py có chạy (kể cả đang lỗi/chậm): khi đó không nạp model thứ hai
 _LAST_REMOTE_CHECK = 0.0
+_LAST_LOCAL_FAILURE = float("-inf")
+_RETRY_SECONDS = 5.0
 
 # ANSI Color codes đặc biệt cho log riêng của Jev
 _RESET = "\033[0m"
@@ -84,40 +87,55 @@ def find_jev_gguf() -> Optional[Path]:
 
 
 def _check_remote_server() -> bool:
-    """Kiểm tra xem standalone Jev server có đang online hay không."""
-    global _REMOTE_AVAILABLE, _LAST_REMOTE_CHECK
-    now = time.time()
-    # Kiểm tra lại định kỳ mỗi 5 giây
-    if _REMOTE_AVAILABLE is not None and (now - _LAST_REMOTE_CHECK < 5.0):
+    """Kiểm tra xem standalone Jev server có đang online hay không (kết quả giữ 5 giây)."""
+    global _REMOTE_AVAILABLE, _REMOTE_REACHABLE, _LAST_REMOTE_CHECK
+    now = time.monotonic()
+    if _REMOTE_AVAILABLE is not None and (now - _LAST_REMOTE_CHECK < _RETRY_SECONDS):
         return _REMOTE_AVAILABLE
 
     _LAST_REMOTE_CHECK = now
+    _REMOTE_AVAILABLE = False
     try:
         with httpx.Client(timeout=0.3) as client:
             resp = client.get(f"{JEV_SERVER_URL}/health")
-            if resp.status_code == 200 and resp.json().get("status") == "ok":
-                _REMOTE_AVAILABLE = True
-                return True
-    except Exception:
-        pass
-    _REMOTE_AVAILABLE = False
-    return False
+        _REMOTE_REACHABLE = True
+        _REMOTE_AVAILABLE = resp.status_code == 200 and resp.json().get("status") == "ok"
+    except httpx.ConnectTimeout:
+        _REMOTE_REACHABLE = False  # Windows: cổng không ai nghe thường hết giờ thay vì bị từ chối
+    except httpx.TimeoutException:
+        _REMOTE_REACHABLE = True  # đã kết nối nhưng trả lời chậm: service bận/đang nạp model
+    except httpx.TransportError:
+        _REMOTE_REACHABLE = False  # run_jev.py không chạy: dùng model trong tiến trình
+    except ValueError:
+        _REMOTE_REACHABLE = True  # trả về không phải JSON
+    return _REMOTE_AVAILABLE
 
 
 def is_available() -> bool:
     """Kiểm tra xem có Jev standalone server HOẶC có file binary + model local."""
     if _check_remote_server():
         return True
-    return bool(find_jev_binary() and find_jev_gguf() and DEFAULT_MODEL_DIR.exists())
+    return not _REMOTE_REACHABLE and bool(find_jev_binary() and find_jev_gguf() and DEFAULT_MODEL_DIR.exists())
 
 
 def _get_engine():
-    global _ENGINE
-    if _ENGINE is not None:
-        return _ENGINE
+    """Engine trong tiến trình; jev-score chết thì nạp lại (thử lại sau 5 giây nếu nạp lỗi)."""
+    global _ENGINE, _LAST_LOCAL_FAILURE
+    engine = _ENGINE
+    if engine is not None and engine.is_alive():
+        return engine
     with _LOCK:
-        if _ENGINE is not None:
+        if _ENGINE is not None and _ENGINE.is_alive():
             return _ENGINE
+        if _ENGINE is not None:
+            log.warning("[JEV_GATE] jev-score đã dừng, nạp lại")
+            try:
+                _ENGINE.close()
+            except Exception as exc:
+                log.debug("[JEV_GATE] Đóng engine cũ lỗi: %s", exc)
+            _ENGINE = None
+        if time.monotonic() - _LAST_LOCAL_FAILURE < _RETRY_SECONDS:
+            return None
         use_cpu = os.getenv("JEV_USE_CPU", "1").strip().lower() in ("1", "true", "yes")
         binary = find_jev_binary(use_cpu=use_cpu)
         gguf = find_jev_gguf()
@@ -137,12 +155,14 @@ def _get_engine():
             print(f"{_TAG_JEV} {_GREEN}Khởi tạo thành công model {gguf.name} trên {device_str} (in-process fallback){_RESET}", flush=True)
             return _ENGINE
         except Exception as exc:
+            _LAST_LOCAL_FAILURE = time.monotonic()
             log.warning("[JEV_GATE] Không khởi động được local Jev engine: %s", exc)
             return None
 
 
 def _classify_via_remote(clean: str, min_confidence: float) -> tuple[bool, float] | None:
     """Gửi yêu cầu phân loại tới standalone server (run_jev.py)."""
+    global _REMOTE_AVAILABLE
     try:
         t0 = time.perf_counter()
         with httpx.Client(timeout=httpx.Timeout(connect=0.3, read=2.0, write=0.5, pool=2.0)) as client:
@@ -167,9 +187,8 @@ def _classify_via_remote(clean: str, min_confidence: float) -> tuple[bool, float
                          clean[:50], answer, conf * 100, dt_ms, is_chat)
                 return is_chat, conf
     except Exception as exc:
-        log.debug("[JEV_GATE] Remote server không phản hồi (%s), fallback local", exc)
-        global _REMOTE_AVAILABLE
-        _REMOTE_AVAILABLE = False
+        log.debug("[JEV_GATE] Remote server không phản hồi (%s), dùng router thường", exc)
+    _REMOTE_AVAILABLE = False  # kiểm tra lại health sau 5 giây
     return None
 
 
@@ -177,7 +196,8 @@ def classify_chat(text: str, min_confidence: float = 0.85) -> tuple[bool, float]
     """Phân loại xem câu hỏi có phải là chat thông thường hay không.
 
     Ưu tiên 1: Gọi Standalone Server http://127.0.0.1:8083 (nếu run_jev.py đang chạy).
-    Ưu tiên 2: Fallback in-process engine nếu server độc lập chưa bật.
+    Ưu tiên 2: Fallback in-process engine chỉ khi run_jev.py không chạy; service có mặt nhưng lỗi
+    thì lượt này đi router thường (không nạp model thứ hai tranh CPU/RAM).
 
     Returns:
         (is_chat, confidence): True nếu là Chat và độ tin cậy >= min_confidence.
@@ -188,9 +208,9 @@ def classify_chat(text: str, min_confidence: float = 0.85) -> tuple[bool, float]
 
     # 1. Thử gọi Standalone Server trước
     if _check_remote_server():
-        remote_res = _classify_via_remote(clean, min_confidence)
-        if remote_res is not None:
-            return remote_res
+        return _classify_via_remote(clean, min_confidence) or (False, 0.0)
+    if _REMOTE_REACHABLE:
+        return False, 0.0
 
     # 2. Fallback sang local in-process engine
     engine = _get_engine()
@@ -225,7 +245,7 @@ def classify_chat(text: str, min_confidence: float = 0.85) -> tuple[bool, float]
 
 def close():
     """Dọn dẹp tiến trình khi tắt server."""
-    global _ENGINE
+    global _ENGINE, _REMOTE_AVAILABLE, _REMOTE_REACHABLE, _LAST_REMOTE_CHECK, _LAST_LOCAL_FAILURE
     with _LOCK:
         if _ENGINE is not None:
             try:
@@ -233,3 +253,5 @@ def close():
             except Exception:
                 pass
             _ENGINE = None
+    _REMOTE_AVAILABLE, _REMOTE_REACHABLE, _LAST_REMOTE_CHECK = None, False, 0.0
+    _LAST_LOCAL_FAILURE = float("-inf")

@@ -528,7 +528,9 @@ class JevStyleDecisionGGUF(DecisionBase):
 
     def __init__(self, model_dir=HERE, quant="F16", gguf=None, binary=None, category=None, head_max=HARD_HEAD_MAX,
                  max_len=CONTEXT_LIMIT, n_gpu_layers=999, threads=None, flash_attn="auto", n_ubatch=1024,
-                 many_mode="exact", verify=False, stderr=None, split_options=True):
+                 many_mode="exact", verify=False, stderr=None, split_options=True,
+                 request_timeout=10.0, startup_timeout=60.0):
+        self.request_timeout = request_timeout
         self.split_options = bool(split_options)
         if many_mode not in MANY_MODES:
             raise ValueError(f"many_mode must be one of {MANY_MODES}, got {many_mode!r}")
@@ -548,17 +550,44 @@ class JevStyleDecisionGGUF(DecisionBase):
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                      stderr=stderr if stderr is not None else subprocess.DEVNULL, text=True, bufsize=1)
         self._lock = threading.Lock()
-        line = self.proc.stdout.readline()
+        line = self._readline(startup_timeout)
         ready = json.loads(line) if line else {"ready": False, "error": "no output (see stderr)"}
         if not ready.get("ready"):
+            self.close()
             raise RuntimeError(f"jev-score failed to start: {ready}")
         self.info = ready
 
+    def is_alive(self):
+        return self.proc.poll() is None
+
+    def _readline(self, timeout):
+        """stdout.readline() with a deadline. A blocked pipe read cannot be cancelled, so a hung
+        jev-score is killed; the caller then sees TimeoutError and the owner starts a new one."""
+        expired = threading.Event()
+
+        def expire():
+            expired.set()
+            self.proc.kill()
+
+        watchdog = threading.Timer(timeout, expire)
+        watchdog.daemon = True
+        watchdog.start()
+        try:
+            line = self.proc.stdout.readline()
+        finally:
+            watchdog.cancel()
+        if expired.is_set():
+            self.proc.wait(timeout=5)
+            raise TimeoutError(f"jev-score gave no answer within {timeout}s (process killed)")
+        return line
+
     def _request(self, req):
         with self._lock:
+            if not self.is_alive():
+                raise RuntimeError("jev-score exited")
             self.proc.stdin.write(json.dumps(req) + "\n")
             self.proc.stdin.flush()
-            line = self.proc.stdout.readline()
+            line = self._readline(self.request_timeout)
         if not line:
             raise RuntimeError("jev-score exited")
         resp = json.loads(line)

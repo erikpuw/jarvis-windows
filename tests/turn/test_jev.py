@@ -1,11 +1,19 @@
 """Unit tests cho Jev-Style Standalone Server và Jev Gate."""
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 from starlette.testclient import TestClient
 
 from engine.turn import jev_gate
 from engine.turn.jev import server as jev_server
+
+
+@pytest.fixture(autouse=True)
+def reset_gate():
+    jev_gate.close()
+    yield
+    jev_gate.close()
 
 
 def test_jev_gate_availability_mocked():

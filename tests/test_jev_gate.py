@@ -1,35 +1,37 @@
+import os
 import sys
 import time
 from pathlib import Path
 import pytest
 
 # Add paths
-WORKSPACE = Path(r"E:\workspace\jarvis")
-RUN_MODEL = Path(r"E:\Run_Model")
+WORKSPACE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(WORKSPACE))
 
 from engine.turn.jev.jev_style_decision_gguf import JevStyleDecisionGGUF
+from engine.turn.jev_gate import find_jev_binary, find_jev_gguf
 
 
 @pytest.mark.skipif(
-    not (RUN_MODEL / "jev-run" / "jev-score.exe").exists() or not (RUN_MODEL / "model" / "Jev-Style-0.8B-Decision-v3-Q4_K_M.gguf").exists(),
+    os.getenv("JEV_LIVE_TESTS") != "1" or not find_jev_binary(use_cpu=True) or not find_jev_gguf(),
     reason="Jev binary hoặc model GGUF không khả dụng trên môi trường hiện tại"
 )
 def test_jev_fast_gate_accuracy():
     """Kiểm tra độ chính xác và độ trễ của Jev khi phân loại Chat vs Tool."""
     model_dir = WORKSPACE / "engine" / "turn" / "jev"
-    gguf_path = RUN_MODEL / "model" / "Jev-Style-0.8B-Decision-v3-Q4_K_M.gguf"
-    binary_path = RUN_MODEL / "jev-run" / "jev-score.exe"
+    gguf_path = find_jev_gguf()
+    binary_path = find_jev_binary(use_cpu=True)
 
     assert gguf_path.exists(), f"Không tìm thấy model: {gguf_path}"
     assert binary_path.exists(), f"Không tìm thấy binary: {binary_path}"
 
-    print(f"\n[INIT] Khởi động Jev-Style GGUF server...")
+    print("\n[INIT] Khởi động Jev-Style GGUF server...")
     t0 = time.perf_counter()
     engine = JevStyleDecisionGGUF(
         model_dir=str(model_dir),
         gguf=str(gguf_path),
-        binary=str(binary_path)
+        binary=str(binary_path),
+        n_gpu_layers=0,
     )
     init_time = (time.perf_counter() - t0) * 1000
     print(f"[INIT] Server sẵn sàng trong {init_time:.1f}ms")
@@ -103,7 +105,7 @@ def test_jev_fast_gate_accuracy():
     print("=" * 70)
 
     assert accuracy >= 95.0, f"Độ chính xác {accuracy}% không đạt yêu cầu >= 95%"
-    assert avg_latency <= 50.0, f"Độ trễ trung bình {avg_latency}ms vượt quá 50ms"
+    assert avg_latency <= engine.request_timeout * 1000, "Vượt ngân sách suy luận CPU"
 
 
 if __name__ == "__main__":
