@@ -31,6 +31,12 @@ def main() -> int:
             return 1
 
     print("\n🎉 HOÀN TẤT: Toàn bộ 4 bước CI đều XANH! Bạn có thể yên tâm commit và git push.\n")
+    print("📋 HƯỚNG DẪN COMMIT & PUSH (tự làm tay):")
+    print("  1. git checkout main                 # đảm bảo đang ở nhánh main")
+    print("  2. git status --short                # xem lại các tệp thay đổi")
+    print("  3. git add -A")
+    print('  4. git commit -m "sync: <mô tả ngắn thay đổi>"')
+    print("  5. git push origin main\n")
     return 0
 
 
