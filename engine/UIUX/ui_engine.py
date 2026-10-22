@@ -1446,11 +1446,13 @@ async def api_upload(file: UploadFile = File(...)):
 
 
 @router.get("/api/command-bar/skills")
-async def api_command_bar_skills():
+async def api_command_bar_skills(request: Request = None):
     """Retrieve all loaded skills, commands, and plugins for frontend autocomplete suggestion."""
     try:
         from engine.tools.skill_manager import get_skill_manager
         from engine.tools import registry
+        from engine.UIUX.memory_lock import is_admin
+        admin = is_admin(request) if request is not None else True
         sm = get_skill_manager()
         skills = [s.to_dict() for s in sm.skills.values() if s.enabled]
         commands = [
@@ -1461,6 +1463,7 @@ async def api_command_bar_skills():
                 "enabled": True,
             }
             for n in registry.names()
+            if not (registry.get(n) and registry.get(n).admin_only and not admin)
         ]
 
         
@@ -1493,7 +1496,7 @@ async def api_command_bar_skills():
 
 
 @router.get("/api/command-bar/context")
-async def api_command_bar_context(request: Request):
+async def api_command_bar_context(request: Request = None):
     """Gợi ý @ (chế độ + tool, sinh từ registry) và tệp trong workspace cho ô nhập."""
     try:
         from engine.turn.entry import mention_list
@@ -1520,11 +1523,13 @@ async def api_command_bar_context(request: Request):
             if len(files) >= 50:
                 break
                 
-        from engine.UIUX.memory_lock import is_admin
-        admin = is_admin(request)
+        from engine.UIUX.memory_lock import is_admin, get_current_user
+        user = get_current_user(request) if request is not None else None
+        admin = is_admin(request) if request is not None else True
+        user_id = user["id"] if user else ("admin" if admin else "user-member")
         return {
             "success": True,
-            "mentions": mention_list(user_id="admin" if admin else "user-member"),
+            "mentions": mention_list(user_id=user_id),
             "files": files
         }
 

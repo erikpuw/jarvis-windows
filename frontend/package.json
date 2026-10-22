@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@fontsource/lexend": "^5.3.0",
-    "@mediapipe/tasks-vision": "^0.10.35",
     "@paper-design/shaders": "^0.0.81",
     "dompurify": "^3.4.16",
     "highlight.js": "^11.12.0",

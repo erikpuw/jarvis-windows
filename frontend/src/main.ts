@@ -821,115 +821,10 @@ let currentTurnId: string = Date.now().toString();
 
 const webcamHud = document.getElementById("webcam-hud")!;
 const webcamVideo = document.getElementById("webcam-video") as HTMLVideoElement;
-const webcamCanvas = document.getElementById("webcam-canvas") as HTMLCanvasElement;
 const webcamOverlay = document.getElementById("webcam-overlay") as HTMLImageElement;
 const webcamSelect = document.getElementById("webcam-device-select") as HTMLSelectElement;
 let webcamStream: MediaStream | null = null;
 let selectedCameraId: string | null = null;
-
-let handLandmarker: any = null;
-let handDetectionActive = false;
-let isInitializingHandLandmarker = false;
-
-async function initHandLandmarker() {
-  if (handLandmarker) return handLandmarker;
-  if (isInitializingHandLandmarker) return null;
-  isInitializingHandLandmarker = true;
-  try {
-    console.log("[MediaPipe] Initializing Hand Landmarker...");
-    const { FilesetResolver, HandLandmarker } =
-      await import("@mediapipe/tasks-vision");
-    const vision = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
-    );
-    handLandmarker = await HandLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-        delegate: "GPU"
-      },
-      runningMode: "VIDEO",
-      numHands: 2
-    });
-    console.log("[MediaPipe] Hand Landmarker initialized successfully!");
-    isInitializingHandLandmarker = false;
-    return handLandmarker;
-  } catch (err) {
-    console.error("[MediaPipe] Failed to initialize Hand Landmarker:", err);
-    isInitializingHandLandmarker = false;
-    return null;
-  }
-}
-
-// Releases the GPU-backed WASM model so its VRAM isn't held while the webcam is off.
-function disposeHandLandmarker() {
-  if (handLandmarker) {
-    try {
-      handLandmarker.close();
-    } catch (err) {
-      console.error("[MediaPipe] Failed to close Hand Landmarker:", err);
-    }
-    handLandmarker = null;
-  }
-}
-
-function predictWebcamHands() {
-  if (!handDetectionActive || !webcamStream || !webcamVideo || !handLandmarker || !webcamCanvas) {
-    return;
-  }
-
-  const ctx = webcamCanvas.getContext("2d");
-  if (!ctx) return;
-
-  // Cập nhật kích thước canvas khớp với video thực tế
-  webcamCanvas.width = webcamVideo.videoWidth || 640;
-  webcamCanvas.height = webcamVideo.videoHeight || 480;
-
-  ctx.clearRect(0, 0, webcamCanvas.width, webcamCanvas.height);
-
-  if (webcamVideo.readyState >= 2 && webcamVideo.currentTime !== -1) {
-    const startTimeMs = performance.now();
-    try {
-      const results = handLandmarker.detectForVideo(webcamVideo, startTimeMs);
-      if (results && results.landmarks && results.landmarks.length > 0) {
-        for (const landmarks of results.landmarks) {
-          const tips = [4, 8, 12, 16, 20];
-          for (const tipIdx of tips) {
-            const lm = landmarks[tipIdx];
-            if (lm) {
-              const cx = lm.x * webcamCanvas.width;
-              const cy = lm.y * webcamCanvas.height;
-
-              // Vòng phát sáng neon mờ xung quanh (glow)
-              ctx.beginPath();
-              ctx.arc(cx, cy, tipIdx === 8 ? 10 : 7, 0, 2 * Math.PI);
-              ctx.fillStyle = "rgba(0, 212, 255, 0.35)";
-              ctx.fill();
-
-              // Điểm nhân màu trắng rực rỡ
-              ctx.beginPath();
-              ctx.arc(cx, cy, tipIdx === 8 ? 4 : 3, 0, 2 * Math.PI);
-              ctx.fillStyle = "#ffffff";
-              ctx.fill();
-
-              // Viền ngoài sắc nét
-              ctx.beginPath();
-              ctx.arc(cx, cy, tipIdx === 8 ? 13 : 9, 0, 2 * Math.PI);
-              ctx.strokeStyle = "rgba(0, 212, 255, 0.8)";
-              ctx.lineWidth = 1.5;
-              ctx.stroke();
-            }
-          }
-        }
-      }
-    } catch (err) {
-      console.error("[MediaPipe] Detection error:", err);
-    }
-  }
-
-  if (handDetectionActive) {
-    requestAnimationFrame(predictWebcamHands);
-  }
-}
 
 // Giao diện lắng nghe sự thay đổi camera thiết bị từ select dropdown
 if (webcamSelect) {
@@ -985,13 +880,6 @@ async function startWebcamStream() {
     // Cập nhật lại dropdown danh sách thiết bị
     await populateCameraDevices();
 
-    // Khởi chạy nhận diện bàn tay thời gian thực
-    handDetectionActive = true;
-    initHandLandmarker().then((landmarker) => {
-      if (landmarker && handDetectionActive) {
-        requestAnimationFrame(predictWebcamHands);
-      }
-    });
   } catch (err) {
     console.error("[Webcam] Error starting webcam:", err);
     showError("Không thể truy cập Webcam, thưa Ngài.");
@@ -1045,11 +933,6 @@ async function toggleWebcam(show: boolean) {
       showError("Không thể truy cập Webcam, thưa Ngài.");
     }
   } else {
-    handDetectionActive = false;
-    if (webcamCanvas) {
-      const ctx = webcamCanvas.getContext("2d");
-      if (ctx) ctx.clearRect(0, 0, webcamCanvas.width, webcamCanvas.height);
-    }
     webcamHud.classList.remove("visible");
     if (btnWebcam) btnWebcam.classList.remove("active");
     if (webcamOverlay) webcamOverlay.style.display = "none";
@@ -1060,7 +943,6 @@ async function toggleWebcam(show: boolean) {
         webcamStream = null;
         webcamVideo.srcObject = null;
       }
-      disposeHandLandmarker();
     }, 800); // Match CSS transition
   }
 }

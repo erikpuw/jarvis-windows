@@ -1,0 +1,45 @@
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ],
+      "enabled": false
+    },
+    "gitnexus": {
+      "command": "gitnexus",
+      "args": [
+        "mcp"
+      ],
+      "enabled": false
+    },
+    "headroom": {
+      "command": "headroom",
+      "args": [
+        "mcp",
+        "serve"
+      ],
+      "enabled": false
+    },
+    "wikipedia-vi": {
+      "command": "wikipedia-mcp",
+      "args": [
+        "--language",
+        "vi"
+      ],
+      "enabled": true
+    },
+    "codebase-memory-mcp": {
+      "command": "codebase-memory-mcp",
+      "args": [],
+      "enabled": false
+    },
+	"gmail": {
+	  "command": "npx",
+	  "args": ["-y", "@gongrzhe/server-gmail-autoauth-mcp"],
+	  "enabled": true
+	}
+  }
+}

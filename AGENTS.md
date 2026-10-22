@@ -110,7 +110,7 @@ After /clear or /compact: knowledge base and session stats preserved. Use `ctx p
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **jarvis** (8978 symbols, 18944 relationships, 530 execution flows).
+This project is indexed by GitNexus as **jarvis-windows** (9508 symbols, 21081 relationships, 521 execution flows).
 
 > Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
 
@@ -134,10 +134,10 @@ This project is indexed by GitNexus as **jarvis** (8978 symbols, 18944 relations
 
 | Resource | Use for |
 | --- | --- |
-| `gitnexus://repo/jarvis/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/jarvis/clusters` | All functional areas |
-| `gitnexus://repo/jarvis/processes` | All execution flows |
-| `gitnexus://repo/jarvis/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/jarvis-windows/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/jarvis-windows/clusters` | All functional areas |
+| `gitnexus://repo/jarvis-windows/processes` | All execution flows |
+| `gitnexus://repo/jarvis-windows/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 
