@@ -21,6 +21,8 @@ __pycache__/
 data/*.jsonl
 data/active_session.json
 data/.jarvis_output.txt
+data/traces/
+data/wiki/
 
 # Certificates
 *.pem
