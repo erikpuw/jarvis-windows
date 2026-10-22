@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#050508</color>
+    <!-- web sd-bg colour: the window behind Flutter while it starts, instead of white -->
+    <color name="jarvis_bg">#050508</color>
+</resources>
