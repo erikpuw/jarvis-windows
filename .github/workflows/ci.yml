@@ -73,7 +73,9 @@ jobs:
 
   mobile:
     name: Mobile (flutter analyze + test)
-    runs-on: ubuntu-latest
+    # Windows như máy local: các test đếm pixel (status_gray, status_sheen, loader_shot...) hiệu chỉnh theo
+    # cách Windows vẽ font; trên Linux chữ khử răng cưa khác nên status_gray_test báo ~3% pixel xám dù code đúng.
+    runs-on: windows-latest
     timeout-minutes: 20
     defaults:
       run:
