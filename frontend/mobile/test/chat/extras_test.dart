@@ -355,6 +355,18 @@ void main() {
     expect(chat.media, isNull);
   });
 
+  test('media player embeds YouTube in an iframe page like the web, not as the top page', () {
+    // a bare embed URL as the WebView's own page sends no Referer: YouTube answers "Error 153"
+    final html = MediaPlayer.embedPage('https://www.youtube.com/embed/abc');
+    expect(html, contains('<iframe'));
+    expect(
+      html,
+      contains('src="https://www.youtube.com/embed/abc?autoplay=1&amp;playsinline=1"'),
+    );
+    expect(html, contains('allow="autoplay; encrypted-media; picture-in-picture"'));
+    expect(MediaPlayer.pageOrigin, startsWith('https://'));
+  });
+
   testWidgets('output_file image opens lightbox on tap', (t) async {
     final h = await pumpHome(t);
     await packet(t, h.socket, {

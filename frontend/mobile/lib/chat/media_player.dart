@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
@@ -6,8 +8,8 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 import '../theme/tokens.dart';
 import 'chat_models.dart';
 
-/// The media player (main.ts openMediaPlayer): the only place a WebView is used. It plays `embedUrl` with `autoplay=1`
-/// appended, the way the web iframe does. [onClose] is the controller's closeMedia, which tells the server media_state false.
+/// The media player (main.ts openMediaPlayer): the only place a WebView is used. It plays `embedUrl` in an autoplaying iframe
+/// (see [embedPage]), the way the web does. [onClose] is the controller's closeMedia, which tells the server media_state false.
 class MediaPlayer extends StatelessWidget {
   const MediaPlayer({
     super.key,
@@ -22,15 +24,25 @@ class MediaPlayer extends StatelessWidget {
   /// Test seam: tests have no WebView plugin, so they build a stand-in for the page.
   final Widget Function(String url)? webBuilder;
 
-  static String autoplayUrl(String embed) {
+  /// The page the iframe sits in. YouTube refuses an embed that arrives without a Referer ("Error 153"), which is what a
+  /// bare embed URL loaded as the WebView's own page is; inside a page with this origin it gets one, as in the web app.
+  static const pageOrigin = 'https://com.jarvis.mobile';
+
+  /// main.ts media_open: the same iframe the web builds, with `playsinline=1` so iOS keeps the video in the page.
+  static String embedPage(String embed) {
     final sep = embed.contains('?') ? '&' : '?';
-    return '$embed${sep}autoplay=1';
+    final src = const HtmlEscape(HtmlEscapeMode.attribute)
+        .convert('$embed${sep}autoplay=1&playsinline=1');
+    return '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<style>html,body{margin:0;height:100%;background:#000}iframe{border:0;width:100%;height:100%}</style>'
+        '</head><body><iframe src="$src" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen>'
+        '</iframe></body></html>';
   }
 
   @override
   Widget build(BuildContext context) {
     final pad = MediaQuery.paddingOf(context);
-    final url = autoplayUrl(media.embedUrl);
+    final url = media.embedUrl;
     final title = media.title.isNotEmpty ? media.title : media.query;
     return ColoredBox(
       color: Colors.black,
@@ -51,7 +63,7 @@ class MediaPlayer extends StatelessWidget {
               style: const TextStyle(
                 fontSize: JTokens.fsLabel,
                 letterSpacing: 2,
-                color: Color(0x8000D4FF),
+                color: JTokens.muted,
               ),
             ),
           ),
@@ -61,7 +73,13 @@ class MediaPlayer extends StatelessWidget {
             child: IconButton(
               key: const ValueKey('media-close'),
               onPressed: onClose,
-              icon: const Icon(Icons.close, color: Colors.white),
+              // .media-player-close: #18181b, 1px white 12%, #a1a1aa, radius 8
+              style: IconButton.styleFrom(
+                backgroundColor: JTokens.surface2,
+                side: const BorderSide(color: Color(0x1FFFFFFF)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              icon: const Icon(Icons.close, color: JTokens.muted),
             ),
           ),
         ],
@@ -92,7 +110,7 @@ class _WebPageState extends State<_WebPage> {
     final c = WebViewController.fromPlatformCreationParams(params)
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.black)
-      ..loadRequest(Uri.parse(widget.url));
+      ..loadHtmlString(MediaPlayer.embedPage(widget.url), baseUrl: MediaPlayer.pageOrigin);
     final p = c.platform;
     if (p is AndroidWebViewController) {
       p.setMediaPlaybackRequiresUserGesture(false);

@@ -186,14 +186,14 @@ class CommandSuggest extends StatelessWidget {
           constraints: const BoxConstraints(maxHeight: 220),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: const Color(0xD9080A12),
-            border: Border.all(color: _cyan.withValues(alpha: 0.18)),
-            borderRadius: BorderRadius.circular(10),
+            color: JTokens.surface,
+            border: Border.all(color: JTokens.border),
+            borderRadius: BorderRadius.circular(14),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x80000000),
-                blurRadius: 32,
-                offset: Offset(0, -8),
+                color: Color(0xB3000000),
+                blurRadius: 36,
+                offset: Offset(0, -12),
               ),
             ],
           ),
@@ -227,9 +227,9 @@ class CommandSuggest extends StatelessWidget {
 
   Widget _tabs() => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-    decoration: BoxDecoration(
-      color: const Color(0x33000000),
-      border: Border(bottom: BorderSide(color: _cyan.withValues(alpha: 0.1))),
+    decoration: const BoxDecoration(
+      color: Color(0xFF0D0D0F),
+      border: Border(bottom: BorderSide(color: JTokens.border)),
     ),
     child: Wrap(
       spacing: 6,
@@ -242,20 +242,20 @@ class CommandSuggest extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: controller.tab == id
-                    ? _cyan.withValues(alpha: 0.15)
-                    : const Color(0x0AFFFFFF),
+                    ? JTokens.surface3
+                    : Colors.transparent,
                 border: Border.all(
                   color: controller.tab == id
-                      ? _cyan.withValues(alpha: 0.3)
+                      ? const Color(0x1FFFFFFF)
                       : Colors.transparent,
                 ),
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 label,
                 style: TextStyle(
                   fontSize: JTokens.fsLabel,
-                  color: controller.tab == id ? _cyan : const Color(0x99FFFFFF),
+                  color: controller.tab == id ? Colors.white : JTokens.textMuted,
                 ),
               ),
             ),

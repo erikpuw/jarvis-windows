@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../theme/tokens.dart';
 import 'lucide_glyphs.dart';
 import 'morph_icon.dart';
 
@@ -67,18 +68,34 @@ class _ControlsCapsuleState extends State<ControlsCapsule> {
     super.dispose();
   }
 
-  Widget _button(Widget icon, VoidCallback? onTap) => GestureDetector(
-    behavior: HitTestBehavior.opaque,
-    onTap: () {
-      onTap?.call();
-      _touched();
-    },
-    child: SizedBox(
-      width: _slot,
-      height: _slot,
-      child: Center(child: icon),
-    ),
-  );
+  /// [active]: `#controls button.active` (bar shown, mic on) sits on a #27272a disc with a 25% white ring.
+  Widget _button(Widget icon, VoidCallback? onTap, {bool active = false}) =>
+      GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          onTap?.call();
+          _touched();
+        },
+        child: SizedBox(
+          width: _slot,
+          height: _slot,
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 34, // what the 44px capsule leaves inside its 5px padding
+              height: 34,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: active ? JTokens.surface3 : Colors.transparent,
+                border: Border.all(
+                  color: active ? const Color(0x40FFFFFF) : Colors.transparent,
+                ),
+              ),
+              child: Center(child: icon),
+            ),
+          ),
+        ),
+      );
 
   /// icons.ts SPECS: the 18px glyph (stroke 1.5) morphs between its off and on lucide icon when the state flips.
   Widget _morph(MorphGlyph glyph, Color color) =>
@@ -88,7 +105,7 @@ class _ControlsCapsuleState extends State<ControlsCapsule> {
   Widget build(BuildContext context) {
     final pad = MediaQuery.paddingOf(context);
     const red = Color(0x99EF4444); // rgba(239,68,68,.6)
-    const active = Color(0xE6FFFFFF); // rgba(255,255,255,.9)
+    const active = Colors.white; // #controls button.active
     const sky = Color(0x800EA5E9); // rgba(14,165,233,.5)
     final buttons = [
       _button(
@@ -97,6 +114,7 @@ class _ControlsCapsuleState extends State<ControlsCapsule> {
           widget.barVisible ? active : sky,
         ),
         widget.onToggleBar,
+        active: widget.barVisible,
       ),
       _button(
         _morph(
@@ -111,6 +129,7 @@ class _ControlsCapsuleState extends State<ControlsCapsule> {
           widget.micMuted ? red : active,
         ),
         widget.onMic,
+        active: !widget.micMuted,
       ),
       _button(
         const Icon(LucideIcons.settings, size: 18, color: sky),

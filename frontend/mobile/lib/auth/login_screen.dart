@@ -32,6 +32,25 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// auth-gate.css .auth-input: #18181b, 1px white 12%, radius 10; focus: white 35%; placeholder #52525b.
+  static InputDecoration _input(String hint) {
+    OutlineInputBorder edge(Color c) => OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: BorderSide(color: c),
+    );
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(color: Color(0xFF52525B), fontSize: 14),
+      filled: true,
+      fillColor: JTokens.surface2,
+      counterText: '',
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      border: edge(const Color(0x1FFFFFFF)),
+      enabledBorder: edge(const Color(0x1FFFFFFF)),
+      focusedBorder: edge(const Color(0x59FFFFFF)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
@@ -46,15 +65,17 @@ class _LoginScreenState extends State<LoginScreen> {
               constraints: const BoxConstraints(maxWidth: 420),
               child: Container(
                 padding: const EdgeInsets.all(24),
+                // auth-gate.css .auth-card (phone radius 18)
                 decoration: BoxDecoration(
                   color: JTokens.surface,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: JTokens.border),
                   boxShadow: const [
                     BoxShadow(
-                      color: Color(0x66000000),
-                      blurRadius: 32,
-                      offset: Offset(0, 16),
+                      color: Color(0xB3000000),
+                      blurRadius: 48,
+                      spreadRadius: -12,
+                      offset: Offset(0, 24),
                     ),
                   ],
                 ),
@@ -71,7 +92,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
-                          color: JTokens.text,
+                          color: Colors.white,
                           letterSpacing: -0.3,
                         ),
                       ),
@@ -90,9 +111,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.4),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: JTokens.border.withValues(alpha: 0.6)),
+                          color: const Color(0xFF0D0D0F),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0x0FFFFFFF)),
                         ),
                         child: Row(
                           children: [
@@ -129,27 +150,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         TextFormField(
                           controller: _usernameController,
                           maxLength: 40,
-                          style: const TextStyle(color: JTokens.text, fontSize: 14),
-                          decoration: InputDecoration(
-                            hintText: 'Nhập tên của bạn...',
-                            hintStyle: const TextStyle(color: JTokens.muted, fontSize: 14),
-                            filled: true,
-                            fillColor: Colors.black.withValues(alpha: 0.3),
-                            counterText: '',
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(color: JTokens.border),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(color: JTokens.border),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(color: JTokens.accent),
-                            ),
-                          ),
+                          style: const TextStyle(color: Colors.white, fontSize: 14),
+                          decoration: _input('Nhập tên của bạn...'),
                           onFieldSubmitted: (_) => _submit(),
                         ),
                       ] else ...[
@@ -165,26 +167,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         TextFormField(
                           controller: _passwordController,
                           obscureText: true,
-                          style: const TextStyle(color: JTokens.text, fontSize: 14),
-                          decoration: InputDecoration(
-                            hintText: 'Nhập mật khẩu quản trị...',
-                            hintStyle: const TextStyle(color: JTokens.muted, fontSize: 14),
-                            filled: true,
-                            fillColor: Colors.black.withValues(alpha: 0.3),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(color: JTokens.border),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(color: JTokens.border),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(color: JTokens.accent),
-                            ),
-                          ),
+                          style: const TextStyle(color: Colors.white, fontSize: 14),
+                          decoration: _input('Nhập mật khẩu quản trị...'),
                           onFieldSubmitted: (_) => _submit(),
                         ),
                       ],
@@ -195,9 +179,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           decoration: BoxDecoration(
-                            color: const Color(0x1AF87171),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0x4DF87171)),
+                            color: const Color(0x14EF4444),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0x38EF4444)),
                           ),
                           child: Text(
                             auth.error == 'Failed to fetch'
@@ -213,11 +197,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       // Submit button
                       ElevatedButton(
                         onPressed: auth.isLoading ? null : _submit,
+                        // .auth-submit-btn: white pill, near-black text
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: JTokens.accent,
-                          foregroundColor: Colors.white,
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFF09090B),
+                          disabledBackgroundColor: const Color(0x99FFFFFF),
+                          disabledForegroundColor: const Color(0xFF09090B),
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: const StadiumBorder(),
                           elevation: 0,
                         ),
                         child: Text(
@@ -232,15 +219,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.info_outline, size: 14, color: JTokens.muted.withValues(alpha: 0.7)),
+                          const Icon(Icons.info_outline, size: 14, color: JTokens.textMuted),
                           const SizedBox(width: 6),
-                          Expanded(
+                          const Expanded(
                             child: Text(
                               'Dữ liệu và bộ nhớ hội thoại được cô lập riêng biệt.',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: JTokens.muted.withValues(alpha: 0.7),
-                              ),
+                              style: TextStyle(fontSize: 12, color: JTokens.textMuted),
                             ),
                           ),
                         ],
@@ -276,8 +260,8 @@ class _TabButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
-          color: active ? JTokens.surface : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
+          color: active ? JTokens.surface3 : Colors.transparent,
+          borderRadius: BorderRadius.circular(9),
           boxShadow: active
               ? const [BoxShadow(color: Color(0x33000000), blurRadius: 4, offset: Offset(0, 1))]
               : null,
@@ -288,7 +272,7 @@ class _TabButton extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-            color: active ? JTokens.text : JTokens.muted,
+            color: active ? Colors.white : JTokens.textMuted,
           ),
         ),
       ),

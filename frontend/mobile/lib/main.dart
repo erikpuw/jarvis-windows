@@ -126,6 +126,7 @@ class _JarvisAppState extends State<JarvisApp> with WidgetsBindingObserver {
     if (widget.auth == null && widget.socket == null) {
       _auth.init();
     }
+    _lastIdentity = _identity;
     _auth.addListener(_onAuthChanged);
     if (_auth.isAuthenticated) {
       _socket.connect();
@@ -138,8 +139,18 @@ class _JarvisAppState extends State<JarvisApp> with WidgetsBindingObserver {
 
   void _onPlaying() => _chat.setPlaying(_audioOut.playing.value);
 
+  /// Who is signed in (user id + token), or null when signed out.
+  String? get _identity => _auth.isAuthenticated
+      ? '${_auth.currentUser!.id}|${_api.memoryToken}'
+      : null;
+  String? _lastIdentity;
+
   void _onAuthChanged() {
-    // When auth changes (e.g. login or logout), reconnect socket with current token and fresh session
+    // Only a login, logout or user switch resets the chat and session: the controller also notifies on loading/error
+    // and when the same user's profile is refreshed (saving the User page), which must keep the conversation.
+    final identity = _identity;
+    if (identity == _lastIdentity) return;
+    _lastIdentity = identity;
     if (_auth.isAuthenticated) {
       _chat.reset();
       _socket.forceReconnect(resetSession: true);

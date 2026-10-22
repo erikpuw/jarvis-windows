@@ -4,15 +4,22 @@ import 'package:flutter/material.dart';
 class JTokens {
   JTokens._();
 
+  /// Solid panels over the black page (table frame, command bar): style.css keeps #050508 there.
   static const bg = Color(0xFF050508);
-  static const surface = Color(0xFF0D1117);
-  static const surface2 = Color(0xFF0A0E14);
-  static const border = Color(0x1F94A3B8);
-  static const borderStrong = Color(0x4094A3B8);
-  static const text = Color(0xFFE2E8F0);
+
+  /// Page background of the main screen, login and Settings (body / --sd-bg: #000).
+  static const page = Color(0xFF000000);
+
+  // Neutral zinc palette (web 7b34d4b: settings/styles.css --sd-*, no slate/cyan glow).
+  static const surface = Color(0xFF121214);
+  static const surface2 = Color(0xFF18181B);
+  static const surface3 = Color(0xFF27272A); // active tab / pressed control (.suggest-tab.active, #controls button.active)
+  static const border = Color(0x14FFFFFF);
+  static const borderStrong = Color(0x29FFFFFF);
+  static const text = Color(0xFFF4F4F5);
   static const chatText = Color(0xFFE5E7EB);
-  static const muted = Color(0xFF94A3B8);
-  static const textMuted = Color(0x4DFFFFFF);
+  static const muted = Color(0xFFA1A1AA);
+  static const textMuted = Color(0xFF71717A); // placeholders, inactive tabs (#71717a)
   static const accent = Color(0xFF0EA5E9);
   static const accentSoft = Color(0x1F0EA5E9);
   static const cyan = Color(0xFF00D4FF);
@@ -27,11 +34,11 @@ class JTokens {
   static const double fsInput = 16;
   static const double fsTitle = 18;
   static const double fsHeading = 20;
-  /// Chat bubble font size: 14.5px on Android and 15.0px on iOS for balanced optical scale with the command bar.
-  static double get bubbleFont => 16.0;
+  /// Chat bubble font size (web phone: 15px; the app reads one step larger, then scales per screen in main.dart).
+  static const double bubbleFont = 16;
 
-  /// Table and code font size: 12.5px on Android, 13.5px on iOS.
-  static double get tableFont => 13.5;
+  /// Table and code font size.
+  static const double tableFont = 13.5;
 
   static const double bubbleRadius = 18;
   static const double chatGap = 10;
