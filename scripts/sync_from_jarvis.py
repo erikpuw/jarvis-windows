@@ -60,6 +60,15 @@ def should_skip(rel_path: Path) -> bool:
     return False
 
 
+def same_content(a: bytes, b: bytes) -> bool:
+    """Bằng nhau, hoặc là văn bản chỉ khác CRLF/LF (jarvis lưu LF, jarvis-windows bật autocrlf)."""
+    if a == b:
+        return True
+    if b"\0" in a or b"\0" in b:  # tệp nhị phân: so từng byte
+        return False
+    return a.replace(b"\r\n", b"\n") == b.replace(b"\r\n", b"\n")
+
+
 def sync(dry_run: bool = False) -> int:
     if not SOURCE_DIR.exists():
         print(f"❌ Không tìm thấy thư mục nguồn: {SOURCE_DIR}")
@@ -80,10 +89,10 @@ def sync(dry_run: bool = False) -> int:
             continue
 
         dst_path = TARGET_DIR / rel_path
-        # Chỉ copy nếu file đích chưa có hoặc nội dung khác nhau
+        # Chỉ copy nếu file đích chưa có hoặc nội dung khác nhau (bỏ qua khác biệt CRLF/LF)
         if dst_path.exists():
             try:
-                if src_path.stat().st_size == dst_path.stat().st_size and src_path.read_bytes() == dst_path.read_bytes():
+                if same_content(src_path.read_bytes(), dst_path.read_bytes()):
                     continue
             except Exception:
                 pass
