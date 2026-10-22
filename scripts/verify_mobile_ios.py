@@ -7,7 +7,8 @@ Bao gồm:
 2. Flutter pub get (đồng bộ package).
 3. Flutter analyze (kiểm tra lint/syntax sạch sẽ).
 4. Flutter test (chạy 345+ unit & widget test cho app mobile).
-5. Backend CI verification (đảm bảo không làm hỏng repo chung khi tạo PR).
+5. Test script sync_mobile_ios.
+App mobile chỉ được kiểm thử ở đây (local); GitHub CI (ci.yml) bỏ qua frontend/mobile, Codemagic chỉ build iOS.
 """
 from pathlib import Path
 import shutil
@@ -60,7 +61,8 @@ def main() -> int:
         ("1. Flutter Pub Get", [FLUTTER_BIN, "pub", "get"], MOBILE_DIR),
         ("2. Flutter Analyze (Lint & Typecheck)", [FLUTTER_BIN, "analyze"], MOBILE_DIR),
         ("3. Flutter Unit & Widget Tests", [FLUTTER_BIN, "test"], MOBILE_DIR),
-        ("4. Backend CI Regression Check", [sys.executable, "scripts/verify_ci.py"], REPO_DIR),
+        ("4. Sync Script Test", [sys.executable, "-m", "pytest", "tests/test_sync_mobile_ios.py", "-q",
+                                 "-p", "no:cacheprovider"], REPO_DIR),
     ]
 
     for name, cmd, cwd in steps:
@@ -68,7 +70,7 @@ def main() -> int:
             print("\n🚨 DỪNG LẠI: Phát hiện lỗi kiểm thử! KHÔNG ĐƯỢC push để tránh báo đỏ CI!\n")
             return 1
 
-    print("\n🎉 HOÀN TẤT: Toàn bộ kiểm thử Mobile iOS & Backend đều XANH 100%! Bạn có thể yên tâm commit và git push.\n")
+    print("\n🎉 HOÀN TẤT: Toàn bộ kiểm thử Mobile đều XANH 100%! Bạn có thể yên tâm commit và git push.\n")
     return 0
 
 
