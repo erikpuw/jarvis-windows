@@ -220,7 +220,7 @@ class _SettingsShellState extends State<SettingsShell>
             bottom: bottom,
             child: Container(
               decoration: BoxDecoration(
-                color: JTokens.bg,
+                color: JTokens.page,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: JTokens.border),
               ),
@@ -238,7 +238,7 @@ class _SettingsShellState extends State<SettingsShell>
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: JTokens.bg,
+                          color: JTokens.page,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: JTokens.border),
                         ),

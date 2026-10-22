@@ -34,7 +34,7 @@ class PageScaffold extends StatelessWidget {
         Container(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
           decoration: const BoxDecoration(
-            color: JTokens.bg,
+            color: JTokens.page,
             border: Border(bottom: BorderSide(color: JTokens.border)),
           ),
           child: Column(

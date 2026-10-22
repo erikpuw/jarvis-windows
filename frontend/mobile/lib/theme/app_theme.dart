@@ -37,7 +37,7 @@ ThemeData buildAppTheme() {
   final base = ThemeData(
     brightness: Brightness.dark,
     useMaterial3: true,
-    scaffoldBackgroundColor: JTokens.bg,
+    scaffoldBackgroundColor: JTokens.page,
     colorScheme: const ColorScheme.dark(
       primary: JTokens.accent,
       secondary: JTokens.cyan,

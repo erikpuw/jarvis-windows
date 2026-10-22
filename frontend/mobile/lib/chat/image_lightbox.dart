@@ -37,7 +37,7 @@ class ImageResult extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    border: Border.all(color: const Color(0x1FFFFFFF)),
+                    border: Border.all(color: const Color(0xFF262626)), // .image-result-preview
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Image.network(
@@ -104,10 +104,26 @@ Future<void> showImageLightbox(BuildContext context, String url) {
       onTap: () => Navigator.of(ctx).pop(),
       child: InteractiveViewer(
         maxScale: 5,
-        child: Image.network(
-          url,
-          fit: BoxFit.contain,
-          errorBuilder: (_, _, _) => const SizedBox.shrink(),
+        child: Center(
+          // #lightbox-img: radius 16, 1px white 10%, deep shadow
+          child: Container(
+            margin: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0x1AFFFFFF)),
+              boxShadow: const [
+                BoxShadow(color: Color(0xE6000000), blurRadius: 60, offset: Offset(0, 25)),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(15),
+              child: Image.network(
+                url,
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              ),
+            ),
+          ),
         ),
       ),
     ),

@@ -294,7 +294,10 @@ Map<String, dynamic> historyJson() {
 }
 
 Map<String, dynamic> sessionsJson() {
-  final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+  // noon today, not "now": an hour before a run just after midnight is already yesterday ("Hôm nay" flipped to "Hôm qua")
+  final d = DateTime.now();
+  final now =
+      DateTime(d.year, d.month, d.day, 12).millisecondsSinceEpoch ~/ 1000;
   return {
     'success': true,
     'sessions': [
