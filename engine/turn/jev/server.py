@@ -1,7 +1,7 @@
 """
 engine/turn/jev/server.py — Standalone Jev-Style Router Microservice (Port 8083)
 
-Cung cấp REST API siêu nhẹ (~30ms) cho mô hình Jev-Style-0.8B Decision GGUF:
+Cung cấp REST API (CPU ~0.9s, GPU ~40ms) cho mô hình Jev-Style-0.8B Decision GGUF:
 - GET  /health   : Kiểm tra trạng thái và thiết bị (CPU/GPU)
 - POST /classify : Phân loại nhanh giữa chat thường và tool request
 - POST /decide   : Phân loại theo tùy chọn tùy biến
@@ -39,7 +39,7 @@ _OPTIONS = {
 }
 
 _ENGINE: Optional[JevStyleDecisionGGUF] = None
-_DEVICE = "GPU"
+_DEVICE = "CPU"
 _MODEL_NAME = "unknown"
 
 
@@ -79,7 +79,7 @@ def find_jev_gguf() -> Optional[Path]:
     return None
 
 
-def init_engine(use_cpu: bool = False) -> JevStyleDecisionGGUF:
+def init_engine(use_cpu: bool = True) -> JevStyleDecisionGGUF:
     global _ENGINE, _DEVICE, _MODEL_NAME
     if _ENGINE is not None:
         return _ENGINE
@@ -114,7 +114,7 @@ def close_engine():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    use_cpu = os.getenv("JEV_USE_CPU", "0").strip().lower() in ("1", "true", "yes")
+    use_cpu = os.getenv("JEV_USE_CPU", "1").strip().lower() in ("1", "true", "yes")
     try:
         init_engine(use_cpu=use_cpu)
         print(f"{_TAG_JEV} {_GREEN}Khởi tạo thành công {_MODEL_NAME} trên {_DEVICE} (thường trực RAM/VRAM){_RESET}", flush=True)

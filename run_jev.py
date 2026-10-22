@@ -7,8 +7,8 @@ Khi chạy riêng bằng lệnh này, server.py chính sẽ tự động kết n
 không phải khởi động lại hay nạp lại mô hình mỗi lần bật/tắt hoặc reload server.py.
 
 Cách dùng:
-    python run_jev.py             # Mặc định chạy trên GPU (VRAM ~505MB, trễ ~30ms)
-    python run_jev.py --cpu       # Chạy thuần CPU 100% (VRAM 0MB, trễ ~50ms)
+    python run_jev.py             # Mặc định chạy CPU (VRAM 0MB, trễ ~0.9s); JEV_USE_CPU=0 để chạy GPU (~505MB VRAM, ~40ms)
+    python run_jev.py --cpu       # Ép chạy CPU kể cả khi JEV_USE_CPU=0
     python run_jev.py --port 8083 # Chỉ định port tùy chọn
 """
 
@@ -44,7 +44,7 @@ def main():
     if args.cpu:
         os.environ["JEV_USE_CPU"] = "1"
 
-    use_cpu = os.getenv("JEV_USE_CPU", "0").strip().lower() in ("1", "true", "yes")
+    use_cpu = os.getenv("JEV_USE_CPU", "1").strip().lower() in ("1", "true", "yes")
     device_str = "CPU 100% (Tiết kiệm VRAM)" if use_cpu else "GPU / CUDA (~505MB VRAM)"
 
     # Dọn dẹp tiến trình kẹt (nếu có) trên port trước khi bind

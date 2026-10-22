@@ -1,6 +1,6 @@
 """Fast-Path Gate sử dụng mô hình Jev-Style-0.8B-Decision-v3 (GGUF).
 
-Phân loại siêu tốc (~30ms) giữa Chat thông thường và Yêu cầu Tool.
+Phân loại nhanh (CPU ~0.9s, GPU ~40ms) giữa Chat thông thường và Yêu cầu Tool.
 Nếu là Chat thông thường với độ tin cậy cao (>= 0.85), bỏ qua vòng lặp chọn tool
 nặng nề của Big LLM (~3.5s) để nhảy thẳng vào vòng sinh câu trả lời.
 
@@ -118,7 +118,7 @@ def _get_engine():
     with _LOCK:
         if _ENGINE is not None:
             return _ENGINE
-        use_cpu = os.getenv("JEV_USE_CPU", "0").strip().lower() in ("1", "true", "yes")
+        use_cpu = os.getenv("JEV_USE_CPU", "1").strip().lower() in ("1", "true", "yes")
         binary = find_jev_binary(use_cpu=use_cpu)
         gguf = find_jev_gguf()
         if not (binary and gguf and DEFAULT_MODEL_DIR.exists()):

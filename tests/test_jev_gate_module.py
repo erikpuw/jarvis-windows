@@ -1,11 +1,14 @@
 """Kiểm tra hoạt động của module Jev Gate (chạy live khi có model/server, skip khi ở CI)."""
+import os
+from unittest.mock import MagicMock
+
 import pytest
 
 from engine.turn import jev_gate
 
 
 @pytest.mark.skipif(
-    not jev_gate.is_available(),
+    os.getenv("JEV_LIVE_TESTS") != "1" or not jev_gate.is_available(),
     reason="Jev model hoặc standalone server không có sẵn trong môi trường này (CI)",
 )
 def test_jev_gate_module_live():
@@ -20,3 +23,20 @@ def test_jev_gate_module_live():
     assert is_chat is False
 
     jev_gate.close()
+
+
+def test_local_engine_defaults_to_cpu(monkeypatch, tmp_path):
+    """Không đặt JEV_USE_CPU thì engine local chạy CPU (n_gpu_layers=0), dành VRAM cho LLM/TTS."""
+    jev_gate.close()
+    monkeypatch.delenv("JEV_USE_CPU", raising=False)
+    picked = {}
+    monkeypatch.setattr(jev_gate, "find_jev_binary", lambda use_cpu=False: picked.setdefault("cpu", use_cpu) and tmp_path)
+    monkeypatch.setattr(jev_gate, "find_jev_gguf", lambda: tmp_path)
+    constructor = MagicMock()
+    monkeypatch.setattr(jev_gate, "JevStyleDecisionGGUF", constructor)
+    try:
+        assert jev_gate._get_engine() is constructor.return_value
+        assert picked["cpu"] is True
+        assert constructor.call_args.kwargs["n_gpu_layers"] == 0
+    finally:
+        jev_gate._ENGINE = None

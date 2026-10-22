@@ -35,6 +35,14 @@ Hệ thống được thiết kế theo kiến trúc **định tuyến công c�
 - **Jev Fast-Path Chat Bypass**: Mô hình quyết định chuyên biệt `Jev-Style-0.8B-Decision-v3` (GGUF) chạy thường trực trên cổng 8083 hoặc in-process. Với các câu giao tiếp thông thường (chào hỏi, tâm sự, bách khoa), Jev kích hoạt Fast-path bỏ qua vòng chọn tool của LLM chính, giảm ngay ~3.5 giây độ trễ và trả lời trực tiếp.
 - **Lối tắt linh hoạt**: Hỗ trợ gọi nhanh công cụ bằng tiền tố `/tên_tool`, nhắc lệnh `@tên_tool` hoặc phân tích nhanh tệp đính kèm.
 
+#### JEV trên CPU
+
+JEV mặc định chạy CPU (không đặt `JEV_USE_CPU` = CPU), dành VRAM cho LLM và TTS. Đặt `JEV_USE_CPU=0` để chạy GPU. Đo trên máy dev: CPU ~0,85 giây/câu, GPU ~40 ms/câu. Model và ngưỡng chat bypass 0,85 không đổi.
+
+Gate ưu tiên dịch vụ `run_jev.py` (cổng 8083); dịch vụ không phản hồi thì nạp model trong tiến trình. Lỗi phân loại luôn trả về router thường, không bypass.
+
+Kiểm thử không nạp model: `rtk python -m pytest -q tests/test_jev_gate.py tests/test_jev_gate_module.py tests/test_jev_fastpath_integration.py tests/test_jev_scoring_analysis.py tests/turn/test_jev.py`. Các test live chỉ chạy khi đặt `JEV_LIVE_TESTS=1`. Thay đổi source chỉ có hiệu lực với tiến trình đã khởi động lại.
+
 ### 2. Bảo mật đa người dùng & Phân quyền chặt chẽ (RBAC)
 - **Tách biệt Admin & Member**: Bảng `users` trong cơ sở dữ liệu định danh từng người dùng.
 - **MCP Gmail Admin-only**: Chặn truy cập hòm thư Gmail của Admin ở mọi tầng (MCP Hub, Tool Registry, Tool Schema, Slash Commands, REST API) đối với tài khoản Member.
