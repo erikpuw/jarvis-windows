@@ -256,6 +256,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final width = narrow ? size.width - 16 : math.min(800.0, size.width - 28);
     // #command-container { bottom: var(--container-bottom) } - the web adds no safe-area inset, so the bar sits 18px (16 when narrow) off the very bottom
     final bottom = narrow ? 16.0 : 18.0;
+    // style.css phone .media-player: top 56px, width calc(100% - 24px), 16:9. main.ts initChatAutoCeiling: the chat stops 10px
+    // under it (otherwise under the island).
+    final media = chat.media;
+    final mediaTop = 56 + pad.top;
+    final mediaWidth = size.width - 24;
+    final mediaHeight = mediaWidth * 9 / 16;
+    final chatTop = media == null ? 44 + pad.top : mediaTop + mediaHeight + 10;
     return Scaffold(
       backgroundColor: Colors.black,
       body: Listener(
@@ -266,73 +273,69 @@ class _HomeScreenState extends State<HomeScreen> {
           onTap: _focus.unfocus,
           child: Stack(
             children: [
-              // an opaque full-screen player covers these: no frame is worth drawing under it
               Positioned.fill(
-                child: TickerMode(
-                  enabled: chat.media == null,
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 400),
-                          child: chat.welcomeVisible
-                              ? IgnorePointer(
-                                  child: WelcomeView(data: chat.welcome),
-                                )
-                              : const SizedBox.shrink(),
-                        ),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 400),
+                        child: chat.welcomeVisible
+                            ? IgnorePointer(
+                                child: WelcomeView(data: chat.welcome),
+                              )
+                            : const SizedBox.shrink(),
                       ),
-                      // #jarvis-label: bottom 2px, centred, under the chat column (z-label 20 < z-chat 30)
-                      const Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 2,
-                        child: IgnorePointer(
-                          child: Text(
-                            'JARVIS',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Color(0x337BD3FC),
-                              fontSize: JTokens.fsSmall,
-                              letterSpacing: 4,
-                              fontWeight: FontWeight.w400,
-                              height: 1.17, // line-height: normal (~15.2px at 13px, the box web puts at 2-17px)
-                            ),
+                    ),
+                    // #jarvis-label: bottom 2px, centred, under the chat column (z-label 20 < z-chat 30)
+                    const Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 2,
+                      child: IgnorePointer(
+                        child: Text(
+                          'JARVIS',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Color(0x337BD3FC),
+                            fontSize: JTokens.fsSmall,
+                            letterSpacing: 4,
+                            fontWeight: FontWeight.w400,
+                            height: 1.17, // line-height: normal (~15.2px at 13px, the box web puts at 2-17px)
                           ),
                         ),
                       ),
-                      Positioned.fill(
-                        child: Align(
-                          alignment: Alignment.bottomCenter,
-                          child: Padding(
-                            padding: EdgeInsets.only(
-                              bottom: bottom,
-                              top: 44 + pad.top,
-                            ),
-                            child: SizedBox(width: width, child: _column(chat)),
+                    ),
+                    Positioned.fill(
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            bottom: bottom,
+                            top: chatTop,
                           ),
+                          child: SizedBox(width: width, child: _column(chat)),
                         ),
                       ),
-                      Positioned(
-                        top: 8 + pad.top,
-                        left: 0,
-                        right: 0,
-                        child: Center(
-                          child: Island(
-                            steps: chat.flow.steps,
-                            error: chat.error,
-                            errorSeq: chat.errorSeq,
-                          ),
+                    ),
+                    Positioned(
+                      top: 8 + pad.top,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Island(
+                          steps: chat.flow.steps,
+                          error: chat.error,
+                          errorSeq: chat.errorSeq,
                         ),
                       ),
-                      Positioned.fill(
-                        child: ReaderLayer(
-                          card: chat.reader,
-                          onClose: chat.closeReader,
-                        ),
+                    ),
+                    Positioned.fill(
+                      child: ReaderLayer(
+                        card: chat.reader,
+                        onClose: chat.closeReader,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
               ControlsCapsule(
@@ -344,13 +347,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 onToggleBar: _toggleBar,
                 onSettings: () => Navigator.pushNamed(context, '/settings'),
               ),
-              if (chat.media != null)
-                Positioned.fill(
+              if (media != null)
+                Positioned(
+                  top: mediaTop,
+                  left: 12,
+                  width: mediaWidth,
+                  height: mediaHeight,
                   child:
-                      widget.mediaBuilder?.call(chat.media!) ??
+                      widget.mediaBuilder?.call(media) ??
                       MediaPlayer(
-                        key: ValueKey(chat.media!.embedUrl),
-                        media: chat.media!,
+                        key: ValueKey(media.embedUrl),
+                        media: media,
                         onClose: chat.closeMedia,
                       ),
                 ),

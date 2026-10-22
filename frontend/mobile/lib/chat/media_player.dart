@@ -41,48 +41,80 @@ class MediaPlayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pad = MediaQuery.paddingOf(context);
     final url = media.embedUrl;
     final title = media.title.isNotEmpty ? media.title : media.query;
-    return ColoredBox(
-      color: Colors.black,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            top: pad.top,
-            child: webBuilder?.call(url) ?? _WebPage(url: url),
-          ),
-          Positioned(
-            top: 10 + pad.top,
-            left: 12,
-            right: 56,
-            child: Text(
-              (title.isEmpty ? 'NOW PLAYING' : title).toUpperCase(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: JTokens.fsLabel,
-                letterSpacing: 2,
-                color: JTokens.muted,
-              ),
-            ),
-          ),
-          Positioned(
-            top: 4 + pad.top,
-            right: 4,
-            child: IconButton(
-              key: const ValueKey('media-close'),
-              onPressed: onClose,
-              // .media-player-close: #18181b, 1px white 12%, #a1a1aa, radius 8
-              style: IconButton.styleFrom(
-                backgroundColor: JTokens.surface2,
-                side: const BorderSide(color: Color(0x1FFFFFFF)),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              icon: const Icon(Icons.close, color: JTokens.muted),
-            ),
+    // .media-player: #121214, 1px white 8%, radius 16, deep shadow; the parent gives it the 16:9 box
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: JTokens.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JTokens.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0xD9000000),
+            blurRadius: 48,
+            spreadRadius: -12,
+            offset: Offset(0, 24),
           ),
         ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: Stack(
+          children: [
+            Positioned.fill(child: webBuilder?.call(url) ?? _WebPage(url: url)),
+            // main.ts openMediaPlayer: the title over the video, top 10 left 12, cyan 50%
+            Positioned(
+              top: 10,
+              left: 12,
+              right: 56,
+              child: IgnorePointer(
+                child: Text(
+                  (title.isEmpty ? 'NOW PLAYING' : title).toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: JTokens.fsLabel,
+                    letterSpacing: 2,
+                    color: Color(0x8000D4FF),
+                  ),
+                ),
+              ),
+            ),
+            // .media-player-close: top 8 right 10, #18181b, 1px white 12%, #a1a1aa, radius 8, 32px tall
+            Positioned(
+              top: 8,
+              right: 10,
+              child: GestureDetector(
+                key: const ValueKey('media-close'),
+                onTap: onClose,
+                child: Container(
+                  constraints: const BoxConstraints(
+                    minHeight: 32,
+                    minWidth: 32,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: JTokens.surface2,
+                    border: Border.all(color: const Color(0x1FFFFFFF)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    '✕',
+                    style: TextStyle(
+                      fontSize: JTokens.fsUi,
+                      color: JTokens.muted,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -110,7 +142,10 @@ class _WebPageState extends State<_WebPage> {
     final c = WebViewController.fromPlatformCreationParams(params)
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.black)
-      ..loadHtmlString(MediaPlayer.embedPage(widget.url), baseUrl: MediaPlayer.pageOrigin);
+      ..loadHtmlString(
+        MediaPlayer.embedPage(widget.url),
+        baseUrl: MediaPlayer.pageOrigin,
+      );
     final p = c.platform;
     if (p is AndroidWebViewController) {
       p.setMediaPlaybackRequiresUserGesture(false);
