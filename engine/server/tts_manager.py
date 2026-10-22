@@ -2,6 +2,7 @@ import asyncio
 import os
 import base64
 import logging
+import re
 import httpx
 from typing import Optional
 
@@ -147,20 +148,21 @@ async def synthesize_speech(text: str, ws=None, voice: Optional[str] = None) -> 
 def _resolve_user_voice(ws=None, explicit_voice: Optional[str] = None, engine: Optional[str] = None) -> Optional[str]:
     """Xác định giọng đọc (TTS voice) theo thứ tự ưu tiên:
     1. Giọng truyền trực tiếp (explicit_voice)
-    2. Giọng lưu trên WebSocket connection (ws.tts_voice_id hoặc tra từ ws.user_id)
+    2. Giọng mới nhất trong DB theo ws.user_id (không dùng bản cũ trên kết nối)
     3. Tra cứu tts_voice_id của get_current_user_id() trong DB
     4. Mặc định từ biến môi trường: VIENEU_VOICE_ID (vieneu) hoặc TTS_LOCAL_MODEL (edge)
+    Giọng lưu của engine khác bị bỏ qua; explicit_voice luôn được ưu tiên.
     """
     if explicit_voice and explicit_voice.strip():
         return explicit_voice.strip()
 
     uid = None
+    selected = ""
     if ws is not None:
-        if getattr(ws, "tts_voice_id", None):
-            return str(ws.tts_voice_id).strip()
+        selected = str(getattr(ws, "tts_voice_id", "") or "").strip()
         uid = getattr(ws, "user_id", None)
 
-    if not uid:
+    if not uid and not selected:
         try:
             from engine.core.session_context import get_current_user_id
             uid = get_current_user_id()
@@ -172,10 +174,15 @@ def _resolve_user_voice(ws=None, explicit_voice: Optional[str] = None, engine: O
             from engine.core.memory import _get_db
             with _get_db() as conn:
                 row = conn.execute("SELECT tts_voice_id FROM users WHERE id = ?", (uid,)).fetchone()
-                if row and row["tts_voice_id"] and row["tts_voice_id"].strip():
-                    return row["tts_voice_id"].strip()
+                if row:
+                    selected = (row["tts_voice_id"] or "").strip()
         except Exception:
             pass
+
+    if selected:
+        is_edge_voice = re.fullmatch(r"[a-z]{2,3}-[A-Z]{2}-.+Neural", selected) is not None
+        if engine not in {"edge", "vieneu"} or is_edge_voice == (engine == "edge"):
+            return selected
 
     if engine == "edge":
         return os.getenv("TTS_LOCAL_MODEL", "vi-VN-NamMinhNeural").strip()
