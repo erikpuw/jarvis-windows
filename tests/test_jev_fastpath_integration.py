@@ -1,4 +1,5 @@
 """Integration test cho Fast-path Jev Gate trong engine.turn.entry."""
+import threading
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -64,3 +65,18 @@ async def test_jev_unavailable_fallback():
         mock_loop.assert_awaited_once()
         _, kwargs = mock_loop.call_args
         assert kwargs.get("skip_tool_round") is not True
+
+
+@pytest.mark.asyncio
+async def test_health_check_runs_outside_event_loop():
+    loop_thread = threading.get_ident()
+    checked = []
+
+    def available():
+        checked.append(threading.get_ident())
+        return False
+
+    with patch("engine.turn.jev_gate.is_available", side_effect=available), \
+         patch("engine.turn.loop.run_loop", new_callable=AsyncMock):
+        await entry.handle_turn("Xin chào bạn", FakeContext())
+    assert checked and checked[0] != loop_thread
