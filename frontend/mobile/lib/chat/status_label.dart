@@ -260,32 +260,53 @@ class _StatusRowState extends State<StatusRow> with TickerProviderStateMixin {
 
   /// The label (with its 6px gap) collapses and rolls to the left: going away width/opacity/x take 0.4 s (x ease-in);
   /// coming back width takes 0.4 s of the 0.6 s, opacity 0.5 s, x the whole 0.6 s (ease-out).
+  /// The 6px gap sits outside ClipRect so the clip boundary is always strictly past the orb canvas (never overlaps).
   Widget _rolling(Widget child) => AnimatedBuilder(
     animation: _roll,
     builder: (context, child) {
       final back = _roll.status == AnimationStatus.reverse;
-      final shown = 1 - _roll.value;
-      final width = _width.transform(
-        back ? (shown * 1.5).clamp(0.0, 1.0) : shown,
-      );
-      final opacity = Curves.ease.transform(
-        back ? (shown * 1.2).clamp(0.0, 1.0) : shown,
-      );
-      final x = (back ? _easeOut : _easeIn).transform(shown);
+      final double width;
+      final double opacity;
+      final double xOffset;
+
+      if (!back) {
+        // Going quiet (400 ms, style.css #status-row.quiet #status-text):
+        // opacity: whole text fades out uniformly with Curves.ease (1 - ease(t))
+        // transform: translateX(-16px) with ease-in Cubic(0.64, 0, 0.78, 0)
+        // width: collapses with Cubic(0.3, 0.7, 0.2, 1)
+        final t = _roll.value;
+        opacity = (1.0 - Curves.ease.transform(t)).clamp(0.0, 1.0);
+        xOffset = -16.0 * _easeIn.transform(t);
+        width = (1.0 - _width.transform(t)).clamp(0.0, 1.0);
+      } else {
+        // Waking up (600 ms, style.css #status-text):
+        // opacity: fades in over 500 ms
+        // transform: slides back from -16px with ease-out Cubic(0.22, 1, 0.36, 1)
+        // width: expands over 400 ms with Cubic(0.3, 0.7, 0.2, 1)
+        final u = 1.0 - _roll.value;
+        final opProgress = (u * 600 / 500).clamp(0.0, 1.0);
+        opacity = Curves.ease.transform(opProgress);
+        xOffset = -16.0 * (1.0 - _easeOut.transform(u));
+        final wProgress = (u * 600 / 400).clamp(0.0, 1.0);
+        width = _width.transform(wProgress);
+      }
+
       return Opacity(
         opacity: opacity,
-        child: Transform.translate(
-          key: const Key('status-quiet'),
-          offset: Offset(-16 * (1 - x), 0),
-          // clipped only while it collapses, so the sliding ghost may leave the row's box
-          child: ClipRect(
-            clipBehavior: shown >= 1 ? Clip.none : Clip.hardEdge,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              widthFactor: width,
-              child: child,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(width: 6 * width),
+            Transform.translate(
+              key: const Key('status-quiet'),
+              offset: Offset(xOffset, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                widthFactor: width,
+                child: child,
+              ),
             ),
-          ),
+          ],
         ),
       );
     },
@@ -315,12 +336,9 @@ class _StatusRowState extends State<StatusRow> with TickerProviderStateMixin {
           ),
         ),
         _rolling(
-          Padding(
-            padding: const EdgeInsets.only(left: 6),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 280),
-              child: _label(),
-            ),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 280),
+            child: _label(),
           ),
         ),
       ],

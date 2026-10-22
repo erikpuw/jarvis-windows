@@ -200,7 +200,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             border: Border.all(color: const Color(0x4DF87171)),
                           ),
                           child: Text(
-                            auth.error!,
+                            auth.error == 'Failed to fetch'
+                                ? 'Vui lòng kiểm tra lại kết nối mạng hoặc Tailscale.'
+                                : auth.error!,
                             style: const TextStyle(color: Color(0xFFF87171), fontSize: 13),
                           ),
                         ),

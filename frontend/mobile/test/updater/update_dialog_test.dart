@@ -26,9 +26,6 @@ class FakeShorebirdUpdater implements ShorebirdUpdater {
 
   @override
   Future<Patch?> readNextPatch() async => null;
-
-  @override
-  Future<String?> getReleaseVersion() async => '1.0.0+1';
 }
 
 void main() {

@@ -334,5 +334,39 @@ void main() {
       expect(find.text('Sai mật khẩu'), findsOneWidget);
       expect(auth.isAuthenticated, isFalse);
     });
+
+    testWidgets('shows connection error when login fails to connect', (tester) async {
+      final mockClient = MockClient((req) async {
+        throw http.ClientException('Failed to connect');
+      });
+
+      final api = ApiClient(cfg, client: mockClient);
+      final auth = AuthController(api);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: MultiProvider(
+            providers: [
+              ChangeNotifierProvider.value(value: auth),
+              Provider.value(value: api),
+            ],
+            child: const LoginScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Enter name and submit to trigger ClientException
+      await tester.enterText(find.byType(TextField), 'Erik');
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Tiếp tục'));
+      await tester.pumpAndSettle();
+
+      // Verify friendly message
+      expect(
+        find.text('Vui lòng kiểm tra lại kết nối mạng hoặc Tailscale.'),
+        findsOneWidget,
+      );
+    });
   });
 }
