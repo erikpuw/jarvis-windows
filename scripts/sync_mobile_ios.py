@@ -2,7 +2,9 @@
 
 Đặc điểm an toàn:
 - KHÓA BẢO VỆ: Chỉ cho phép chạy trên nhánh 'feat/mobile-ios', TUYỆT ĐỐI không chạm vào 'main'.
-- Tự động bỏ qua rác build: .dart_tool/, build/, .gradle/, .idea/, *.iml, ephemeral/, android/
+- Chỉ chép file mà git ở nguồn đang theo dõi (cả ios/ lẫn android/), nên rác build và file sinh tự động
+  (.dart_tool/, build/, .gradle/, ephemeral/, *.iml, local.properties...) không bao giờ bị chép sang.
+- File đích đang được git theo dõi nhưng đã bị xóa ở nguồn sẽ bị xóa theo (test/mã cũ không nằm lại).
 - Chỉ cập nhật những file thực sự có thay đổi nội dung.
 
 Cách dùng:
@@ -19,19 +21,6 @@ TARGET_BRANCH = "feat/mobile-ios"
 PRIMARY_SOURCE = Path(r"E:\workspace\jarvis-mobile\mobile")
 FALLBACK_SOURCE = Path(r"E:\workspace\jarvis-mobile")
 TARGET_DIR = Path(r"E:\workspace\jarvis-windows\frontend\mobile")
-
-EXCLUDE_DIRS = {
-    ".git", ".dart_tool", "build", ".gradle", ".idea", ".vscode",
-    "ephemeral", "Pods", ".symlinks", "android"
-}
-
-EXCLUDE_EXTENSIONS = {
-    ".iml", ".DS_Store"
-}
-
-EXCLUDE_FILES = {
-    ".flutter-plugins-dependencies"
-}
 
 
 def verify_branch() -> bool:
@@ -59,69 +48,67 @@ def resolve_source() -> Path | None:
     return None
 
 
-def should_skip(rel_path: Path) -> bool:
-    parts = set(rel_path.parts)
-    if parts & EXCLUDE_DIRS:
-        return True
-    if rel_path.suffix in EXCLUDE_EXTENSIONS:
-        return True
-    if rel_path.name in EXCLUDE_FILES:
-        return True
-    return False
+def tracked_files(directory: Path) -> set[str]:
+    """Đường dẫn (tương đối với directory) của các file git đang theo dõi trong directory."""
+    out = subprocess.check_output(["git", "ls-files", "-z"], cwd=directory, text=True, encoding="utf-8")
+    return {p for p in out.split("\0") if p}
 
 
-def sync(dry_run: bool = False) -> int:
+def sync(source_dir: Path, target_dir: Path, dry_run: bool = False) -> int:
+    print(f"📦 Nguồn: {source_dir}")
+    print(f"🎯 Đích:  {target_dir}\n")
+
+    source_files = tracked_files(source_dir)
+    copied = 0
+    for rel in sorted(source_files):
+        src_path = source_dir / rel
+        if not src_path.is_file():  # đã xóa ở nguồn nhưng chưa commit
+            continue
+        dst_path = target_dir / rel
+        if dst_path.is_file() and src_path.read_bytes() == dst_path.read_bytes():
+            continue
+        if dry_run:
+            print(f"[DRY-RUN] Sẽ chép: {rel}")
+        else:
+            dst_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_path, dst_path)
+            print(f"Copied: {rel}")
+        copied += 1
+
+    removed = 0
+    for rel in sorted(tracked_files(target_dir) - source_files):
+        dst_path = target_dir / rel
+        if not dst_path.is_file():
+            continue
+        if dry_run:
+            print(f"[DRY-RUN] Sẽ xóa: {rel}")
+        else:
+            dst_path.unlink()
+            print(f"Removed: {rel}")
+        removed += 1
+
+    action = "Sẽ" if dry_run else "Đã"
+    print(f"\n✨ {action} chép {copied} tệp, xóa {removed} tệp.")
+    if not dry_run:
+        print("👉 Bước tiếp theo: chạy `python scripts/verify_mobile_ios.py` để chạy toàn bộ test iOS trước khi push!\n")
+    return 0
+
+
+def main(dry_run: bool) -> int:
     if not verify_branch():
         return 1
-
     source_dir = resolve_source()
     if not source_dir:
         print(f"❌ Không tìm thấy mã nguồn Flutter tại {PRIMARY_SOURCE} hoặc {FALLBACK_SOURCE}")
         return 1
-
     if not TARGET_DIR.exists():
         print(f"❌ Không tìm thấy thư mục đích: {TARGET_DIR}")
         return 1
-
-    print(f"📦 Nguồn: {source_dir}")
-    print(f"🎯 Đích:  {TARGET_DIR}\n")
-
-    copied = 0
-    skipped = 0
-
-    for src_path in source_dir.rglob("*"):
-        if src_path.is_dir():
-            continue
-        rel_path = src_path.relative_to(source_dir)
-        if should_skip(rel_path):
-            skipped += 1
-            continue
-
-        dst_path = TARGET_DIR / rel_path
-        if dst_path.exists():
-            try:
-                if src_path.stat().st_size == dst_path.stat().st_size and src_path.read_bytes() == dst_path.read_bytes():
-                    continue
-            except Exception:
-                pass
-
-        if dry_run:
-            print(f"[DRY-RUN] Sẽ chép: {rel_path}")
-        else:
-            dst_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src_path, dst_path)
-            print(f"Copied: {rel_path}")
-        copied += 1
-
-    action = "Sẽ chép" if dry_run else "Đã đồng bộ"
-    print(f"\n✨ {action} {copied} tệp (bỏ qua {skipped} tệp rác/build).")
-    if not dry_run:
-        print("👉 Bước tiếp theo: chạy `python scripts/verify_mobile_ios.py` để chạy toàn bộ test iOS trước khi push!\n")
-    return 0
+    return sync(source_dir, TARGET_DIR, dry_run=dry_run)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Đồng bộ riêng nhánh feat/mobile-ios từ jarvis-mobile")
     parser.add_argument("--dry-run", action="store_true", help="Chỉ xem trước, không ghi file")
     args = parser.parse_args()
-    sys.exit(sync(dry_run=args.dry_run))
+    sys.exit(main(dry_run=args.dry_run))
