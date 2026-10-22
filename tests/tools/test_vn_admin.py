@@ -3,8 +3,15 @@ import asyncio
 
 import pytest
 
+from pathlib import Path
+
 from engine.tools import registry as R
 from engine.tools.search_engine import handle_vietnam_data_query as lookup
+
+# Dữ liệu hành chính (data/ không đưa lên git): chỉ chạy nơi đã đặt units.json, CI bỏ qua
+pytestmark = pytest.mark.skipif(
+    not (Path(__file__).resolve().parents[2] / "data" / "vietnam_data" / "units.json").is_file(),
+    reason="thiếu data/vietnam_data/units.json")
 
 
 def ask(query, question=""):

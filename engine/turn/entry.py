@@ -96,7 +96,7 @@ async def handle_turn(text: str, ctx) -> str:
         if skill:
             return await loop.run_loop(clean, ctx, skill=skill)
         from engine.turn import jev_gate
-        if await asyncio.to_thread(jev_gate.is_available):
+        if jev_gate.is_available():
             is_chat, conf = await asyncio.to_thread(jev_gate.classify_chat, clean)
             if is_chat:
                 log.info("[TURN] Jev fast-path chat bypass (conf=%.1f%%)", conf * 100)

@@ -9,15 +9,14 @@ import math
 import os
 import sys
 from pathlib import Path
-
-import numpy as np
 import pytest
+import numpy as np
 
 WORKSPACE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(WORKSPACE))
 
 RUN_MODEL = Path(os.environ.get("RUN_MODEL_DIR", r"E:\Run_Model"))
-from engine.turn.jev_gate import _OPTIONS, DEFAULT_MODEL_DIR, find_jev_binary, find_jev_gguf
+from engine.turn.jev_gate import find_jev_binary, find_jev_gguf, DEFAULT_MODEL_DIR, _OPTIONS
 
 
 def test_jev_scoring_math_formula():
@@ -71,21 +70,20 @@ def test_jev_fastpath_threshold_logic():
 
 
 @pytest.mark.skipif(
-    os.getenv("JEV_LIVE_TESTS") != "1" or not find_jev_binary(use_cpu=True) or not find_jev_gguf() or not DEFAULT_MODEL_DIR.exists(),
+    not find_jev_binary() or not find_jev_gguf() or not DEFAULT_MODEL_DIR.exists(),
     reason="Jev binary hoặc weights GGUF không tồn tại (chạy trên CI hoặc thiếu model)"
 )
 def test_jev_actual_model_scoring_live():
     """Chạy trực tiếp mô hình JEV thật (nếu có model local) để kiểm tra các mẫu chuẩn."""
     from engine.turn.jev.jev_style_decision_gguf import JevStyleDecisionGGUF
 
-    binary = find_jev_binary(use_cpu=True)
+    binary = find_jev_binary()
     gguf = find_jev_gguf()
 
     engine = JevStyleDecisionGGUF(
         model_dir=str(DEFAULT_MODEL_DIR),
         gguf=str(gguf),
         binary=str(binary),
-        n_gpu_layers=0,
     )
 
     try:
