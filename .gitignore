@@ -16,13 +16,11 @@ __pycache__/
 .goosehints
 .agents/
 
-# Data (user-specific, generated at runtime)
+# Data (bỏ qua toàn bộ dữ liệu người dùng / chạy thử tại runtime, CHỈ GIỮ LẠI vietnam_data)
 *.db
-data/*.jsonl
-data/active_session.json
-data/.jarvis_output.txt
-data/traces/
-data/wiki/
+data/*
+!data/vietnam_data/
+!data/vietnam_data/**
 
 # Certificates
 *.pem
