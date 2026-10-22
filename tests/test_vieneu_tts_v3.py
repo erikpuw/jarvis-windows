@@ -94,6 +94,7 @@ def test_pcm_stream_skips_wav_header_and_keeps_samples_whole(monkeypatch):
         return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
     monkeypatch.setattr(tm, "get_tts_client", fake_client)
+    monkeypatch.setattr("engine.server.llm_server.check_stream_tts_server", lambda force=False: (True, "", 8082))  # không phụ thuộc server :8082 thật
 
     async def collect():
         return [x async for x in tm.stream_synthesize_pcm("xin chào")]
