@@ -26,7 +26,7 @@ TARGET_BRANCH = "feat/mobile-ios"
 PRIMARY_SOURCE = Path(r"E:\workspace\jarvis-mobile\mobile")
 FALLBACK_SOURCE = Path(r"E:\workspace\jarvis-mobile")
 TARGET_DIR = Path(r"E:\workspace\jarvis-windows\frontend\mobile")
-REPO_DIR = TARGET_DIR.parents[1]
+REPO_DIR = Path(__file__).resolve().parents[1]  # không lấy từ TARGET_DIR: path "E:\..." trên Linux (CI) chỉ có 1 phần
 GITHUB_URL = "https://github.com/erikpuw/jarvis-windows"
 
 
