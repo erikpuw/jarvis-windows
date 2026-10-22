@@ -43,8 +43,6 @@ def test_consolidate_keeps_newest_and_removes_older_duplicate(tmp_path=None):
 
 if __name__ == "__main__":
     test_vietnamese_key_keeps_letters_instead_of_underscores()
-    test_cap_rules_dedupes_and_limits()
     test_lexical_dedupe_catches_rephrased_and_keeps_distinct()
-    test_newest_entries_keeps_header_and_last_n()
     test_consolidate_keeps_newest_and_removes_older_duplicate()
     print("OK: learning key / rule cap tests passed")

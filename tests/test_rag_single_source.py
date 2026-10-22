@@ -8,7 +8,6 @@ import pytest
 import engine.core.rag_engine as rag_engine_mod
 import engine.core.rag_watcher as watcher_mod
 import engine.rag.runner as runner
-from types import SimpleNamespace
 
 from engine.turn.context import TurnContext
 

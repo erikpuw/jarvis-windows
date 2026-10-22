@@ -11,7 +11,6 @@ Hỗ trợ 2 chế độ:
 """
 import logging
 import os
-import sys
 import threading
 import time
 from pathlib import Path

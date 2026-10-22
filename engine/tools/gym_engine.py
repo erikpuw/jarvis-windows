@@ -3,9 +3,10 @@
 import json
 import logging
 import re
+import shutil
 import sqlite3
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 GYM_DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "gym"

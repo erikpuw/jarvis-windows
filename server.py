@@ -806,7 +806,7 @@ async def voice_handler(ws: WebSocket):
             ws.tts_voice_id = (u_row["tts_voice_id"] or "").strip() if u_row else ""
     except Exception:
         ws.tts_voice_id = ""
-    from engine.core.session_context import set_current_user_id, resolve_ws_session, set_session, resume_history
+    from engine.core.session_context import set_current_user_id
     set_current_user_id(ws_user_id)
 
     # Cô lập phiên: Nếu session_id yêu cầu đã thuộc về user khác, cấp phiên mới để không lộ tin nhắn
