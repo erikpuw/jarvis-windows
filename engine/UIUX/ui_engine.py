@@ -1493,7 +1493,7 @@ async def api_command_bar_skills():
 
 
 @router.get("/api/command-bar/context")
-async def api_command_bar_context():
+async def api_command_bar_context(request: Request):
     """Gợi ý @ (chế độ + tool, sinh từ registry) và tệp trong workspace cho ô nhập."""
     try:
         from engine.turn.entry import mention_list

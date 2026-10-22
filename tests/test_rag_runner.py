@@ -5,7 +5,6 @@ from types import SimpleNamespace
 import engine.core.rag_engine as rag_engine_mod
 import engine.rag.runner as runner
 from engine.rag.runner import parse
-from types import SimpleNamespace
 
 from engine.turn.context import TurnContext
 

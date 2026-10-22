@@ -235,7 +235,6 @@ def test_clean_document_text():
 
 
 if __name__ == "__main__":
-    test_retrieve_min_score_drops_irrelevant_chunks()
     test_process_document_indexes_and_hybrid_search_ranks_relevant_doc_first()
     test_persistent_engine_reloads_chunks_from_disk()
     test_remove_document_deletes_only_matching_chunks()

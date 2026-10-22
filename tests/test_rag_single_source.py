@@ -1,5 +1,6 @@
 """RAG gom về một nơi: thư mục watcher là nguồn duy nhất; `@rag lưu` chỉ copy tệp vào đó."""
 import asyncio
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -8,7 +9,6 @@ import pytest
 import engine.core.rag_engine as rag_engine_mod
 import engine.core.rag_watcher as watcher_mod
 import engine.rag.runner as runner
-from types import SimpleNamespace
 
 from engine.turn.context import TurnContext
 
@@ -113,7 +113,7 @@ def test_save_returns_document_summary_after_indexing(env):
     att = _att(env, "Food.pdf")
     dest = str((env.watch / "Food.pdf").resolve())
     env.mp.setattr(watcher_mod, "get_watch_stats", lambda: {"files": [{"file_path": dest, "chunks": 2}]})
-    env.rag.chunks = [{"file_path": dest.lower(), "content": "thực đơn"}, {"file_path": "khac.pdf", "content": "khác"},
+    env.rag.chunks = [{"file_path": os.path.normcase(dest), "content": "thực đơn"}, {"file_path": "khac.pdf", "content": "khác"},
                       {"file_path": dest, "content": "ngày 2"}]
     seen = {}
 
