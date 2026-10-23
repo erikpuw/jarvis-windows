@@ -13,7 +13,7 @@
 
 ## Phiên chat
 
-- Nút ngôi nhà ở góc trái mở ngăn kéo phiên, chia nhóm Hôm nay / Hôm qua / Cũ hơn. Chọn phiên để đọc lại và chat tiếp; **Phiên mới** mở chat trống kèm lớp chào.
+- Nút ngôi nhà ở góc trái mở ngăn kéo phiên, chia nhóm Hôm nay / Hôm qua / Cũ hơn. Chọn phiên để đọc lại và chat tiếp; **Phiên mới** mở chat trống kèm lớp chào. **Bảng điều khiển** mở từ đáy ngăn phiên; control chỉ giữ nút thanh nhập, TTS và mic.
 - ID phiên do server cấp, chỉ giữ trong bộ nhớ app. Socket nối lại dùng phiên đã xác nhận; phiên chỉ xuất hiện sau tin nhắn đầu tiên.
 - Khóa đổi phiên và tạo phiên mới khi LLM đang chạy, TTS đang đọc hoặc audio đang phát. **Bảng điều khiển** vẫn mở được.
 - **Nhật ký** chỉ dành cho admin, xem/xóa theo phiên, có tên phiên, chủ phiên và bộ lọc người dùng. Thành viên không thấy trang Nhật ký hoặc Prompts.

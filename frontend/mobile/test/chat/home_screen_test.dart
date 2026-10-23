@@ -331,26 +331,22 @@ void main() {
     );
   });
 
-  testWidgets('controls capsule opens, toggles TTS and opens settings', (
-    t,
-  ) async {
-    final h = await pumpHome(t);
-    await t.tap(byGlyph(menuGlyph));
-    await t.pump(const Duration(milliseconds: 400));
-    expect(byGlyph(xGlyph), findsOneWidget);
+  testWidgets(
+    'controls capsule toggles TTS without a duplicate Dashboard button',
+    (t) async {
+      final h = await pumpHome(t);
+      await t.tap(byGlyph(menuGlyph));
+      await t.pump(const Duration(milliseconds: 400));
+      expect(byGlyph(xGlyph), findsOneWidget);
 
-    await t.tap(byGlyph(volume2Glyph));
-    await t.pump(const Duration(milliseconds: 50));
-    expect(h.socket.sent.last, {'type': 'toggle_tts', 'enabled': false});
-    expect(byGlyph(volumeXGlyph), findsOneWidget);
+      await t.tap(byGlyph(volume2Glyph));
+      await t.pump(const Duration(milliseconds: 50));
+      expect(h.socket.sent.last, {'type': 'toggle_tts', 'enabled': false});
+      expect(byGlyph(volumeXGlyph), findsOneWidget);
 
-    await t.tap(find.byIcon(LucideIcons.settings));
-    await t.pump(
-      const Duration(milliseconds: 100),
-    ); // the route is built on this frame
-    await t.pump(const Duration(milliseconds: 400));
-    expect(find.text('settings page'), findsOneWidget);
-  });
+      expect(find.byIcon(LucideIcons.settings), findsNothing);
+    },
+  );
 
   testWidgets('hide button fades the chat and bar away', (t) async {
     await pumpHome(t);

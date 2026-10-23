@@ -350,7 +350,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 onMic: _toggleMic,
                 onTts: () => chat.setTts(!chat.ttsEnabled),
                 onToggleBar: _toggleBar,
-                onSettings: () => Navigator.pushNamed(context, '/settings'),
               ),
               Positioned(
                 left: 12 + pad.left,

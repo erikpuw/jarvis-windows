@@ -18,7 +18,6 @@ Widget _controls({bool tts = false, bool mic = false, bool bar = false}) =>
             barVisible: bar,
             onTts: () {},
             onToggleBar: () {},
-            onSettings: () {},
           ),
         ],
       ),
