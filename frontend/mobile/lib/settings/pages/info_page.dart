@@ -85,7 +85,11 @@ class _InfoPageState extends State<InfoPage> {
       return const SdEmpty('Đang nạp nội dung tài liệu README.md…');
     }
     final cfg = context.read<ServerConfig>();
-    return MarkdownView(text, resolveUrl: (u) => cfg.http(u).toString());
+    return MarkdownView(
+      text,
+      document: true, // README as on GitHub: consecutive lines are one paragraph (badges in a row)
+      resolveUrl: (u) => cfg.http(u).toString(),
+    );
   }
 
   @override

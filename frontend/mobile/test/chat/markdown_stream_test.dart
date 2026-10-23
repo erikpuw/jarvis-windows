@@ -141,4 +141,28 @@ void main() {
       ); // a new handler: rebuilt
     },
   );
+
+  testWidgets(
+    'document mode joins consecutive lines like GitHub; chat keeps a single newline as a break; code keeps its lines',
+    (t) async {
+      String shown() => t
+          .widgetList<RichText>(find.byType(RichText))
+          .map((r) => r.text.toPlainText())
+          .join('|');
+      const md = 'dòng một\ndòng hai\n\n```\ncode a\ncode b\n```';
+      Widget page({required bool document}) => MaterialApp(
+        home: Scaffold(
+          body: MarkdownView(md, resolveUrl: _id, document: document),
+        ),
+      );
+
+      await t.pumpWidget(page(document: false));
+      expect(shown(), contains('dòng một\ndòng hai'));
+
+      await t.pumpWidget(page(document: true));
+      // formatMarkdown(..., { document: true }) = marked breaks:false (web 16add0d): badges on separate lines sit in one row
+      expect(shown(), contains('dòng một dòng hai'));
+      expect(shown(), contains('code a\ncode b'));
+    },
+  );
 }
