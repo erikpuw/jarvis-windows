@@ -1,4 +1,4 @@
-// Nhật ký (pages.ts logsPage + logs.ts): chat history ("Toàn bộ" and "Phiên chat" -> reader), jarvis / security / tts logs.
+// logs.ts: session list, owner filter, reader and the three log files.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -9,7 +9,6 @@ import '../chat/fakes.dart';
 import 'fixtures.dart';
 
 Map<String, http.Response Function(http.Request)> _base() => {
-  'GET /api/history': (_) => jsonOk(historyJson()),
   'GET /api/logs': (_) => jsonOk(logsJson()),
   'GET /api/logs/security': (_) =>
       jsonOk({'success': true, 'logs': 'SEC alert one'}),
@@ -62,33 +61,35 @@ void main() {
     }
   });
 
-  testWidgets(
-    'opens on the chat history: 100 messages, a day label, no description line',
-    (t) async {
-      final calls = await _pump(t);
-      expect(_to(calls, '/api/history').single.url.queryParameters, {
-        'limit': '100',
-      });
-      for (final s in [
-        'Nhật ký',
-        'Lịch sử chat',
-        'Jarvis log',
-        'Log bảo mật',
-        'Log TTS',
-        'Làm mới',
-        'Toàn bộ',
-        'Phiên chat',
-        'HÔM NAY',
-        'Chào Jarvis',
-      ]) {
-        expect(find.text(s), findsWidgets, reason: s);
-      }
-      expect(
-        find.textContaining('Một trang riêng'),
-        findsNothing,
-      ); // phone: #page-logs .sd-page-head p {display:none}
-    },
-  );
+  testWidgets('history shows session titles and owners, with no Toàn bộ view', (
+    t,
+  ) async {
+    final calls = await _pump(t);
+    expect(
+      _to(calls, '/api/conversations/sessions').single.url.queryParameters,
+      {'limit': '50', 'user': ''},
+    );
+    expect(find.text('Mở nhạc buổi sáng'), findsOneWidget);
+    expect(find.text('web-ab12cd34'), findsNothing);
+    expect(find.text('Lan'), findsWidgets);
+    expect(find.text('Toàn bộ'), findsNothing);
+    expect(find.text('Phiên chat'), findsNothing);
+  });
+
+  testWidgets('the owner filter reloads with user=', (t) async {
+    final calls = await _pump(t);
+    await t.tap(find.byKey(const Key('history-owner-filter')));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Lan').last);
+    await t.pumpAndSettle();
+    expect(
+      _to(
+        calls,
+        '/api/conversations/sessions',
+      ).last.url.queryParameters['user'],
+      'usr_1',
+    );
+  });
 
   testWidgets(
     'each log tab reads its own file with 300 lines and colours the levels',
@@ -136,7 +137,7 @@ void main() {
     final calls = await _pump(t);
     await t.tap(find.text('Làm mới'));
     await t.pumpAndSettle();
-    expect(_to(calls, '/api/history'), hasLength(2));
+    expect(_to(calls, '/api/conversations/sessions'), hasLength(2));
   });
 
   testWidgets('success:false shows the web text with the tab name', (t) async {
@@ -160,37 +161,36 @@ void main() {
     await _pump(
       t,
       extra: {
-        'GET /api/history': (_) => jsonOk({'detail': 'x'}, 500),
+        'GET /api/conversations/sessions': (_) => jsonOk({'detail': 'x'}, 500),
       },
     );
     expect(find.text('Lỗi kết nối khi tải.'), findsOneWidget);
   });
 
-  testWidgets('history empty note', (t) async {
+  testWidgets('session list empty note', (t) async {
     await _pump(
       t,
       extra: {
-        'GET /api/history': (_) => jsonOk({'success': true, 'history': []}),
+        'GET /api/conversations/sessions': (_) =>
+            jsonOk({'success': true, 'sessions': [], 'users': []}),
       },
     );
-    expect(find.text('Chưa có hội thoại nào được lưu.'), findsOneWidget);
+    expect(find.text('Chưa có phiên chat nào.'), findsOneWidget);
   });
 
   testWidgets(
     'Phiên chat lists sessions with source / device; a tap opens the reader, back returns',
     (t) async {
       final calls = await _pump(t);
-      await t.tap(find.text('Phiên chat'));
-      await t.pumpAndSettle();
       expect(
         _to(calls, '/api/conversations/sessions').single.url.queryParameters,
-        {'limit': '50'},
+        {'limit': '50', 'user': ''},
       );
       for (final s in [
         'Web · iOS',
-        'web-ab12cd34',
+        'Mở nhạc buổi sáng',
         'Telegram',
-        'tg-99',
+        'Hỏi thời tiết',
         'Cũ',
         'legacy',
       ]) {
@@ -203,7 +203,7 @@ void main() {
         findsNothing,
       ); // the list OR the reader, never both on a phone
 
-      await t.tap(find.text('web-ab12cd34'));
+      await t.tap(find.text('Mở nhạc buổi sáng'));
       await t.pumpAndSettle();
       expect(
         _to(calls, '/api/conversations/session/web-ab12cd34'),
@@ -220,7 +220,7 @@ void main() {
 
       await t.tap(find.text('← Danh sách phiên chat'));
       await t.pumpAndSettle();
-      expect(find.text('web-ab12cd34'), findsOneWidget);
+      expect(find.text('Mở nhạc buổi sáng'), findsOneWidget);
       expect(find.text('Mở nhạc'), findsNothing);
       expect(find.text('Làm mới'), findsOneWidget);
     },
@@ -236,8 +236,6 @@ void main() {
               jsonOk({'success': false, 'error': 'db_busy'}),
         },
       );
-      await t.tap(find.text('Phiên chat'));
-      await t.pumpAndSettle();
       await t.tap(find.text('legacy'));
       await t.pumpAndSettle();
       expect(_to(calls, '/api/conversations/session/legacy'), hasLength(1));
@@ -254,8 +252,6 @@ void main() {
             jsonOk({'success': false, 'error': 'nope'}),
       },
     );
-    await t.tap(find.text('Phiên chat'));
-    await t.pumpAndSettle();
     expect(
       find.text('Không tải được danh sách phiên chat: nope'),
       findsOneWidget,

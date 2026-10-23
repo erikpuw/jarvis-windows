@@ -1,6 +1,8 @@
 import '../chat/lucide_glyphs.dart';
 import '../chat/morph_icon.dart';
 
+const memberHiddenPages = {'prompts', 'logs'};
+
 class SettingsPageDef {
   const SettingsPageDef({
     required this.id,

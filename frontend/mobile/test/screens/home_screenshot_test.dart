@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jarvis_mobile/chat/chat_controller.dart';
 import 'package:jarvis_mobile/chat/home_screen.dart';
+import 'package:jarvis_mobile/chat/sessions_controller.dart';
 import 'package:jarvis_mobile/chat/lucide_glyphs.dart';
 import 'package:jarvis_mobile/chat/metal_send_button.dart';
 import 'package:jarvis_mobile/net/api_client.dart';
@@ -44,6 +45,10 @@ void main() {
             ChangeNotifierProvider(create: (_) => ServerConfig()),
             Provider<ApiClient>.value(value: FakeApi()),
             ChangeNotifierProvider.value(value: chat),
+            ChangeNotifierProvider(
+              create: (context) =>
+                  SessionsController(socket, context.read<ApiClient>(), chat),
+            ),
           ],
           child: MaterialApp(
             debugShowCheckedModeBanner: false,
@@ -124,6 +129,10 @@ void main() {
             ChangeNotifierProvider(create: (_) => ServerConfig()),
             Provider<ApiClient>.value(value: FakeApi()),
             ChangeNotifierProvider.value(value: chat),
+            ChangeNotifierProvider(
+              create: (context) =>
+                  SessionsController(socket, context.read<ApiClient>(), chat),
+            ),
           ],
           child: MaterialApp(
             debugShowCheckedModeBanner: false,

@@ -1,6 +1,8 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../net/api_client.dart';
 import 'auth_user.dart';
 
@@ -8,12 +10,17 @@ const String prefTokenKey = 'jarvis_token';
 const String prefUserKey = 'jarvis_user';
 
 class AuthController extends ChangeNotifier {
-  void setAuthenticatedForTesting([AuthUser? user, String token = 'test_token']) {
-    _currentUser = user ?? AuthUser(id: 'admin', username: 'admin', role: 'admin');
+  void setAuthenticatedForTesting([
+    AuthUser? user,
+    String token = 'test_token',
+  ]) {
+    _currentUser =
+        user ?? AuthUser(id: 'admin', username: 'admin', role: 'admin');
     _api.memoryToken = token;
     _isLoading = false;
     notifyListeners();
   }
+
   final ApiClient _api;
 
   AuthUser? _currentUser;
@@ -23,7 +30,8 @@ class AuthController extends ChangeNotifier {
   AuthController(this._api);
 
   AuthUser? get currentUser => _currentUser;
-  bool get isAuthenticated => _currentUser != null && _api.memoryToken.isNotEmpty;
+  bool get isAuthenticated =>
+      _currentUser != null && _api.memoryToken.isNotEmpty;
   bool get isLoading => _isLoading;
   String? get error => _error;
 
@@ -40,8 +48,13 @@ class AuthController extends ChangeNotifier {
         try {
           final res = await _api.get<Map<String, dynamic>>('/api/auth/me');
           if (res['success'] == true && res['user'] != null) {
-            _currentUser = AuthUser.fromJson(Map<String, dynamic>.from(res['user'] as Map));
-            await prefs.setString(prefUserKey, jsonEncode(_currentUser!.toJson()));
+            _currentUser = AuthUser.fromJson(
+              Map<String, dynamic>.from(res['user'] as Map),
+            );
+            await prefs.setString(
+              prefUserKey,
+              jsonEncode(_currentUser!.toJson()),
+            );
             _isLoading = false;
             notifyListeners();
             return;
@@ -54,7 +67,6 @@ class AuthController extends ChangeNotifier {
         _currentUser = null;
         await prefs.remove(prefTokenKey);
         await prefs.remove(prefUserKey);
-        await prefs.remove('jarvis_active_session_id');
       }
     } catch (e) {
       debugPrint('[auth] Init error: $e');
@@ -70,7 +82,9 @@ class AuthController extends ChangeNotifier {
     try {
       final res = await _api.get<Map<String, dynamic>>('/api/auth/me');
       if (res['success'] == true && res['user'] != null) {
-        _currentUser = AuthUser.fromJson(Map<String, dynamic>.from(res['user'] as Map));
+        _currentUser = AuthUser.fromJson(
+          Map<String, dynamic>.from(res['user'] as Map),
+        );
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(prefUserKey, jsonEncode(_currentUser!.toJson()));
         notifyListeners();
@@ -105,13 +119,18 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final res = await _api.post<Map<String, dynamic>>('/api/auth/login', payload);
+      final res = await _api.post<Map<String, dynamic>>(
+        '/api/auth/login',
+        payload,
+      );
       if (res['success'] == true && res['token'] != null) {
         final token = res['token'].toString();
         _api.memoryToken = token;
 
         if (res['user'] != null) {
-          _currentUser = AuthUser.fromJson(Map<String, dynamic>.from(res['user'] as Map));
+          _currentUser = AuthUser.fromJson(
+            Map<String, dynamic>.from(res['user'] as Map),
+          );
         } else {
           _currentUser = AuthUser(
             id: payload['username'] == 'admin' ? 'admin' : 'member',
@@ -123,7 +142,6 @@ class AuthController extends ChangeNotifier {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(prefTokenKey, token);
         await prefs.setString(prefUserKey, jsonEncode(_currentUser!.toJson()));
-        await prefs.remove('jarvis_active_session_id');
 
         _isLoading = false;
         notifyListeners();
@@ -152,7 +170,6 @@ class AuthController extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(prefTokenKey);
     await prefs.remove(prefUserKey);
-    await prefs.remove('jarvis_active_session_id');
 
     notifyListeners();
   }

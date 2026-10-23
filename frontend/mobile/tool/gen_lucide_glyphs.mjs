@@ -15,7 +15,7 @@ layout-dashboard layout-grid key-round key audio-lines user-round user-check cpu
 scroll-text bot bot-message-square webhook anchor sparkles flame file-text terminal square-code puzzle plug boxes network
 workflow git-fork book-open info panel-left panel-left-close
 brain lightbulb rotate-cw target check-check wrench hammer message-square messages-square dumbbell dna sprout
-search chevron-left chevron-right shield-alert`.split(/\s+/);
+search chevron-left chevron-right shield-alert settings`.split(/\s+/);
 const camel = (s) => s.replace(/-(\w)/g, (_, c) => c.toUpperCase());
 const n = (v) => +(+v).toFixed(4);
 function ellipse(cx, cy, rx, ry) {

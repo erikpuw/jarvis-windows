@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jarvis_mobile/chat/lucide_glyphs.dart';
 import 'package:jarvis_mobile/chat/chat_controller.dart';
 import 'package:jarvis_mobile/chat/home_screen.dart';
+import 'package:jarvis_mobile/chat/sessions_controller.dart';
 import 'package:jarvis_mobile/chat/status_orb.dart';
 import 'package:jarvis_mobile/chat/image_lightbox.dart';
 import 'package:jarvis_mobile/chat/media_player.dart';
@@ -26,6 +27,8 @@ Future<({FakeSocket socket, ChatController chat})> pumpHome(
   final socket = FakeSocket();
   final api = FakeApi();
   final chat = ChatController(socket, api);
+  final sessions = SessionsController(socket, api, chat);
+  addTearDown(sessions.dispose);
   addTearDown(chat.dispose);
   await t.pumpWidget(
     MultiProvider(
@@ -33,6 +36,7 @@ Future<({FakeSocket socket, ChatController chat})> pumpHome(
         ChangeNotifierProvider.value(value: ServerConfig()),
         Provider<ApiClient>.value(value: api),
         ChangeNotifierProvider.value(value: chat),
+        ChangeNotifierProvider.value(value: sessions),
       ],
       child: MaterialApp(theme: buildAppTheme(), routes: {'/': (_) => home}),
     ),
@@ -293,42 +297,48 @@ void main() {
     expect(h.chat.ask, isNull);
   });
 
-  testWidgets('the media player is a 16:9 card at the top and the chat shrinks under it, as on the web phone', (t) async {
-    final h = await pumpHome(
-      t,
-      home: HomeScreen(
-        mediaBuilder: (_) => const SizedBox.expand(key: Key('media-box')),
-      ),
-    );
-    bool orbTicking() {
-      final e = t.element(find.byType(StatusOrb));
-      return TickerMode.valuesOf(e).enabled;
-    }
+  testWidgets(
+    'the media player is a 16:9 card at the top and the chat shrinks under it, as on the web phone',
+    (t) async {
+      final h = await pumpHome(
+        t,
+        home: HomeScreen(
+          mediaBuilder: (_) => const SizedBox.expand(key: Key('media-box')),
+        ),
+      );
+      bool orbTicking() {
+        final e = t.element(find.byType(StatusOrb));
+        return TickerMode.valuesOf(e).enabled;
+      }
 
-    final listTopBefore = t.getRect(find.byType(MessageList)).top;
-    await packet(t, h.socket, {
-      'type': 'media_open',
-      'query': 'phim',
-      'embed_url': 'https://www.youtube.com/embed/abc',
-      'title': 'Phim',
-    });
-    await run(t, const Duration(milliseconds: 100));
-    expect(h.chat.media, isNotNull);
-    // style.css @media (max-width: 768px) .media-player: top 56px, width calc(100% - 24px), aspect-ratio 16 / 9
-    final screen = t.view.physicalSize / t.view.devicePixelRatio;
-    final box = t.getRect(find.byKey(const Key('media-box')));
-    expect(box.top, 56);
-    expect(box.width, screen.width - 24);
-    expect(box.left, 12);
-    expect(box.height, closeTo(box.width * 9 / 16, 0.01));
-    // main.ts initChatAutoCeiling: the list stops 10px under the player
-    expect(t.getRect(find.byType(MessageList)).top, greaterThanOrEqualTo(box.bottom + 10));
-    // only the big orb pauses on the web; the status orb next to the video keeps running
-    expect(orbTicking(), isTrue);
-    h.chat.closeMedia();
-    await run(t, const Duration(milliseconds: 100));
-    expect(t.getRect(find.byType(MessageList)).top, listTopBefore);
-  });
+      final listTopBefore = t.getRect(find.byType(MessageList)).top;
+      await packet(t, h.socket, {
+        'type': 'media_open',
+        'query': 'phim',
+        'embed_url': 'https://www.youtube.com/embed/abc',
+        'title': 'Phim',
+      });
+      await run(t, const Duration(milliseconds: 100));
+      expect(h.chat.media, isNotNull);
+      // style.css @media (max-width: 768px) .media-player: top 56px, width calc(100% - 24px), aspect-ratio 16 / 9
+      final screen = t.view.physicalSize / t.view.devicePixelRatio;
+      final box = t.getRect(find.byKey(const Key('media-box')));
+      expect(box.top, 56);
+      expect(box.width, screen.width - 24);
+      expect(box.left, 12);
+      expect(box.height, closeTo(box.width * 9 / 16, 0.01));
+      // main.ts initChatAutoCeiling: the list stops 10px under the player
+      expect(
+        t.getRect(find.byType(MessageList)).top,
+        greaterThanOrEqualTo(box.bottom + 10),
+      );
+      // only the big orb pauses on the web; the status orb next to the video keeps running
+      expect(orbTicking(), isTrue);
+      h.chat.closeMedia();
+      await run(t, const Duration(milliseconds: 100));
+      expect(t.getRect(find.byType(MessageList)).top, listTopBefore);
+    },
+  );
 
   testWidgets('closing media sends media_state false', (t) async {
     // The player alone: HomeScreen would build the real WebView, which tests cannot host.
@@ -373,9 +383,14 @@ void main() {
     expect(html, contains('<iframe'));
     expect(
       html,
-      contains('src="https://www.youtube.com/embed/abc?autoplay=1&amp;playsinline=1"'),
+      contains(
+        'src="https://www.youtube.com/embed/abc?autoplay=1&amp;playsinline=1"',
+      ),
     );
-    expect(html, contains('allow="autoplay; encrypted-media; picture-in-picture"'));
+    expect(
+      html,
+      contains('allow="autoplay; encrypted-media; picture-in-picture"'),
+    );
     expect(MediaPlayer.pageOrigin, startsWith('https://'));
   });
 

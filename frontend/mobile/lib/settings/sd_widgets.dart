@@ -7,6 +7,32 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
+/// `.sd-menu-btn`: 36px round, with a 44px touch target.
+class RoundMenuButton extends StatelessWidget {
+  const RoundMenuButton({super.key, required this.onTap, required this.child});
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    behavior: HitTestBehavior.opaque,
+    child: Padding(
+      padding: const EdgeInsets.all(4),
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: JTokens.accent.withValues(alpha: 0.14),
+        ),
+        alignment: Alignment.center,
+        child: child,
+      ),
+    ),
+  );
+}
+
 /// `.sd-card` with its `h4` (accent icon + title) and the 14px gap under it.
 class SdCard extends StatelessWidget {
   const SdCard({

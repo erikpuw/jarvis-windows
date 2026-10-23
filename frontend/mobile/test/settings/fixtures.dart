@@ -304,6 +304,9 @@ Map<String, dynamic> sessionsJson() {
       {
         'session_id': 'web-ab12cd34',
         'msg_count': 12,
+        'title': 'Mở nhạc buổi sáng',
+        'user_id': 'admin',
+        'user_name': 'admin',
         'started_at': now - 3600,
         'last_msg': now - 60,
         'device': 'ios',
@@ -311,6 +314,9 @@ Map<String, dynamic> sessionsJson() {
       },
       {
         'session_id': 'tg-99',
+        'title': 'Hỏi thời tiết',
+        'user_id': 'usr_1',
+        'user_name': 'Lan',
         'msg_count': 3,
         'started_at': now - 90000,
         'last_msg': now - 86400,
@@ -319,12 +325,19 @@ Map<String, dynamic> sessionsJson() {
       },
       {
         'session_id': 'legacy',
+        'title': '',
+        'user_id': 'admin',
+        'user_name': 'admin',
         'msg_count': 40,
         'started_at': 1700000000,
         'last_msg': 1700001000,
         'device': '',
         'source': 'legacy',
       },
+    ],
+    'users': [
+      {'id': 'admin', 'name': 'admin'},
+      {'id': 'usr_1', 'name': 'Lan'},
     ],
   };
 }

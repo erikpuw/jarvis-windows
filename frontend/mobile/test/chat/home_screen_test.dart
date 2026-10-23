@@ -9,6 +9,7 @@ import 'package:jarvis_mobile/chat/chat_controller.dart';
 import 'package:jarvis_mobile/chat/chat_models.dart';
 import 'package:jarvis_mobile/chat/command_bar.dart';
 import 'package:jarvis_mobile/chat/home_screen.dart';
+import 'package:jarvis_mobile/chat/sessions_controller.dart';
 import 'package:jarvis_mobile/chat/markdown_view.dart';
 import 'package:jarvis_mobile/chat/metal_send_button.dart';
 import 'package:jarvis_mobile/chat/status_label.dart';
@@ -51,6 +52,8 @@ Future<Harness> pumpHome(
   final socket = FakeSocket();
   final api = FakeApi();
   final chat = ChatController(socket, api);
+  final sessions = SessionsController(socket, api, chat);
+  addTearDown(sessions.dispose);
   addTearDown(chat.dispose);
   await t.pumpWidget(
     MultiProvider(
@@ -58,6 +61,7 @@ Future<Harness> pumpHome(
         ChangeNotifierProvider.value(value: cfg),
         Provider<ApiClient>.value(value: api),
         ChangeNotifierProvider.value(value: chat),
+        ChangeNotifierProvider.value(value: sessions),
       ],
       child: MaterialApp(
         theme: buildAppTheme(),
@@ -450,32 +454,33 @@ void main() {
     ); // dispose the app: its timers and tickers go
   });
 
-  testWidgets('JarvisApp keeps the chat and session when auth notifies without a new user', (
-    t,
-  ) async {
-    t.view.physicalSize = const Size(1170, 2532);
-    t.view.devicePixelRatio = 3;
-    addTearDown(t.view.reset);
-    final cfg = ServerConfig();
-    final socket = FakeSocket();
-    final auth = AuthController(ApiClient(cfg))..setAuthenticatedForTesting();
-    await t.pumpWidget(JarvisApp(cfg: cfg, socket: socket, auth: auth));
-    await t.pump(const Duration(milliseconds: 100));
-    expect(socket.reconnects, 0);
-    // saving the profile refreshes the same user (refreshUser) and login notifies twice: neither is a new identity
-    auth.setAuthenticatedForTesting();
-    auth.setAuthenticatedForTesting();
-    await t.pump(const Duration(milliseconds: 50));
-    expect(socket.reconnects, 0);
-    // another user signs in: fresh chat and session
-    auth.setAuthenticatedForTesting(
-      AuthUser(id: 'u2', username: 'b', role: 'member'),
-      'token2',
-    );
-    await t.pump(const Duration(milliseconds: 50));
-    expect(socket.reconnects, 1);
-    await t.pumpWidget(const SizedBox());
-  });
+  testWidgets(
+    'JarvisApp keeps the chat and session when auth notifies without a new user',
+    (t) async {
+      t.view.physicalSize = const Size(1170, 2532);
+      t.view.devicePixelRatio = 3;
+      addTearDown(t.view.reset);
+      final cfg = ServerConfig();
+      final socket = FakeSocket();
+      final auth = AuthController(ApiClient(cfg))..setAuthenticatedForTesting();
+      await t.pumpWidget(JarvisApp(cfg: cfg, socket: socket, auth: auth));
+      await t.pump(const Duration(milliseconds: 100));
+      expect(socket.reconnects, 0);
+      // saving the profile refreshes the same user (refreshUser) and login notifies twice: neither is a new identity
+      auth.setAuthenticatedForTesting();
+      auth.setAuthenticatedForTesting();
+      await t.pump(const Duration(milliseconds: 50));
+      expect(socket.reconnects, 0);
+      // another user signs in: fresh chat and session
+      auth.setAuthenticatedForTesting(
+        AuthUser(id: 'u2', username: 'b', role: 'member'),
+        'token2',
+      );
+      await t.pump(const Duration(milliseconds: 50));
+      expect(socket.reconnects, 1);
+      await t.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets(
     'JarvisApp plays the audio the chat emits and shows it speaking',

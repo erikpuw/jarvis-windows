@@ -3,6 +3,7 @@ import 'package:jarvis_mobile/chat/lucide_glyphs.dart';
 import 'package:jarvis_mobile/chat/morph_icon.dart';
 
 import 'package:jarvis_mobile/settings/pages.dart';
+import 'package:jarvis_mobile/settings/sd_widgets.dart';
 import 'package:jarvis_mobile/settings/pages/catalog_page.dart';
 import 'package:jarvis_mobile/settings/pages/connect_page.dart';
 import 'package:jarvis_mobile/settings/pages/graphfy_page.dart';
@@ -46,12 +47,17 @@ final Map<String, Widget Function()> _pageBuilders = {
 /// scrim, its collapse button slides it out to the names; the page opens in a frame under the island row, from the menu's left
 /// edge to the right edge, with the close button on its top right corner.
 ///
-/// Divergence from the web: the home button stays on screen while a page is open. On the web the page frame covers the chat and
-/// the button is hidden; here Settings is its own route, so the button is the only way to the menu.
+/// The top-left button (index.ts syncMenuButton): a gear while a page is open, ✕ while the menu is out. The house that opens the
+/// chat sessions drawer belongs to the main screen. [openMenu]: opened from that drawer's "Bảng điều khiển" (openDashboardMenu).
 class SettingsShell extends StatefulWidget {
-  const SettingsShell({super.key, this.initialPageId = 'overview'});
+  const SettingsShell({
+    super.key,
+    this.initialPageId = 'overview',
+    this.openMenu = false,
+  });
 
   final String initialPageId;
+  final bool openMenu;
 
   @override
   State<SettingsShell> createState() => _SettingsShellState();
@@ -70,15 +76,23 @@ class _SettingsShellState extends State<SettingsShell>
   @override
   void initState() {
     super.initState();
+    if (widget.openMenu) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _setNav(true);
+      });
+    }
     SharedPreferences.getInstance().then((p) {
       final saved = p.getBool(_collapsedKey);
       if (mounted && saved != null) setState(() => _collapsed = saved);
 
       final savedPage = p.getString(_lastPageKey);
-      if (mounted && widget.initialPageId == 'overview' && savedPage != null && _pageBuilders.containsKey(savedPage)) {
+      if (mounted &&
+          widget.initialPageId == 'overview' &&
+          savedPage != null &&
+          _pageBuilders.containsKey(savedPage)) {
         final auth = context.read<AuthController?>();
         final isAdmin = auth?.currentUser?.isAdmin ?? true;
-        if (isAdmin || savedPage != 'prompts') {
+        if (isAdmin || !memberHiddenPages.contains(savedPage)) {
           setState(() => _selectedId = savedPage);
         }
       }
@@ -103,7 +117,7 @@ class _SettingsShellState extends State<SettingsShell>
     );
   }
 
-    void _confirmLogout() {
+  void _confirmLogout() {
     showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -122,10 +136,7 @@ class _SettingsShellState extends State<SettingsShell>
         ),
         content: const Text(
           'Bạn có chắc chắn muốn đăng xuất khỏi hệ thống không?',
-          style: TextStyle(
-            fontSize: 14,
-            color: JTokens.muted,
-          ),
+          style: TextStyle(fontSize: 14, color: JTokens.muted),
         ),
         actions: [
           TextButton(
@@ -137,7 +148,10 @@ class _SettingsShellState extends State<SettingsShell>
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text(
               'Đăng xuất',
-              style: TextStyle(color: Color(0xFFF87171), fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Color(0xFFF87171),
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -181,7 +195,7 @@ class _SettingsShellState extends State<SettingsShell>
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController?>();
     final isAdmin = auth?.currentUser?.isAdmin ?? true;
-    if (!isAdmin && _selectedId == 'prompts') {
+    if (!isAdmin && memberHiddenPages.contains(_selectedId)) {
       _selectedId = 'overview';
     }
     final page = settingsPages.firstWhere(
@@ -203,10 +217,10 @@ class _SettingsShellState extends State<SettingsShell>
           Positioned(
             left: dashX,
             top: mq.padding.top + 12,
-            child: _RoundButton(
+            child: RoundMenuButton(
               onTap: () => _setNav(!_navOpen),
               child: MorphIcon(
-                icon: _navOpen ? xGlyph : houseGlyph,
+                icon: _navOpen ? xGlyph : settingsGlyph,
                 color: JTokens.accent.withValues(alpha: 0.7),
                 size: 18,
                 strokeWidth: 1.75,
@@ -309,35 +323,6 @@ class _SettingsShellState extends State<SettingsShell>
   }
 }
 
-/// `.sd-menu-btn`: 36px round, the control buttons' blue.
-class _RoundButton extends StatelessWidget {
-  const _RoundButton({required this.onTap, required this.child});
-
-  final VoidCallback onTap;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    behavior: HitTestBehavior.opaque,
-    child: Padding(
-      padding: const EdgeInsets.all(
-        4,
-      ), // a 44px touch target around the 36px button
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: JTokens.accent.withValues(alpha: 0.14),
-        ),
-        alignment: Alignment.center,
-        child: child,
-      ),
-    ),
-  );
-}
-
 class _Nav extends StatelessWidget {
   const _Nav({
     required this.collapsed,
@@ -360,7 +345,12 @@ class _Nav extends StatelessWidget {
     final pad = collapsed ? 6.0 : 8.0;
     final filteredGroups = [
       for (final g in navGroups)
-        (g.$1, isAdmin ? g.$2 : g.$2.where((id) => id != 'prompts').toList()),
+        (
+          g.$1,
+          isAdmin
+              ? g.$2
+              : g.$2.where((id) => !memberHiddenPages.contains(id)).toList(),
+        ),
     ].where((g) => g.$2.isNotEmpty).toList();
     return AnimatedContainer(
       key: const Key('settings-nav'),

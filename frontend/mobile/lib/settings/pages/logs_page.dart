@@ -9,14 +9,11 @@ import 'package:jarvis_mobile/settings/pages.dart';
 import 'package:jarvis_mobile/theme/tokens.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:jarvis_mobile/auth/auth_controller.dart';
+import 'package:jarvis_mobile/chat/sessions_controller.dart';
 
-/// Nhật ký (pages.ts logsPage + logs.ts): one page, four tabs. Chat history has two sub-views, "Toàn bộ" and "Phiên chat" (the list of
-/// sessions, then the reader of one - a phone shows one frame at a time). The three logs show the last 300 lines.
-
+/// Nhật ký (logs.ts): session list and reader, plus the three log files.
 const _logLines = 300;
 const _logsTabKey = 'jarvis.settings.logs_tab';
-const _logsViewKey = 'jarvis.settings.logs_view';
 
 class _Tab {
   const _Tab(this.cat, [this.path]);
@@ -109,15 +106,15 @@ class LogsPage extends StatefulWidget {
 class _LogsPageState extends State<LogsPage> {
   late final ApiClient _api = context.read<ApiClient>();
   String _active = 'history';
-  bool _sessionsView =
-      false; // history sub-view: false "Toàn bộ", true "Phiên chat"
+  String _owner = '';
+  List<Map<String, dynamic>> _users = [];
   String? _openSession;
   String? _openSource;
   int _loadSeq = 0; // a slow answer of a tab the user already left must not overwrite the one on screen
   int _listSeq = 0;
   int _detailSeq = 0;
 
-  // the reader frame / "Toàn bộ" column: a note or the messages
+  // The session reader: a note or the messages.
   String? _readerNote;
   List<Map<String, dynamic>>? _messages;
   String? _sessionsNote;
@@ -128,41 +125,18 @@ class _LogsPageState extends State<LogsPage> {
   final _scroll = ScrollController();
 
   _Tab get _tab => _tabs.firstWhere((t) => t.id == _active);
-  bool get _reading =>
-      _active == 'history' && _sessionsView && _openSession != null;
+  bool get _reading => _active == 'history' && _openSession != null;
 
   @override
   void initState() {
     super.initState();
     SharedPreferences.getInstance().then((prefs) {
       if (!mounted) return;
-      final auth = context.read<AuthController?>();
-      final isAdmin = auth?.currentUser?.isAdmin ?? true;
-
-      final savedTab = prefs.getString(_logsTabKey);
-      final savedView = prefs.getString(_logsViewKey);
-
-      var tab = _active;
-      var sessions = _sessionsView;
-
-      if (!isAdmin) {
-        tab = 'history';
-        sessions = true;
-      } else {
-        if (savedTab != null && _tabs.any((t) => t.id == savedTab)) {
-          tab = savedTab;
-        }
-        if (savedView != null) {
-          sessions = savedView == 'sessions';
-        }
-      }
-
-      if (tab != _active || sessions != _sessionsView) {
-        setState(() {
-          _active = tab;
-          _sessionsView = sessions;
-        });
-        _load();
+      final saved = prefs.getString(_logsTabKey);
+      if (saved != null &&
+          saved != _active &&
+          _tabs.any((t) => t.id == saved)) {
+        _showTab(saved);
       }
     });
     _load();
@@ -181,7 +155,6 @@ class _LogsPageState extends State<LogsPage> {
   void _showTab(String id) {
     setState(() {
       _active = id;
-      _sessionsView = false;
       _openSession = null;
     });
     SharedPreferences.getInstance().then((p) => p.setString(_logsTabKey, id));
@@ -191,56 +164,30 @@ class _LogsPageState extends State<LogsPage> {
   Future<void> _load() async {
     final seq = ++_loadSeq;
     final tab = _tab;
-    if (tab.id == 'history' && _sessionsView) {
+    if (tab.id == 'history') {
       await _loadSessionList();
       if (_openSession != null) await _loadSessionDetail();
       return;
     }
     setState(() {
-      if (tab.id == 'history') {
-        _readerNote = 'Đang tải…';
-        _messages = null;
-      } else {
-        _logNote = 'Đang tải…';
-        _logText = null;
-      }
+      _logNote = 'Đang tải…';
+      _logText = null;
     });
     try {
-      if (tab.id == 'history') {
-        final data = await _api.get<Map<String, dynamic>>(
-          '/api/history?limit=100',
-        );
-        if (seq != _loadSeq || !mounted) return;
-        setState(() {
-          if (data['success'] == true) {
-            _setMessages((data['history'] as List?) ?? const []);
-          } else {
-            _readerNote =
-                'Không tải được ${tab.label}: ${_errOr(data['error'])}';
-          }
-        });
-      } else {
-        final data = await _api.get<Map<String, dynamic>>(tab.path!);
-        if (seq != _loadSeq || !mounted) return;
-        setState(() {
-          if (data['success'] == true) {
-            _logNote = null;
-            _logText = '${data['logs'] ?? ''}';
-            _toEnd();
-          } else {
-            _logNote = 'Không tải được ${tab.label}: ${_errOr(data['error'])}';
-          }
-        });
-      }
-    } catch (_) {
+      final data = await _api.get<Map<String, dynamic>>(tab.path!);
       if (seq != _loadSeq || !mounted) return;
       setState(() {
-        if (tab.id == 'history') {
-          _readerNote = 'Lỗi kết nối khi tải.';
+        if (data['success'] == true) {
+          _logNote = null;
+          _logText = '${data['logs'] ?? ''}';
+          _toEnd();
         } else {
-          _logNote = 'Lỗi kết nối khi tải.';
+          _logNote = 'Không tải được ${tab.label}: ${_errOr(data['error'])}';
         }
       });
+    } catch (_) {
+      if (seq != _loadSeq || !mounted) return;
+      setState(() => _logNote = 'Lỗi kết nối khi tải.');
     }
   }
 
@@ -267,7 +214,7 @@ class _LogsPageState extends State<LogsPage> {
     });
     try {
       final data = await _api.get<Map<String, dynamic>>(
-        '/api/conversations/sessions?limit=50',
+        '/api/conversations/sessions?limit=50&user=${Uri.encodeComponent(_owner)}',
       );
       if (seq != _listSeq || !mounted) return;
       if (data['success'] != true) {
@@ -282,6 +229,10 @@ class _LogsPageState extends State<LogsPage> {
           Map<String, dynamic>.from(s as Map),
       ];
       setState(() {
+        _users = [
+          for (final u in (data['users'] as List?) ?? const [])
+            Map<String, dynamic>.from(u as Map),
+        ];
         if (rows.isEmpty) {
           _sessionsNote = 'Chưa có phiên chat nào.';
         } else {
@@ -341,20 +292,7 @@ class _LogsPageState extends State<LogsPage> {
     }
   }
 
-  void _setView(bool sessions) {
-    if (sessions == _sessionsView) return;
-    setState(() {
-      _sessionsView = sessions;
-      _openSession = null;
-      _detailSeq++;
-    });
-    SharedPreferences.getInstance().then(
-      (p) => p.setString(_logsViewKey, sessions ? 'sessions' : 'all'),
-    );
-    _load();
-  }
-
-    Future<void> _deleteCurrentSession() async {
+  Future<void> _deleteCurrentSession() async {
     final sid = _openSession;
     if (sid == null) return;
     final confirmed = await showDialog<bool>(
@@ -375,10 +313,7 @@ class _LogsPageState extends State<LogsPage> {
         ),
         content: Text(
           'Bạn có chắc chắn muốn xóa toàn bộ lịch sử của phiên chat "$sid" không?',
-          style: const TextStyle(
-            fontSize: 14,
-            color: JTokens.muted,
-          ),
+          style: const TextStyle(fontSize: 14, color: JTokens.muted),
         ),
         actions: [
           TextButton(
@@ -390,7 +325,10 @@ class _LogsPageState extends State<LogsPage> {
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text(
               'Xóa',
-              style: TextStyle(color: Color(0xFFF87171), fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Color(0xFFF87171),
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -402,11 +340,8 @@ class _LogsPageState extends State<LogsPage> {
           '/api/conversations/session/${Uri.encodeComponent(sid)}',
         );
         if (res['success'] == true) {
-          final prefs = await SharedPreferences.getInstance();
-          if (prefs.getString('jarvis_active_session_id') == sid) {
-            await prefs.remove('jarvis_active_session_id');
-          }
           if (!mounted) return;
+          context.read<SessionsController?>()?.sessionDeleted(sid);
           setState(() {
             _openSession = null;
             _detailSeq++;
@@ -417,14 +352,17 @@ class _LogsPageState extends State<LogsPage> {
         } else {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Không thể xóa phiên: ${res['error'] ?? 'lỗi không rõ'}')),
+            SnackBar(
+              content: Text(
+                'Không thể xóa phiên: ${res['error'] ?? 'lỗi không rõ'}',
+              ),
+            ),
           );
         }
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi xóa phiên: $e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Lỗi khi xóa phiên: $e')));
       }
     }
   }
@@ -440,13 +378,6 @@ class _LogsPageState extends State<LogsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthController?>();
-    final isAdmin = auth?.currentUser?.isAdmin ?? true;
-    final availableTabs = isAdmin ? _tabs : _tabs.where((t) => t.id == 'history').toList();
-    if (!isAdmin && _active != 'history') {
-      _active = 'history';
-      _sessionsView = true;
-    }
     final page = settingsPages.firstWhere((p) => p.id == 'logs');
     final history = _active == 'history';
     return PageScaffold(
@@ -461,7 +392,7 @@ class _LogsPageState extends State<LogsPage> {
             MemPanel(
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
               child: MemCatNav(
-                cats: [for (final t in availableTabs) t.cat],
+                cats: [for (final t in _tabs) t.cat],
                 active: _active,
                 onSelect: (id) {
                   if (id != _active) _showTab(id);
@@ -491,7 +422,7 @@ class _LogsPageState extends State<LogsPage> {
                           MemButton(label: 'Làm mới', onPressed: _load),
                         ],
                       ),
-                    if (history) _subbar(isAdmin),
+                    if (history) _subbar(),
                     Expanded(child: history ? _historyBody() : _logBody()),
                   ],
                 ),
@@ -503,98 +434,77 @@ class _LogsPageState extends State<LogsPage> {
     );
   }
 
-  Widget _subbar(bool isAdmin) {
-    Widget subtab(String label, bool active, bool sessions) => GestureDetector(
-      onTap: () => _setView(sessions),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-        decoration: BoxDecoration(
-          color: active ? const Color(0x14FFFFFF) : null,
-          borderRadius: BorderRadius.circular(7),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: JTokens.fsSmall,
-            fontWeight: FontWeight.w500,
-            color: active ? JTokens.text : JTokens.muted,
-          ),
-        ),
-      ),
-    );
+  Widget _subbar() {
+    if (!_reading) {
+      return DropdownButton<String>(
+        key: const Key('history-owner-filter'),
+        value: _owner,
+        isExpanded: true,
+        items: [
+          const DropdownMenuItem(value: '', child: Text('Tất cả')),
+          for (final u in _users)
+            DropdownMenuItem(value: '${u['id']}', child: Text('${u['name']}')),
+        ],
+        onChanged: (v) {
+          if (v == null) return;
+          setState(() => _owner = v);
+          _loadSessionList();
+        },
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: _reading
-          ? Row(
-              children: [
-                Flexible(
-                  child: MemButton(
-                    label: '← Danh sách phiên chat',
-                    onPressed: _back,
+      child: Row(
+        children: [
+          Flexible(
+            child: MemButton(label: '← Danh sách phiên chat', onPressed: _back),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '${_openSource != null ? '${_sourceLabel[_openSource] ?? _openSource} · ' : ''}$_openSession',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: JTokens.fsSmall,
+                color: JTokens.muted,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            key: const Key('history-delete-session-btn'),
+            onTap: _deleteCurrentSession,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0x1AF87171),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0x33F87171)),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.delete_outline,
+                    size: 14,
+                    color: Color(0xFFF87171),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '${_openSource != null ? '${_sourceLabel[_openSource] ?? _openSource} · ' : ''}$_openSession',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                  SizedBox(width: 4),
+                  Text(
+                    'Xóa phiên',
+                    style: TextStyle(
                       fontSize: JTokens.fsSmall,
-                      color: JTokens.muted,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFFF87171),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  key: const Key('history-delete-session-btn'),
-                  onTap: _deleteCurrentSession,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0x1AF87171),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: const Color(0x33F87171)),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.delete_outline, size: 14, color: Color(0xFFF87171)),
-                        SizedBox(width: 4),
-                        Text(
-                          'Xóa phiên',
-                          style: TextStyle(
-                            fontSize: JTokens.fsSmall,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFFF87171),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            )
-          : (!isAdmin)
-              ? const SizedBox.shrink()
-              : Align(
-                  alignment: Alignment.centerLeft,
-                  child: Container(
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: JTokens.border),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        subtab('Toàn bộ', !_sessionsView, false),
-                        const SizedBox(width: 4),
-                        subtab('Phiên chat', _sessionsView, true),
-                      ],
-                    ),
-                  ),
-                ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -609,22 +519,17 @@ class _LogsPageState extends State<LogsPage> {
     ),
   );
 
-  Widget _historyBody() {
-    final body = _sessionsView && !_reading ? _sessionList() : _reader();
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: _sessionsView
-          ? Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                border: Border.all(color: JTokens.border),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: body,
-            )
-          : body,
-    );
-  }
+  Widget _historyBody() => Padding(
+    padding: const EdgeInsets.only(top: 10),
+    child: Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        border: Border.all(color: JTokens.border),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: _reading ? _reader() : _sessionList(),
+    ),
+  );
 
   Widget _sessionList() {
     final rows = _sessions;
@@ -687,8 +592,10 @@ class _LogsPageState extends State<LogsPage> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        id,
-                        style: memMono.copyWith(
+                        _truthy(s['title']) ? '${s['title']}' : id,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
                           fontSize: JTokens.fsSmall,
                           color: JTokens.text,
                         ),
@@ -697,6 +604,15 @@ class _LogsPageState extends State<LogsPage> {
                   ],
                 ),
                 const SizedBox(height: 4),
+                Text(
+                  _truthy(s['user_name'])
+                      ? '${s['user_name']}'
+                      : '${s['user_id'] ?? ''}',
+                  style: const TextStyle(
+                    fontSize: JTokens.fsLabel,
+                    color: JTokens.muted,
+                  ),
+                ),
                 Text(
                   '${s['msg_count']} tin · ${_dayLabel(when)} ${_hm(when)}',
                   style: const TextStyle(

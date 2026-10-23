@@ -71,7 +71,7 @@ void main() {
     'the drawer is the 60px icon rail; its collapse button opens the names',
     (t) async {
       await _pump(t, _Harness([]));
-      await t.tap(byGlyph(houseGlyph));
+      await t.tap(byGlyph(settingsGlyph));
       await t.pumpAndSettle();
       expect(t.getSize(find.byKey(const Key('settings-nav'))).width, 60);
       expect(byGlyph(panelLeftGlyph), findsOneWidget);
@@ -114,7 +114,7 @@ void main() {
     'the footer: green dot, JARVIS only when the names are shown, version',
     (t) async {
       await _pump(t, _Harness([]));
-      await t.tap(byGlyph(houseGlyph));
+      await t.tap(byGlyph(settingsGlyph));
       await t.pumpAndSettle();
       expect(find.text('JARVIS'), findsNothing); // the rail hides the name
       expect(find.text('v$appVersion'), findsOneWidget);
@@ -130,7 +130,7 @@ void main() {
       'jarvis.settings.sidebar_collapsed_phone': false,
     });
     await _pump(t, _Harness([]));
-    await t.tap(byGlyph(houseGlyph));
+    await t.tap(byGlyph(settingsGlyph));
     await t.pumpAndSettle();
     expect(t.getSize(find.byKey(const Key('settings-nav'))).width, 200);
   });
@@ -154,7 +154,7 @@ void main() {
     'tapping the current page in the menu closes Settings (index.ts:1239)',
     (t) async {
       await _pump(t, _Harness([]));
-      await t.tap(byGlyph(houseGlyph));
+      await t.tap(byGlyph(settingsGlyph));
       await t.pumpAndSettle();
       await t.tap(find.byKey(const Key('nav-overview')));
       await t.pumpAndSettle();
