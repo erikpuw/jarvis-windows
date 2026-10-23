@@ -74,7 +74,7 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('Nhập mật khẩu để mở.'), findsNothing);
     Future<void> goTo(String id) async {
-      await t.tap(byGlyph(houseGlyph));
+      await t.tap(byGlyph(settingsGlyph));
       await t.pumpAndSettle();
       await t.tap(find.byKey(Key('nav-$id')));
       await t.pumpAndSettle();
@@ -115,7 +115,7 @@ void main() {
     );
     await t.pumpAndSettle();
     Future<void> goTo(String id) async {
-      await t.tap(byGlyph(houseGlyph));
+      await t.tap(byGlyph(settingsGlyph));
       await t.pumpAndSettle();
       await t.tap(find.byKey(Key('nav-$id')));
       await t.pumpAndSettle();

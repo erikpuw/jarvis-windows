@@ -10,6 +10,7 @@ import 'auth/login_screen.dart';
 import 'chat/chat_controller.dart';
 import 'chat/chat_models.dart' show AudioEvent;
 import 'chat/home_screen.dart';
+import 'chat/sessions_controller.dart';
 import 'net/api_client.dart';
 import 'net/jarvis_socket.dart';
 import 'updater/update_dialog.dart';
@@ -107,6 +108,8 @@ class _JarvisAppState extends State<JarvisApp> with WidgetsBindingObserver {
         widget.cfg,
         device: Platform.isIOS ? 'ios' : 'android',
         tokenProvider: () => _api.memoryToken,
+        // the server refused the token (expired / revoked): back to the login screen, as the web does
+        onRejected: () => _auth.logout(),
       );
   late final ChatController _chat = ChatController(
     _socket,
@@ -115,6 +118,11 @@ class _JarvisAppState extends State<JarvisApp> with WidgetsBindingObserver {
   );
   late final AudioOut _audioOut =
       widget.audioOut ?? AudioOut(onError: _chat.reportError);
+  late final SessionsController _sessions = SessionsController(
+    _socket,
+    _api,
+    _chat,
+  );
   StreamSubscription<AudioEvent>? _audioSub;
 
   @override
@@ -151,9 +159,11 @@ class _JarvisAppState extends State<JarvisApp> with WidgetsBindingObserver {
     final identity = _identity;
     if (identity == _lastIdentity) return;
     _lastIdentity = identity;
+    _sessions.clear();
     if (_auth.isAuthenticated) {
       _chat.reset();
-      _socket.forceReconnect(resetSession: true);
+      _socket.switchSession(null);
+      _sessions.refresh();
     } else {
       _chat.reset();
       _socket.disconnect();
@@ -179,6 +189,7 @@ class _JarvisAppState extends State<JarvisApp> with WidgetsBindingObserver {
     _audioOut.playing.removeListener(_onPlaying);
     _audioSub?.cancel();
     _audioOut.dispose();
+    _sessions.dispose();
     _chat.dispose();
     _socket.dispose();
     _auth.dispose();
@@ -192,6 +203,7 @@ class _JarvisAppState extends State<JarvisApp> with WidgetsBindingObserver {
       Provider.value(value: _api),
       Provider.value(value: _socket),
       ChangeNotifierProvider.value(value: _chat),
+      ChangeNotifierProvider.value(value: _sessions),
       ChangeNotifierProvider.value(value: _auth),
     ],
     child: MaterialApp(
@@ -241,9 +253,7 @@ class _JarvisAppState extends State<JarvisApp> with WidgetsBindingObserver {
         final targetScaler = TextScaler.linear(userScale * screenFactor)
             .clamp(minScaleFactor: 0.85, maxScaleFactor: maxScale);
         return MediaQuery(
-          data: mq.copyWith(
-            textScaler: targetScaler,
-          ),
+          data: mq.copyWith(textScaler: targetScaler),
           child: child!,
         );
       },
@@ -268,6 +278,7 @@ class _JarvisAppState extends State<JarvisApp> with WidgetsBindingObserver {
       ),
       routes: {
         '/settings': (_) => const SettingsShell(),
+        '/settings/menu': (_) => const SettingsShell(openMenu: true),
       },
     ),
   );

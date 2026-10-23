@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/tokens.dart';
 import 'lucide_glyphs.dart';
@@ -19,7 +18,6 @@ class ControlsCapsule extends StatefulWidget {
     this.onMic,
     required this.onTts,
     required this.onToggleBar,
-    required this.onSettings,
   });
 
   /// TTS replies are switched off (the volume button turns red).
@@ -35,7 +33,6 @@ class ControlsCapsule extends StatefulWidget {
   final VoidCallback? onMic;
   final VoidCallback onTts;
   final VoidCallback onToggleBar;
-  final VoidCallback onSettings;
 
   static const idle = Duration(seconds: 4);
 
@@ -130,10 +127,6 @@ class _ControlsCapsuleState extends State<ControlsCapsule> {
         ),
         widget.onMic,
         active: !widget.micMuted,
-      ),
-      _button(
-        const Icon(LucideIcons.settings, size: 18, color: sky),
-        widget.onSettings,
       ),
     ];
     final capsuleHeight = 6 + buttons.length * _slot + 6;

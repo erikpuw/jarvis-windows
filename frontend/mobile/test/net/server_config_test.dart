@@ -16,6 +16,28 @@ void main() {
     );
   });
 
+  test('http keeps absolute README image URLs unchanged', () {
+    final cfg = ServerConfig();
+    for (final url in [
+      'https://img.shields.io/badge/Python-3.11-blue',
+      'http://example.com/image.png?size=2#preview',
+    ]) {
+      expect(cfg.http(url).toString(), url);
+    }
+  });
+
+  test(
+    'http preserves server prefixes, query and fragment for local assets',
+    () async {
+      final cfg = ServerConfig();
+      await cfg.setBaseUrl('https://example.com:8340/jarvis');
+      expect(
+        cfg.http('/api/outputs/image.png?size=2#preview').toString(),
+        'https://example.com:8340/jarvis/api/outputs/image.png?size=2#preview',
+      );
+    },
+  );
+
   test('setBaseUrl rejects no scheme and trims slash', () async {
     final cfg = ServerConfig();
     await expectLater(cfg.setBaseUrl('abc'), throwsFormatException);

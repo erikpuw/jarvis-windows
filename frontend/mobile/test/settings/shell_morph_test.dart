@@ -32,9 +32,9 @@ void main() {
     'the menu button is a house that morphs to an x with the drawer',
     (t) async {
       await _pump(t);
-      expect(byGlyph(houseGlyph), findsOneWidget);
-      final house = t.state(byGlyph(houseGlyph));
-      await t.tap(byGlyph(houseGlyph));
+      expect(byGlyph(settingsGlyph), findsOneWidget);
+      final house = t.state(byGlyph(settingsGlyph));
+      await t.tap(byGlyph(settingsGlyph));
       await t.pump(const Duration(milliseconds: 50));
       expect(identical(t.state(byGlyph(xGlyph).first), house), isTrue);
       await t.pumpAndSettle();
@@ -43,7 +43,7 @@ void main() {
 
   testWidgets('a nav item morphs to its active icon and back', (t) async {
     await _pump(t);
-    await t.tap(byGlyph(houseGlyph));
+    await t.tap(byGlyph(settingsGlyph));
     await t.pumpAndSettle();
     expect(byGlyph(layoutGridGlyph), findsOneWidget); // overview is the page
     expect(byGlyph(keyRoundGlyph), findsOneWidget); // connect is not

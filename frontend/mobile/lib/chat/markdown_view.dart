@@ -208,10 +208,15 @@ class MarkdownView extends StatelessWidget {
     required this.resolveUrl,
     this.onLinkTap,
     this.onReaderTap,
+    this.document = false,
   });
 
   final String text;
   final bool streaming;
+
+  /// A written document (the README on the Info page): consecutive lines are one paragraph, as on GitHub, so badges sit in a
+  /// row (markdown.ts formatMarkdown `document: true` = marked breaks:false). Chat answers keep a single newline as a break.
+  final bool document;
 
   /// Turns a server-relative image URL (/api/outputs/...) into an absolute one (ServerConfig.http).
   final String Function(String url) resolveUrl;
@@ -262,6 +267,13 @@ class MarkdownView extends StatelessWidget {
     markdownBlockBuilds++;
     final generator = MarkdownGenerator(
       linesMargin: const EdgeInsets.symmetric(vertical: 3),
+      // soft line breaks only: code blocks and inline code build from their own textContent, hard breaks are <br> nodes
+      textGenerator: document
+          ? (node, config, visitor) => TextNode(
+              text: node.textContent.replaceAll('\n', ' '),
+              style: config.p.textStyle,
+            )
+          : null,
       generators: [
         SpanNodeGeneratorWithTag(
           tag: MarkdownTag.table.name,
@@ -857,7 +869,8 @@ class _MdBlockState extends State<_MdBlock> {
         old != null &&
         old.onLinkTap == v.onLinkTap &&
         old.onReaderTap == v.onReaderTap &&
-        old.resolveUrl == v.resolveUrl;
+        old.resolveUrl == v.resolveUrl &&
+        old.document == v.document;
     if (_text != widget.text || !same) {
       _text = widget.text;
       _view = v;

@@ -10,6 +10,35 @@ import 'package:jarvis_mobile/settings/sd_widgets.dart';
 import 'package:jarvis_mobile/theme/tokens.dart';
 import 'package:provider/provider.dart';
 
+// README layout wrappers are not markdown content; code examples must keep them.
+String _readmeMarkdown(String source) {
+  final wrapper = RegExp(
+    r'^ {0,3}</?div(?:\s+[^>]*)?>[ \t]*$',
+    caseSensitive: false,
+  );
+  final fenceLine = RegExp(r'^ {0,3}(`{3,}|~{3,})(.*)$');
+  String? fence;
+  final lines = <String>[];
+  for (final line in source.replaceAll('\r\n', '\n').split('\n')) {
+    final match = fenceLine.firstMatch(line);
+    if (fence != null) {
+      lines.add(line);
+      if (match != null &&
+          match[1]![0] == fence[0] &&
+          match[1]!.length >= fence.length &&
+          match[2]!.trim().isEmpty) {
+        fence = null;
+      }
+    } else if (match != null) {
+      fence = match[1];
+      lines.add(line);
+    } else if (!wrapper.hasMatch(line)) {
+      lines.add(line);
+    }
+  }
+  return lines.join('\n');
+}
+
 /// Thông tin (pages.ts infoPage + index.ts loadReadme): the version bar and README.md through the chat's markdown view,
 /// as one flat page without a card border (styles.css `.sd-info-container`).
 class InfoPage extends StatefulWidget {
@@ -37,7 +66,7 @@ class _InfoPageState extends State<InfoPage> {
       final content = res['content'];
       setState(() {
         if (res['success'] == true && content is String && content.isNotEmpty) {
-          _readme = content;
+          _readme = _readmeMarkdown(content);
           _error = null;
         } else {
           _readme = null;
@@ -85,7 +114,11 @@ class _InfoPageState extends State<InfoPage> {
       return const SdEmpty('Đang nạp nội dung tài liệu README.md…');
     }
     final cfg = context.read<ServerConfig>();
-    return MarkdownView(text, resolveUrl: (u) => cfg.http(u).toString());
+    return MarkdownView(
+      text,
+      document: true, // README as on GitHub: consecutive lines are one paragraph (badges in a row)
+      resolveUrl: (u) => cfg.http(u).toString(),
+    );
   }
 
   @override

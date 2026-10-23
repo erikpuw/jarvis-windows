@@ -23,7 +23,18 @@ class FakeSocket extends JarvisSocket {
   @override
   void reconnectNow() => reconnects++;
   @override
-  void forceReconnect({bool resetSession = false}) => reconnects++;
+  void switchSession(String? id) {
+    switched.add(id);
+    reconnects++;
+  }
+
+  final switched = <String?>[];
+  final sessionCtl = StreamController<SessionEvent>.broadcast();
+  @override
+  Stream<SessionEvent> get sessionEvents => sessionCtl.stream;
+  String? confirmed;
+  @override
+  String? get sessionId => confirmed;
   @override
   void disconnect() => st.value = SocketState.closed;
   @override
@@ -44,9 +55,12 @@ class FakeApi extends ApiClient {
   Object? failure;
   final uploads = <String>[];
   final responses = <String, Object>{};
+  final gets = <String>[];
   @override
-  Future<T> get<T>(String path) async =>
-      (responses[path] ?? <String, dynamic>{}) as T;
+  Future<T> get<T>(String path) async {
+    gets.add(path);
+    return (await Future.value(responses[path] ?? <String, dynamic>{})) as T;
+  }
 
   @override
   Future<Map<String, dynamic>> upload(

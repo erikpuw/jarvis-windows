@@ -100,6 +100,60 @@ class ChatController extends ChangeNotifier {
   ReaderCard? get reader => _reader;
   Stream<AudioEvent> get audio => _audio.stream;
 
+  /// main.ts turnRunning: include speech preparation and local playback.
+  bool get turnRunning =>
+      _busy ||
+      _ttsOpen ||
+      _speechPreparing ||
+      _playing ||
+      _state == JState.thinking ||
+      _state == JState.working ||
+      _state == JState.speaking;
+
+  void clearChat({bool keepWelcome = true}) {
+    _items.clear();
+    _queue.clear();
+    _active = null;
+    if (!keepWelcome) _welcomeActive = false;
+    _notify();
+  }
+
+  void showHistory(List<Map<String, dynamic>> rows) {
+    clearChat();
+    for (final row in rows) {
+      final content = row['content'];
+      if (content is! String) continue;
+      if (row['role'] == 'user') {
+        _addItem(UserMsg(content));
+      } else if (row['role'] == 'assistant') {
+        if (content.startsWith(_cardPrefix)) {
+          try {
+            final card = jsonDecode(
+              content.substring(_cardPrefix.length).trim(),
+            );
+            if (card is Map<String, dynamic> && AskCard.isAskCard(card)) {
+              continue;
+            }
+          } catch (_) {
+            // Malformed cards are rendered by the normal assistant path.
+          }
+        }
+        _addAssistant(content);
+      }
+    }
+    if (_items.isNotEmpty) _welcomeActive = false;
+    _notify();
+  }
+
+  /// main.ts socket.onSession: old socket flags end; local audio keeps playing.
+  void onNewSocket() {
+    _busy = false;
+    _ttsOpen = _speechPreparing = false;
+    _closeBubble();
+    _transition(JState.idle);
+    _notify();
+  }
+
   // ---- state machine (main.ts transition / updateStatus) ----
 
   void _transition(JState want, [String? message]) {

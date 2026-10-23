@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../net/api_client.dart';
 import '../net/server_config.dart';
 import '../theme/tokens.dart';
+import '../settings/sd_widgets.dart' show RoundMenuButton;
 import '../voice/voice_input.dart';
 import 'ask_panel.dart';
 import 'chat_controller.dart';
@@ -21,10 +22,15 @@ import 'media_player.dart';
 import 'message_list.dart';
 import 'reader_card.dart';
 import 'status_label.dart';
+import 'sessions_controller.dart';
+import 'sessions_drawer.dart';
+import 'lucide_glyphs.dart';
+import 'morph_icon.dart';
 import 'welcome_view.dart';
 
 /// The main chat screen (route `/`): the web page on a phone, without the orb and the webcam.
-/// Layers, bottom to top: welcome, chat column (messages, ask panel, status row, command bar), island, reader, controls, media.
+/// Layers, bottom to top: welcome, chat column (messages, ask panel, status row, command bar), media (only over the chat),
+/// controls, house button, island (80), reader (85), sessions drawer (95). Settings (100) is its own route.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
@@ -66,6 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late String? _file =
       widget.initialFile; // the file pinned to the next message
   bool _barVisible = true; // main.ts toggleCommandBar(true) at start-up
+  bool _sessionsOpen = false;
   final _columnKey = GlobalKey();
   final _chatKey = GlobalKey();
   double _askLift = 0; // padding the chat needs while the question box is up
@@ -317,36 +324,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
-                    Positioned(
-                      top: 8 + pad.top,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                        child: Island(
-                          steps: chat.flow.steps,
-                          error: chat.error,
-                          errorSeq: chat.errorSeq,
-                        ),
-                      ),
-                    ),
-                    Positioned.fill(
-                      child: ReaderLayer(
-                        card: chat.reader,
-                        onClose: chat.closeReader,
-                      ),
-                    ),
                   ],
                 ),
               ),
-              ControlsCapsule(
-                ttsMuted: !chat.ttsEnabled,
-                micMuted: !_micOn,
-                barVisible: _barVisible,
-                onMic: _toggleMic,
-                onTts: () => chat.setTts(!chat.ttsEnabled),
-                onToggleBar: _toggleBar,
-                onSettings: () => Navigator.pushNamed(context, '/settings'),
-              ),
+              // the video lies only over the chat: the controls, the house, the island, the reader and the sessions drawer
+              // stay above it (user 2026-10-23; the web's #controls is z 50 < media 70, the app keeps them usable)
               if (media != null)
                 Positioned(
                   top: mediaTop,
@@ -361,6 +343,60 @@ class _HomeScreenState extends State<HomeScreen> {
                         onClose: chat.closeMedia,
                       ),
                 ),
+              ControlsCapsule(
+                ttsMuted: !chat.ttsEnabled,
+                micMuted: !_micOn,
+                barVisible: _barVisible,
+                onMic: _toggleMic,
+                onTts: () => chat.setTts(!chat.ttsEnabled),
+                onToggleBar: _toggleBar,
+              ),
+              Positioned(
+                left: 12 + pad.left,
+                top: pad.top + 12,
+                child: RoundMenuButton(
+                  key: const Key('home-sessions-btn'),
+                  onTap: () {
+                    setState(() => _sessionsOpen = !_sessionsOpen);
+                    if (_sessionsOpen) {
+                      context.read<SessionsController>().refresh();
+                    }
+                  },
+                  child: MorphIcon(
+                    icon: houseGlyph,
+                    color: JTokens.accent.withValues(alpha: 0.7),
+                    size: 18,
+                    strokeWidth: 1.75,
+                  ),
+                ),
+              ),
+              // island 80, reader 85, sessions 95 (style.css); the video sits under all of them
+              Positioned(
+                top: 8 + pad.top,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Island(
+                    steps: chat.flow.steps,
+                    error: chat.error,
+                    errorSeq: chat.errorSeq,
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: ReaderLayer(
+                  card: chat.reader,
+                  onClose: chat.closeReader,
+                ),
+              ),
+              Positioned.fill(
+                child: SessionsDrawer(
+                  open: _sessionsOpen,
+                  onClose: () => setState(() => _sessionsOpen = false),
+                  onDashboard: () =>
+                      Navigator.pushNamed(context, '/settings/menu'),
+                ),
+              ),
             ],
           ),
         ),

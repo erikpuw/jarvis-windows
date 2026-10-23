@@ -1,10 +1,12 @@
 // Thông tin (pages.ts infoPage + index.ts loadReadme): the version bar, the README through the markdown view, its error lines.
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:jarvis_mobile/settings/pages/info_page.dart';
+import 'package:jarvis_mobile/chat/markdown_view.dart';
 
 import 'catalog_fixtures.dart';
 import 'fixtures.dart';
@@ -27,6 +29,61 @@ Future<List<http.Request>> _pump(
 }
 
 void main() {
+  testWidgets(
+    'README layout divs are hidden while their markdown content remains',
+    (t) async {
+      await _pump(
+        t,
+        extra: {
+          'GET /api/system/readme': (_) => jsonOk({
+            'success': true,
+            'content': '# JARVIS\n\n<div align="center">\n\n**Trợ lý AI**\n\n</div>\n\n## Giới thiệu'
+                .replaceAll('\n', '\r\n'),
+          }),
+        },
+      );
+      expect(find.textContaining('<div', findRichText: true), findsNothing);
+      expect(find.textContaining('</div>', findRichText: true), findsNothing);
+      expect(
+        find.textContaining('Trợ lý AI', findRichText: true),
+        findsOneWidget,
+      );
+      expect(find.text('Giới thiệu'), findsOneWidget);
+    },
+  );
+
+  testWidgets('README div examples in code are preserved', (t) async {
+    const examples =
+        '```html\n<div align="center">\nexample\n</div>\n```\n\n~~~html\n<div>\nexample\n</div>\n~~~\n\n`<div align="center">`\n\n    <div>\n    example\n    </div>';
+    await _pump(
+      t,
+      extra: {
+        'GET /api/system/readme': (_) => jsonOk({
+          'success': true,
+          'content': '<div align="center">\n\n$examples\n\n</div>',
+        }),
+      },
+    );
+    final markdown = t.widget<MarkdownView>(find.byType(MarkdownView)).text;
+    expect(markdown.trim(), examples);
+  });
+
+  testWidgets('external README badges keep their URL without a server prefix', (
+    t,
+  ) async {
+    const url = 'https://img.shields.io/badge/Python-3.11-blue';
+    await _pump(
+      t,
+      extra: {
+        'GET /api/system/readme': (_) =>
+            jsonOk({'success': true, 'content': '# JARVIS\n\n![Python]($url)'}),
+      },
+    );
+    expect(t.takeException(), isNull);
+    final image = t.widget<Image>(find.byType(Image));
+    expect((image.image as NetworkImage).url, url);
+  });
+
   testWidgets('version bar, README rendered as markdown', (t) async {
     final calls = await _pump(t);
     expect(calls.where((c) => c.url.path == '/api/system/readme').length, 1);

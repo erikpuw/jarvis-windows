@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
@@ -11,18 +10,21 @@ import 'server_config.dart';
 
 enum SocketState { connecting, open, closed }
 
+class SessionEvent {
+  const SessionEvent(this.id, {required this.resumed});
+  final String id;
+  final bool resumed;
+}
+
 /// Mirrors frontend/src/ws.ts: heartbeat, stale detection, backoff, one session id.
 class JarvisSocket {
   JarvisSocket(
     this._cfg, {
     required this.device,
     this.tokenProvider,
+    this.onRejected,
     WebSocketChannel Function(Uri)? connector,
-    Random? random,
-  }) : _connector = connector ?? IOWebSocketChannel.connect,
-       _random = random ?? Random.secure() {
-    _sessionId = _newSessionId(_random!);
-  }
+  }) : _connector = connector ?? IOWebSocketChannel.connect;
 
   static const _heartbeat = Duration(seconds: 20);
   static const _staleAfter = Duration(seconds: 60);
@@ -32,10 +34,17 @@ class JarvisSocket {
   final ServerConfig _cfg;
   final String device;
   final WebSocketChannel Function(Uri) _connector;
-  final Random? _random;
-  late String _sessionId;
-  String get sessionId => _sessionId;
+  String? _sessionId;
+  String? _requested;
+  String? _askedFor;
+  String? get sessionId => _sessionId;
+  final _sessions = StreamController<SessionEvent>.broadcast();
+  Stream<SessionEvent> get sessionEvents => _sessions.stream;
   final String Function()? tokenProvider;
+
+  /// The server closed with 1008 (token missing or refused); the socket stays closed until [connect] is called again.
+  final VoidCallback? onRejected;
+  bool _rejected = false;
 
   final _messages = StreamController<Map<String, dynamic>>.broadcast();
   final _state = ValueNotifier(SocketState.closed);
@@ -52,19 +61,19 @@ class JarvisSocket {
   Stream<Map<String, dynamic>> get messages => _messages.stream;
   ValueListenable<SocketState> get state => _state;
 
-  static String _newSessionId(Random r) =>
-      'web-${List.generate(4, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}';
-
   static Duration nextDelay(Duration d) {
     final next = d * 2;
     return next > _maxDelay ? _maxDelay : next;
   }
 
+  /// Called on purpose (start, login, reconnect timer): it also lifts a 1008 refusal, as after a new sign-in.
   void connect() {
     if (_disposed || _state.value != SocketState.closed) return;
+    _rejected = false;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _state.value = SocketState.connecting;
+    _askedFor = _requested;
     final WebSocketChannel ch;
     try {
       // URI rebuilt each attempt: the server URL can change at runtime.
@@ -72,7 +81,7 @@ class JarvisSocket {
       ch = _connector(
         _cfg.ws('/ws/voice', {
           'device': device,
-          'session': sessionId,
+          'session': ?_requested,
           if (tok != null && tok.isNotEmpty) 'token': tok,
         }),
       );
@@ -115,6 +124,12 @@ class JarvisSocket {
     try {
       final msg = jsonDecode(data);
       if (msg is! Map<String, dynamic> || msg['type'] == 'pong') return;
+      if (msg['type'] == 'session' && msg['id'] is String) {
+        final id = msg['id'] as String;
+        _sessionId = _requested = id;
+        _sessions.add(SessionEvent(id, resumed: id == _askedFor));
+        return;
+      }
       _messages.add(msg);
     } catch (_) {
       debugPrint('[ws] bad message');
@@ -127,6 +142,12 @@ class JarvisSocket {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
     _state.value = SocketState.closed;
+    // ws.ts: 1008 = the server refused the token. Retrying would only repeat the refusal; the app signs out instead.
+    if (ch.closeCode == 1008) {
+      _rejected = true;
+      onRejected?.call();
+      return;
+    }
     _scheduleReconnect();
   }
 
@@ -156,7 +177,7 @@ class JarvisSocket {
   /// An open socket that has been silent for a heartbeat is treated as dead: the OS often cuts the link while the app sleeps
   /// without ever reporting it, and a send would go into the void.
   void reconnectNow() {
-    if (_disposed) return;
+    if (_disposed || _rejected) return;
     final ch = _channel;
     if (_state.value == SocketState.open &&
         ch != null &&
@@ -181,13 +202,11 @@ class JarvisSocket {
     _state.value = SocketState.closed;
   }
 
-  /// Forcibly resets connection, optionally creating a fresh session ID (e.g. on user login/switch).
-  void forceReconnect({bool resetSession = false}) {
+  /// ws.ts: reconnect immediately, asking the server for this session or a new one.
+  void switchSession(String? id) {
     if (_disposed) return;
+    _requested = id;
     disconnect();
-    if (resetSession) {
-      _sessionId = _newSessionId(_random ?? Random.secure());
-    }
     _delay = _minDelay;
     connect();
   }
@@ -200,6 +219,7 @@ class JarvisSocket {
     _channel = null;
     ch?.sink.close();
     _messages.close();
+    _sessions.close();
     _state.dispose();
   }
 }

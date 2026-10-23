@@ -28,6 +28,62 @@ void main() {
     c.audio.listen(audio.add);
   });
 
+  test('turnRunning covers thinking, working, speaking, an open TTS and playing sound', () async {
+    expect(c.turnRunning, isFalse);
+    for (final state in ['thinking', 'working']) {
+      await pump({'type': 'status', 'state': state});
+      expect(c.turnRunning, isTrue);
+      await pump({'type': 'status', 'state': 'idle'});
+      expect(c.turnRunning, isFalse);
+    }
+    await pump({'type': 'status', 'state': 'speaking', 'source': 'tts'});
+    expect(c.turnRunning, isTrue);
+    await pump({'type': 'status', 'state': 'idle', 'source': 'tts'});
+    expect(c.turnRunning, isFalse);
+    c.setPlaying(true);
+    expect(c.turnRunning, isTrue);
+    c.onNewSocket();
+    expect(c.turnRunning, isTrue);
+  });
+
+  test('showHistory draws users and answers, keeps cards, skips ask cards and other roles', () {
+    c.showHistory([
+      {'role': 'user', 'content': 'hỏi'},
+      {'role': 'assistant', 'content': 'đáp'},
+      {
+        'role': 'assistant',
+          'content': '[INTERACTIVE_CARD_JSON]:{"id":"a1","type":"select","question":"Chọn?","options":["a","b"]}',
+      },
+      {'role': 'system', 'content': 'x'},
+      {
+        'role': 'assistant',
+        'content': '[INTERACTIVE_CARD_JSON]:{"id":"f1","type":"file","name":"a.txt","url":"/a.txt"}',
+      },
+    ]);
+    expect(c.items, hasLength(3));
+    expect((c.items[0] as UserMsg).text, 'hỏi');
+    expect((c.items[1] as AssistantMsg).text, 'đáp');
+    expect(c.items[2], isA<FileMsg>());
+    expect(c.ask, isNull);
+    expect(c.welcomeVisible, isFalse);
+  });
+
+  test('clearChat empties the chat but keeps the welcome layer', () {
+    expect(c.welcomeVisible, isTrue);
+    c.clearChat();
+    expect(c.items, isEmpty);
+    expect(c.welcomeVisible, isTrue);
+    c.clearChat(keepWelcome: false);
+    expect(c.welcomeVisible, isFalse);
+  });
+
+  test('onNewSocket drops a turn of the old socket', () async {
+    await pump({'type': 'status', 'state': 'thinking'});
+    c.onNewSocket();
+    expect(c.turnRunning, isFalse);
+    expect(c.state, JState.idle);
+  });
+
   test('stream chunks build one answer', () async {
     await pump({'type': 'stream_start'});
     await pump({'type': 'text_chunk', 'text': 'Xin '});

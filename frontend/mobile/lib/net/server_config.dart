@@ -31,7 +31,11 @@ class ServerConfig extends ChangeNotifier {
     notifyListeners();
   }
 
-  Uri http(String path) => Uri.parse('$_baseUrl$path');
+  Uri http(String path) {
+    final uri = Uri.parse(path);
+    if (uri.scheme == 'http' || uri.scheme == 'https') return uri;
+    return Uri.parse('$_baseUrl$path');
+  }
 
   Uri ws(String path, Map<String, String> query) {
     final b = Uri.parse(_baseUrl);

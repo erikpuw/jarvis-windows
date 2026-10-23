@@ -36,8 +36,9 @@ class FakeChannel extends StreamChannelMixin implements WebSocketChannel {
   Future<void> get ready => Future.value();
   @override
   String? get protocol => null;
+  int? code; // what the server closed with (set before closing incoming)
   @override
-  int? get closeCode => null;
+  int? get closeCode => code;
   @override
   String? get closeReason => null;
 }
@@ -62,10 +63,41 @@ void main() {
     );
   }
 
-  test('session id format', () {
-    s = make();
-    expect(RegExp(r'^web-[0-9a-f]{8}$').hasMatch(s.sessionId), true);
-    s.dispose();
+  test('first connect asks for no session; the server packet sets it and is not a chat message', () {
+    fakeAsync((fa) {
+      s = make();
+      final events = <SessionEvent>[];
+      final messages = <Map<String, dynamic>>[];
+      s.sessionEvents.listen(events.add);
+      s.messages.listen(messages.add);
+      expect(s.sessionId, isNull);
+      s.connect();
+      expect(uris.first.queryParameters.containsKey('session'), isFalse);
+      channels.first.incoming.add('{"type":"session","id":"web-0000aaaa"}');
+      fa.flushMicrotasks();
+      expect(s.sessionId, 'web-0000aaaa');
+      expect(events.single.id, 'web-0000aaaa');
+      expect(events.single.resumed, isFalse);
+      expect(messages, isEmpty);
+      s.dispose();
+    });
+  });
+
+  test('switchSession closes the socket and asks for the new id at once; null asks for none', () {
+    fakeAsync((fa) {
+      s = make();
+      s.connect();
+      fa.flushMicrotasks();
+      s.switchSession('web-1111bbbb');
+      expect(channels.length, 2);
+      expect(uris.last.queryParameters['session'], 'web-1111bbbb');
+      s.switchSession(null);
+      expect(channels.length, 3);
+      expect(uris.last.queryParameters.containsKey('session'), isFalse);
+      fa.flushMicrotasks();
+      expect(s.state.value, SocketState.open);
+      s.dispose();
+    });
   });
 
   test('backoff caps at 30s', () {
@@ -76,14 +108,18 @@ void main() {
     expect(d, const Duration(seconds: 30));
   });
 
-  test('reconnect keeps session and single socket', () {
+  test('a reconnect asks for the confirmed session and reports resumed', () {
     fakeAsync((fa) {
       s = make();
+      final events = <SessionEvent>[];
+      s.sessionEvents.listen(events.add);
       s.connect();
       s.connect();
       expect(channels.length, 1);
       fa.flushMicrotasks();
       expect(s.state.value, SocketState.open);
+      channels[0].incoming.add('{"type":"session","id":"web-0000aaaa"}');
+      fa.flushMicrotasks();
       channels[0].incoming.close();
       fa.flushMicrotasks();
       expect(s.state.value, SocketState.closed);
@@ -92,7 +128,10 @@ void main() {
       fa.elapse(const Duration(milliseconds: 2));
       expect(channels.length, 2);
       expect(uris[1].queryParameters['session'], s.sessionId);
-      expect(uris[0].queryParameters['session'], s.sessionId);
+      expect(uris[0].queryParameters.containsKey('session'), isFalse);
+      channels[1].incoming.add('{"type":"session","id":"web-0000aaaa"}');
+      fa.flushMicrotasks();
+      expect(events.last.resumed, isTrue);
       expect(uris[1].queryParameters['device'], 'ios');
       s.connect();
       expect(channels.length, 2);
@@ -212,6 +251,39 @@ void main() {
       fa.elapse(const Duration(seconds: 25));
       sock.reconnectNow();
       fa.flushMicrotasks();
+      expect(made.length, 2);
+      sock.dispose();
+    });
+  });
+
+  test('1008 (token refused) stops reconnecting and reports it; a later connect works', () {
+    fakeAsync((fa) {
+      final made = <FakeChannel>[];
+      var rejected = 0;
+      final sock = JarvisSocket(
+        ServerConfig(),
+        device: 'ios',
+        onRejected: () => rejected++,
+        connector: (u) {
+          final c = FakeChannel();
+          made.add(c);
+          return c;
+        },
+      );
+      sock.connect();
+      fa.flushMicrotasks();
+      made[0]
+        ..code = 1008
+        ..incoming.close();
+      fa.flushMicrotasks();
+      expect(sock.state.value, SocketState.closed);
+      expect(rejected, 1);
+      fa.elapse(const Duration(minutes: 2));
+      expect(made.length, 1); // ws.ts: retrying would only repeat the refusal
+      sock.reconnectNow();
+      expect(made.length, 1);
+      // signed in again: the app connects on purpose
+      sock.connect();
       expect(made.length, 2);
       sock.dispose();
     });
