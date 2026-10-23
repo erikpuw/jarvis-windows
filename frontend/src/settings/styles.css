@@ -127,7 +127,8 @@
   color: var(--sd-text);
 }
 
-/* the phone's home button (top left, the same size and look as the control buttons); hidden on a PC and while a page is open */
+/* the phone's top-left button (the same size and look as the control buttons): house → chat sessions, gear while the Dashboard is
+   open → its menu, ✕ while that menu is out (index.ts syncMenuButton); hidden on a PC */
 .sd-menu-btn {
   display: none;
   position: fixed;
@@ -155,7 +156,6 @@
   inset: -4px;
 }
 
-#settings-container.open .sd-menu-btn { display: none !important; }
 
 /* ── Body: the menu and the page frame, each placed on the screen ── */
 .sd-body {
@@ -397,6 +397,11 @@
 
 #settings-container.open .sd-content { display: flex; flex-direction: column; }
 
+/* PC: the menu stands only while the Dashboard is open. Otherwise the left column is the chat sessions panel (sessions.ts) */
+@media (min-width: 769px) {
+  #settings-container:not(.open) .sd-nav { display: none; }
+}
+
 /* the close button sits on the frame's top right corner, over the page head */
 .sd-content-head {
   position: absolute;
@@ -532,7 +537,7 @@
   display: none;
 }
 
-/* Chat history sub-views and the session back bar: a strip above the scrolling list, so it never scrolls away with the messages */
+/* Chat history owner filter and the session back bar: a strip above the scrolling list, so it never scrolls away with the messages */
 .sd-subbar {
   display: flex;
   align-items: center;
@@ -547,33 +552,22 @@
   display: none;
 }
 
-.sd-subtabs {
+.sd-session-filter {
   display: inline-flex;
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid var(--sd-border);
-  border-radius: 10px;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
 }
 
-.sd-subtab {
-  padding: 5px 12px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--sd-muted);
+.sd-session-filter select {
   font: inherit;
   font-size: var(--fs-small);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.sd-subtab[hidden] {
-  display: none !important;
-}
-
-.sd-subtab.active {
-  background: rgba(255, 255, 255, 0.08);
   color: var(--sd-text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--sd-border);
+  border-radius: 8px;
+  padding: 4px 8px;
 }
 
 .sd-session-back {
@@ -631,11 +625,18 @@
 .sd-session-src.web { background: rgba(96, 165, 250, 0.18); color: #93c5fd; }
 .sd-session-src.telegram { background: rgba(34, 211, 238, 0.18); color: #67e8f9; }
 
-.sd-session-id {
-  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
-  font-size: var(--fs-small);
-  overflow-wrap: anywhere;
+.sd-session-title {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.sd-session-owner {
+  grid-column: 1 / -1;
+  font-size: var(--fs-small);
+  color: var(--sd-muted);
 }
 
 .sd-session-meta {
@@ -644,7 +645,7 @@
   color: var(--sd-muted);
 }
 
-/* Chat history: "Toàn bộ" is one centred column; "Phiên chat" is two framed panes like Memory Control (session list | reader) */
+/* Chat history: two framed panes like Memory Control (session list | reader) */
 .sd-history-split {
   display: flex;
   gap: 10px;
@@ -675,11 +676,7 @@
   overscroll-behavior: contain;
 }
 
-.sd-sessions-list[hidden] {
-  display: none;
-}
-
-.sd-history-split[data-view="sessions"] .sd-history-list {
+.sd-history-split .sd-history-list {
   max-width: none;
   margin: 0;
   flex: 1;
@@ -785,6 +782,17 @@
 
 .history-content .sd-prose p:last-child {
   margin-bottom: 0;
+}
+
+/* lists keep their bullets/numbers inside the bubble (the * { padding: 0 } reset left the markers hanging off its left edge) */
+.history-content ul,
+.history-content ol {
+  margin: 4px 0 6px;
+  padding-left: 1.4em;
+}
+
+.history-content li {
+  margin-bottom: 3px;
 }
 
 .history-item.user {
@@ -3039,15 +3047,15 @@
     flex: 1;
   }
 
-  /* sessions view: the list OR the reader, never both */
-  .sd-history-split[data-view="sessions"][data-reading="0"] .sd-history-list,
-  .sd-history-split[data-view="sessions"][data-reading="1"] .sd-sessions-list {
+  /* the list OR the reader, never both */
+  .sd-history-split[data-reading="0"] .sd-history-list,
+  .sd-history-split[data-reading="1"] .sd-sessions-list {
     display: none;
   }
 
   /* reading a session: only the back bar and the messages, so the reader takes (almost) the whole screen */
   #card-logs.reading .sd-logs-head,
-  #card-logs.reading .sd-subtabs {
+  #card-logs.reading .sd-session-filter {
     display: none;
   }
 

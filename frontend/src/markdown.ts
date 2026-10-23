@@ -472,7 +472,7 @@ function replaceStreamingIncompleteTables(md: string, isStreaming: boolean): str
  */
 export function formatMarkdown(
   md: string,
-  options?: { isBubble?: boolean; isStreaming?: boolean }
+  options?: { isBubble?: boolean; isStreaming?: boolean; document?: boolean }
 ): string {
   if (!md) return "";
   const isBubble = options?.isBubble ?? false;
@@ -480,7 +480,9 @@ export function formatMarkdown(
   try {
     const withSkeletons = replaceStreamingIncompleteTables(md.replace(/\r\n/g, "\n"), isStreaming);
     const normalized = normalizeMarkdownTables(withSkeletons);
-    const raw = marked.parse(normalized, { async: false });
+    // a written document (README) joins consecutive lines into one paragraph as GitHub does (badges in a row, 2026-10-23); chat keeps
+    // breaks: a model's single newline is a line break
+    const raw = marked.parse(normalized, { async: false, ...(options?.document ? { breaks: false } : {}) });
     const polished = polishMarkdownHtml(typeof raw === "string" ? raw : String(raw), isBubble);
     const sanitized = DOMPurify.sanitize(polished, {
       ADD_ATTR: [

@@ -52,11 +52,29 @@ _CUA_VERBS = {
     "type_text": "gõ", "set_value": "đặt giá trị", "press_key": "nhấn phím", "hotkey": "nhấn tổ hợp phím",
     "invoke_menu": "chọn menu", "shell_click": "bấm", "shell_set_text": "gõ",
 }
-_CUA_RISKY = re.compile(
-    r"delete|remove|uninstall|format|erase|wipe|reset|shut\s*down|restart|sign\s*out|log\s*off"
-    r"|xóa|xoá|gỡ|định\s+dạng|tắt\s+máy|khởi\s+động\s+lại|đăng\s+xuất",
+# Tắt máy / khởi động lại / đăng xuất: chặn cứng, không hỏi (kể cả CUA_CONFIRM=off).
+_CUA_POWER = re.compile(
+    r"shut\s*down|shutdown|power\s*off|poweroff|stop-computer|restart|reboot|hibernate|sign\s*out|log\s*off|logoff"
+    r"|tắt\s+máy|khởi\s+động\s+lại|đăng\s+xuất|^\s*power\s*$|alt\+f4",
     re.I,
 )
+# Xoá / định dạng: luôn hỏi xác nhận dù CUA_CONFIRM=off.
+_CUA_RISKY = re.compile(
+    r"\bdel(?:ete)?\b|remove|uninstall|format|erase|wipe|reset|rmdir|\brd\b|xóa|xoá|gỡ|định\s+dạng",
+    re.I,
+)
+
+
+def _risk_text(args: dict, label: str) -> str:
+    """Mọi chỗ một thao tác có thể mang lệnh nguy hiểm: nhãn nút, tên app, chữ gõ, giá trị, phím, menu."""
+    parts = [label, args.get("name"), args.get("text"), args.get("value"), args.get("key")]
+    parts += [*(args.get("keys") or []), *(args.get("modifiers") or []), *(args.get("path") or [])]
+    text = " ".join(str(p) for p in parts if p)
+    keys = [*(args.get("modifiers") or []), *(args.get("keys") or []), *([args["key"]] if args.get("key") else [])]
+    return text + (" " + "+".join(str(k) for k in keys).lower() if len(keys) > 1 else "")
+
+
+POWER_BLOCKED = "Bị chặn: không được tắt máy, khởi động lại hay đăng xuất. Dừng lại và báo người dùng tự làm."
 
 _INSTALL_BUTTON = re.compile(r"install|cài\s+đặt|tải\s+xuống", re.I)
 _INSTALL_ALL = re.compile(
@@ -452,8 +470,10 @@ async def _replay(steps: list[dict], cua, shell, confirm, mode, record) -> tuple
             args["element_index"], label = el["element_index"], el.get("label") or ""
         if _preview_install(rows, args.get("element_index")):
             return "Lỗi: Bị chặn: nút cài đặt này thuộc bản cập nhật Preview.", None
-        risky = _CUA_RISKY.search(f"{label} {' '.join(map(str, args.get('path') or []))}")
-        if (mode == "each" or risky) and not await confirm(_describe(action, args, label)):
+        risk = _risk_text(args, label)
+        if _CUA_POWER.search(risk):
+            return f"Lỗi: {POWER_BLOCKED}", None
+        if (mode == "each" or _CUA_RISKY.search(risk)) and not await confirm(_describe(action, args, label)):
             return f"Lỗi: đã dừng ở bước {i} vì bạn không xác nhận.", None
         backend = shell if action.startswith("shell_") else cua
         result = await backend.call(action, args)
@@ -568,8 +588,10 @@ async def _cua_loop(task, cua, ask_llm, confirm, mode, steps, shell, record=None
                         return "Lỗi: mô hình lặp lại cùng một thao tác nên tôi dừng, không để nó chạy lung tung."
                     last_mutation = key
                     label = next((str(e.get("label") or "") for e in rows if e.get("element_index") == args.get("element_index")), "")
-                    risky = _CUA_RISKY.search(f"{label} {' '.join(map(str, args.get('path') or []))}")
-                    if (mode == "each" or risky) and not await confirm(_describe(tool, args, label)):
+                    risk = _risk_text(args, label)
+                    if _CUA_POWER.search(risk):
+                        observation = POWER_BLOCKED
+                    elif (mode == "each" or _CUA_RISKY.search(risk)) and not await confirm(_describe(tool, args, label)):
                         return f"Lỗi: đã dừng ở bước {step} vì bạn không xác nhận."
                 if observation is None:
                     backend = shell if tool.startswith("shell_") else cua

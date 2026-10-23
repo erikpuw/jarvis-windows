@@ -12,20 +12,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from engine.core import session_context as sc  # noqa: E402
 
 
-def test_reuses_well_formed_client_session_id():
-    assert sc.resolve_ws_session("web-1a2b3c4d") == "web-1a2b3c4d"
-
-
-def test_new_id_when_missing_or_malformed():
-    for bad in ("", None, "web-XYZ", "web-1a2b3c4d5", "tg-1a2b3c4d", "web-1a2b3c4d;drop", "../web-1a2b3c4d"):
-        sid = sc.resolve_ws_session(bad)
-        assert sid != bad and sc.WS_SESSION_RE.fullmatch(sid), (bad, sid)
-
-
-def test_new_ids_are_distinct():
-    assert len({sc.resolve_ws_session("") for _ in range(50)}) == 50
-
-
 def test_resume_history_loads_only_chat_turns(monkeypatch):
     import engine.core.memory as memory
 

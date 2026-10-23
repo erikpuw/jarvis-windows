@@ -1,13 +1,16 @@
 /**
  * Settings → Nhật ký: one page, four tabs — chat history, jarvis.log, security log, TTS log — like the categories of Memory Control.
- * It replaces the history panel and the "Jarvis Logs" button of the main screen. Password-locked like Memory Control
- * (settings/lock.ts; /api/history, /api/conversations and /api/logs* are gated by engine/UIUX/memory_lock.py): one unlock opens all four tabs.
+ * It replaces the history panel and the "Jarvis Logs" button of the main screen. No password of its own: the page follows the Auth
+ * Gateway session (settings/lock.ts), and the server answers the admin-only routes (/api/conversations, /api/logs*) to admins only.
  * It is its own page, not a card of the System page: that page checks connections every few seconds and every check writes an
  * httpx line into jarvis.log, so the log would fill with its own noise.
- * Chat sessions are not a tab of their own: the chat-history tab has two sub-views, "Toàn bộ" (everything in time order) and "Phiên chat".
- * "Phiên chat" is two frames like Memory Control: the list of sessions and the frame that reads the chosen one. On a phone only one frame
+ * The chat-history tab is admin only and lists chat sessions, each with its title and owner (user_name). The admin filters the list
+ * by owner (#history-owner-filter); the reader frame opens a session read-only (no send or continue control).
+ * It is two frames like Memory Control: the list of sessions and the frame that reads the chosen one. On a phone only one frame
  * shows at a time (list → tap a session → reader, with the back button above the reader and outside its scroll).
- * Everything is shown as plain text (textContent), so a stored message or log line can never inject markup into the page.
+ * Members have no tab here: the Dashboard hides the Nhật ký item for them (settings/pages.ts MEMBER_HIDDEN_PAGES).
+ * List rows and log lines use textContent, so a stored line can never inject markup into the page; the chat reader renders its
+ * messages through formatMarkdown (markdown.ts).
  */
 import { apiGet, apiDelete } from "./api";
 import { registerLockable, isUnlocked } from "./lock";
@@ -17,7 +20,6 @@ import { MessagesSquare, ScrollText, ShieldAlert, AudioLines, type IconNode } fr
 import { formatMarkdown } from "../markdown";
 
 type TabId = "history" | "jarvis" | "security" | "tts";
-type HistView = "all" | "sessions";
 interface Tab { id: TabId; label: string; icon: IconNode; color: string; path?: string }
 
 const LOG_LINES = 300;
@@ -30,7 +32,8 @@ const TABS: Tab[] = [
 
 interface ChatMessage { role: string; content: string; created_at: number; session_id?: string }
 type Source = "web" | "telegram" | "legacy";
-interface SessionRow { session_id: string; source: Source; device?: string; msg_count: number; started_at: number; last_msg: number }
+interface SessionRow { session_id: string; source: Source; device?: string; msg_count: number; started_at: number; last_msg: number; title?: string; user_id?: string; user_name?: string }
+interface Owner { id: string; name: string }
 
 const SOURCE_LABEL: Record<Source, string> = { web: "Web", telegram: "Telegram", legacy: "Cũ (chưa có phiên)" };
 const SOURCE_SHORT: Record<Source, string> = { web: "Web", telegram: "Telegram", legacy: "Cũ" };
@@ -38,17 +41,17 @@ const SOURCE_SHORT: Record<Source, string> = { web: "Web", telegram: "Telegram",
 const DEVICE_SHORT: Record<string, string> = { ios: "iOS", android: "Android", desktop: "PC", mobile: "Mobile" };
 const SPLIT_MIN_WIDTH = 769; // from here the two frames sit side by side (the settings drawer layout breaks at 768, like Memory Control)
 
-const defaultHistView = (): HistView => (getCurrentUserRole() === "admin" ? "all" : "sessions");
 let active: TabId = "history";
-let histView: HistView = defaultHistView(); // sub-view of the chat-history tab
+let ownerFilter = ""; // user id the session list is filtered by ("" = every owner)
 let openSession: string | null = null; // the session shown in the reader frame
 let openSessionSource: Source | undefined;
 let loadSeq = 0; // a slow answer of a tab the user already left must not overwrite the one on screen
 let listSeq = 0;
 let detailSeq = 0;
 
-const historyEl = () => document.getElementById("history-settings-list"); // reader frame / "Toàn bộ" column
+const historyEl = () => document.getElementById("history-settings-list"); // reader frame
 const sessionsEl = () => document.getElementById("history-sessions-list");
+const ownerEl = () => document.getElementById("history-owner-filter") as HTMLSelectElement | null;
 const logEl = () => document.getElementById("logs-content");
 const tabOf = (id: TabId) => TABS.find(t => t.id === id)!;
 const isListTab = (id: TabId) => id === "history";
@@ -58,8 +61,8 @@ const splitLayout = () => window.matchMedia(`(min-width: ${SPLIT_MIN_WIDTH}px)`)
 function renderNav(): void {
   const nav = document.getElementById("logs-category-nav");
   if (!nav) return;
-  const role = getCurrentUserRole();
-  const availableTabs = role === "admin" ? TABS : TABS.filter(t => t.id === "history");
+  // members get no tab at all: the Dashboard does not offer this page to them
+  const availableTabs = getCurrentUserRole() === "admin" ? TABS : [];
 
   nav.innerHTML = "";
   for (const tab of availableTabs) {
@@ -142,34 +145,27 @@ function renderLog(text: string): void {
 
 // ── sessions: list frame + reader frame ──────────────────────────────────────────────────────────────────────────────────────
 
-/** Which frames show: sub-view buttons only on the history tab, the session list only in "Phiên chat", the back bar only while a session is open. */
+/** Which frames show: the back bar only while a session is open; the list and the reader sit side by side on a PC, one at a time on a phone. */
 function updateView(): void {
-  const role = getCurrentUserRole();
-  if (role !== "admin" && histView === "all") histView = "sessions";
-  const sessions = active === "history" && histView === "sessions";
-  const reading = sessions && openSession !== null;
+  const reading = active === "history" && openSession !== null;
   const bar = document.getElementById("history-subbar");
   if (bar) bar.hidden = active !== "history";
-  const allBtn = bar?.querySelector<HTMLElement>('[data-hist-view="all"]');
-  if (allBtn) {
-    const showAll = role === "admin";
-    allBtn.hidden = !showAll;
-    allBtn.style.display = showAll ? "" : "none";
-  }
-  bar?.querySelectorAll<HTMLElement>("[data-hist-view]").forEach(b => b.classList.toggle("active", b.dataset.histView === histView));
   const split = document.getElementById("history-view");
-  if (split) {
-    split.dataset.view = active === "history" ? histView : "";
-    split.dataset.reading = reading ? "1" : "0";
-  }
-  const list = sessionsEl();
-  if (list) list.hidden = !sessions;
-  document.getElementById("card-logs")?.classList.toggle("reading", reading); // phone: hides the title/sub-view buttons while reading
+  if (split) split.dataset.reading = reading ? "1" : "0";
+  document.getElementById("card-logs")?.classList.toggle("reading", reading); // phone: hides the title/filter while reading
   const back = document.getElementById("history-back");
   if (back) back.hidden = !reading;
   const title = document.getElementById("history-back-title");
   if (title) title.textContent = reading ? `${openSessionSource ? SOURCE_LABEL[openSessionSource] + " · " : ""}${openSession}` : "";
   sessionsEl()?.querySelectorAll<HTMLElement>(".sd-session-row").forEach(r => r.classList.toggle("selected", reading && r.dataset.session === openSession));
+}
+
+function renderOwnerFilter(owners: Owner[]): void {
+  const sel = ownerEl();
+  if (!sel) return;
+  sel.textContent = "";
+  sel.append(new Option("Tất cả", ""), ...owners.map(o => new Option(o.name || o.id, o.id)));
+  sel.value = ownerFilter;
 }
 
 function renderSessions(sessions: SessionRow[]): void {
@@ -186,14 +182,17 @@ function renderSessions(sessions: SessionRow[]): void {
     src.className = `sd-session-src ${s.source}`;
     const device = s.source === "web" && s.device ? DEVICE_SHORT[s.device] : "";
     src.textContent = device ? `${SOURCE_SHORT.web} · ${device}` : SOURCE_SHORT[s.source];
-    const id = document.createElement("span");
-    id.className = "sd-session-id";
-    id.textContent = s.session_id;
+    const title = document.createElement("span");
+    title.className = "sd-session-title";
+    title.textContent = s.title || s.session_id;
+    const owner = document.createElement("span");
+    owner.className = "sd-session-owner";
+    owner.textContent = s.user_name || s.user_id || "";
     const when = new Date(s.last_msg * 1000);
     const meta = document.createElement("span");
     meta.className = "sd-session-meta";
     meta.textContent = `${s.msg_count} tin · ${dayLabel(when)} ${when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-    btn.append(src, id, meta);
+    btn.append(src, title, owner, meta);
     btn.addEventListener("click", () => selectSession(s.session_id, s.source));
     el.appendChild(btn);
   }
@@ -228,10 +227,11 @@ async function loadSessionList(): Promise<void> {
   showNote(list, "Đang tải…", "history-empty");
   if (!openSession) showNote(historyEl(), "Chọn một phiên ở bên trái để xem.", "history-empty");
   try {
-    const data = await apiGet<{ success: boolean; sessions?: SessionRow[]; error?: string }>("/api/conversations/sessions?limit=50");
+    const data = await apiGet<{ success: boolean; sessions?: SessionRow[]; users?: Owner[]; error?: string }>(`/api/conversations/sessions?limit=50&user=${encodeURIComponent(ownerFilter)}`);
     if (seq !== listSeq || !isUnlocked("logs")) return;
     if (!data.success) return showNote(list, `Không tải được danh sách phiên chat: ${data.error ?? "lỗi không rõ"}`, "history-empty");
     const sessions = data.sessions ?? [];
+    renderOwnerFilter(data.users ?? []); // the owner list always names every owner, whatever the filter
     renderSessions(sessions);
     // two frames side by side: open the newest session right away; on a phone stay on the list (opening would hide it)
     if (!openSession && sessions.length && splitLayout()) selectSession(sessions[0].session_id, sessions[0].source);
@@ -246,25 +246,18 @@ async function loadSessionList(): Promise<void> {
 async function load(): Promise<void> {
   const seq = ++loadSeq;
   const tab = tabOf(active);
-  if (tab.id === "history" && histView === "sessions") {
+  if (tab.id === "history") {
     await loadSessionList();
     if (openSession) await loadSessionDetail();
     return;
   }
-  const target = isListTab(tab.id) ? historyEl() : logEl();
+  const target = logEl();
   showNote(target, "Đang tải…", noteClass(tab.id));
   try {
-    if (tab.id === "history") {
-      const data = await apiGet<{ success: boolean; history?: ChatMessage[]; error?: string }>("/api/history?limit=100");
-      if (seq !== loadSeq || !isUnlocked("logs")) return; // another tab was opened, or it locked again while loading
-      if (data.success) renderHistory(data.history ?? []);
-      else showNote(target, `Không tải được ${tab.label}: ${data.error ?? "lỗi không rõ"}`, noteClass(tab.id));
-    } else {
-      const data = await apiGet<{ success: boolean; logs?: string; error?: string }>(tab.path!);
-      if (seq !== loadSeq || !isUnlocked("logs")) return;
-      if (data.success) renderLog(data.logs ?? "");
-      else showNote(target, `Không tải được ${tab.label}: ${data.error ?? "lỗi không rõ"}`, noteClass(tab.id));
-    }
+    const data = await apiGet<{ success: boolean; logs?: string; error?: string }>(tab.path!);
+    if (seq !== loadSeq || !isUnlocked("logs")) return;
+    if (data.success) renderLog(data.logs ?? "");
+    else showNote(target, `Không tải được ${tab.label}: ${data.error ?? "lỗi không rõ"}`, noteClass(tab.id));
   } catch {
     if (seq === loadSeq && isUnlocked("logs")) showNote(target, "Lỗi kết nối khi tải.", noteClass(tab.id));
   }
@@ -272,7 +265,6 @@ async function load(): Promise<void> {
 
 function showTab(id: TabId): void {
   active = id;
-  histView = defaultHistView();
   openSession = null;
   renderNav();
   updateView();
@@ -290,10 +282,10 @@ function clear(): void {
   loadSeq++;
   listSeq++;
   detailSeq++;
-  histView = defaultHistView();
+  ownerFilter = "";
   openSession = null;
   active = "history";
-  for (const el of [historyEl(), sessionsEl(), logEl()]) if (el) el.textContent = "";
+  for (const el of [historyEl(), sessionsEl(), logEl(), ownerEl()]) if (el) el.textContent = "";
   renderNav();
   updateView();
 }
@@ -310,15 +302,10 @@ export function initLogsPage(): void {
     const btn = (event.target as HTMLElement).closest<HTMLElement>("[data-log-tab]");
     if (btn && isUnlocked("logs") && btn.dataset.logTab !== active) showTab(btn.dataset.logTab as TabId);
   });
-  document.getElementById("history-subbar")?.addEventListener("click", (event) => {
-    const btn = (event.target as HTMLElement).closest<HTMLElement>("[data-hist-view]");
-    if (!btn || !isUnlocked("logs") || btn.dataset.histView === histView) return;
-    if (btn.dataset.histView === "all" && getCurrentUserRole() !== "admin") return;
-    histView = btn.dataset.histView as HistView;
-    openSession = null;
-    detailSeq++;
-    updateView();
-    void load();
+  ownerEl()?.addEventListener("change", () => {
+    if (!isUnlocked("logs")) return;
+    ownerFilter = ownerEl()?.value ?? "";
+    void loadSessionList(); // the reader keeps the session it shows
   });
   document.getElementById("history-back-btn")?.addEventListener("click", () => {
     if (!isUnlocked("logs")) return;
@@ -334,9 +321,8 @@ export function initLogsPage(): void {
     try {
       const res = await apiDelete<{ success: boolean; deleted_count?: number; error?: string }>(`/api/conversations/session/${encodeURIComponent(sid)}`);
       if (res.success) {
-        if (localStorage.getItem("jarvis_active_session_id") === sid) {
-          localStorage.removeItem("jarvis_active_session_id");
-        }
+        // main.ts decides whether the deleted session is the one the chat has open
+        window.dispatchEvent(new CustomEvent("jarvis:session-deleted", { detail: { id: sid } }));
         openSession = null;
         detailSeq++;
         updateView();

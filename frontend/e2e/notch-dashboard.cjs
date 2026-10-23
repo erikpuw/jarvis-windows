@@ -18,7 +18,9 @@ const check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 47, bottom: 34, left: 0, right: 0 } });
   await page.goto(BASE);
   await page.waitForTimeout(1500);
-  await page.click("#settings-menu-toggle");
+  await page.click("#settings-menu-toggle"); // the sessions drawer (sessions.ts) ...
+  await page.waitForTimeout(300);
+  await page.click("#sessions-dash"); // ... ⚙ Bảng điều khiển opens the Dashboard menu drawer
   await page.waitForTimeout(500);
 
   // nothing painted (a background with colour) under the status bar strip while the drawer is open

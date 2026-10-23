@@ -20,6 +20,7 @@ PROTECTED_PREFIXES = (
     "/api/learnings", "/api/memories", "/api/workflows", "/api/outcomes", "/api/corrections",
     "/api/conversations", "/api/evolution", "/api/memory-control",
     "/api/history", "/api/logs",  # lịch sử chat và jarvis.log: cùng nội dung nhạy cảm, cùng mật khẩu
+    "/api/sessions",  # thanh bên phiên chat: chỉ trả phiên của người đã đăng nhập
 )
 
 lock_router = APIRouter()

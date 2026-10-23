@@ -7,7 +7,7 @@ import json
 import re
 from pathlib import Path
 from typing import Any, Literal
-from fastapi import APIRouter, Depends, UploadFile, File, Form, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse, FileResponse
 from engine.security.policy import UploadTooLarge, read_limited, resolve_file_under
 from pydantic import BaseModel
@@ -2347,64 +2347,86 @@ def _session_row(row: dict) -> dict:
     return row
 
 
+def _require_admin(request: Request) -> None:
+    """Nhật ký chỉ admin: member nhận 403 trước mọi xử lý."""
+    from engine.UIUX.memory_lock import is_admin
+    if not is_admin(request):
+        raise HTTPException(status_code=403, detail="admin only")
+
+
+# Chủ phiên: tin rỗng/NULL user_id là của admin (memory.save_message mặc định admin).
+_SESSION_OWNER_SQL = "CASE WHEN m.user_id IS NULL OR m.user_id IN ('', 'admin') THEN 'admin' ELSE m.user_id END"
+
+
 @router.get("/api/conversations/sessions")
-async def api_conversations_sessions(request: Request = None, limit: int = 50):
+async def api_conversations_sessions(request: Request = None, limit: int = 50, user: str = ""):
+    _require_admin(request)
     try:
         from engine.core.memory import _get_db
-        from engine.UIUX.memory_lock import get_current_user, is_admin
-        current_user = get_current_user(request) if request is not None else None
-        is_adm = is_admin(request) if request is not None else True
+        from engine.core.session_context import session_title
+
         def _fetch():
             conn = _get_db()
             try:
-                if not is_adm and current_user:
-                    uid = current_user.get("id")
-                    rows = conn.execute(
-                        "SELECT m.session_id, COUNT(*) as msg_count, MIN(m.created_at) as started_at, MAX(m.created_at) as last_msg, d.device"
-                        " FROM messages m LEFT JOIN session_devices d ON d.session_id = m.session_id"
-                        " WHERE m.user_id = ?"
-                        " GROUP BY m.session_id ORDER BY last_msg DESC LIMIT ?",
-                        (uid, limit)
-                    ).fetchall()
-                else:
-                    rows = conn.execute(
-                        "SELECT m.session_id, COUNT(*) as msg_count, MIN(m.created_at) as started_at, MAX(m.created_at) as last_msg, d.device"
-                        " FROM messages m LEFT JOIN session_devices d ON d.session_id = m.session_id"
-                        " WHERE m.user_id = 'admin' OR m.user_id IS NULL OR m.user_id = ''"
-                        " GROUP BY m.session_id ORDER BY last_msg DESC LIMIT ?",
-                        (limit,)
-                    ).fetchall()
-                return [_session_row(dict(r)) for r in rows]
+                where, params = ("", ())
+                if user:
+                    where, params = f"WHERE ({_SESSION_OWNER_SQL}) = ?", (user,)
+                rows = conn.execute(
+                    f"SELECT s.session_id, s.owner, s.msg_count, s.started_at, s.last_msg, d.device,"
+                    " u.display_name, u.username"
+                    f" FROM (SELECT m.session_id, {_SESSION_OWNER_SQL} AS owner, COUNT(*) AS msg_count,"
+                    " MIN(m.created_at) AS started_at, MAX(m.created_at) AS last_msg"
+                    f" FROM messages m {where} GROUP BY m.session_id, owner ORDER BY last_msg DESC LIMIT ?) s"
+                    " LEFT JOIN session_devices d ON d.session_id = s.session_id"
+                    " LEFT JOIN users u ON u.id = s.owner"
+                    " ORDER BY s.last_msg DESC",
+                    (*params, limit),
+                ).fetchall()
+                sessions = []
+                for r in rows:
+                    row = dict(r)
+                    sid = row["session_id"] or ""
+                    first = conn.execute(
+                        "SELECT content FROM messages WHERE session_id = ? AND role = 'user' ORDER BY id LIMIT 1",
+                        (sid,),
+                    ).fetchone()
+                    owner = row.pop("owner")
+                    display, username = row.pop("display_name"), row.pop("username")
+                    row["user_id"] = owner
+                    row["user_name"] = "admin" if owner == "admin" else (display or username or owner)
+                    row["title"] = session_title(first["content"] if first else "")
+                    sessions.append(_session_row(row))
+                # Chủ phiên cho dropdown lọc: mọi owner, không theo bộ lọc ?user=.
+                owner_rows = conn.execute(
+                    f"SELECT o.owner, u.display_name, u.username FROM (SELECT DISTINCT {_SESSION_OWNER_SQL} AS owner FROM messages m) o"
+                    " LEFT JOIN users u ON u.id = o.owner ORDER BY o.owner"
+                ).fetchall()
+                return sessions, [dict(r) for r in owner_rows]
             finally:
                 conn.close()
-        sessions = await asyncio.to_thread(_fetch)
-        return {"success": True, "sessions": sessions}
+
+        sessions, owner_rows = await asyncio.to_thread(_fetch)
+        users = [
+            {"id": r["owner"], "name": "admin" if r["owner"] == "admin" else (r["display_name"] or r["username"] or r["owner"])}
+            for r in owner_rows
+        ]
+        return {"success": True, "sessions": sessions, "users": users}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 @router.get("/api/conversations/session/{session_id}")
 async def api_conversations_session(session_id: str, request: Request = None):
+    _require_admin(request)
     try:
         from engine.core.memory import _get_db
-        from engine.UIUX.memory_lock import get_current_user, is_admin
-
-        current_user = get_current_user(request) if request is not None else None
-        is_adm = is_admin(request) if request is not None else True
-        uid = current_user.get("id") if (not is_adm and current_user) else None
 
         def _fetch(sid):
             conn = _get_db()
             try:
-                if uid:
-                    rows = conn.execute(
-                        "SELECT id, role, content, created_at FROM messages WHERE session_id=? AND user_id=? ORDER BY id ASC",
-                        (sid, uid)
-                    ).fetchall()
-                else:
-                    rows = conn.execute(
-                        "SELECT id, role, content, created_at FROM messages WHERE session_id=? ORDER BY id ASC",
-                        (sid,)
-                    ).fetchall()
+                rows = conn.execute(
+                    "SELECT id, role, content, created_at FROM messages WHERE session_id=? ORDER BY id ASC",
+                    (sid,)
+                ).fetchall()
                 return [dict(r) for r in rows]
             finally:
                 conn.close()
@@ -2413,51 +2435,13 @@ async def api_conversations_session(session_id: str, request: Request = None):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-class ConversationUpdateBody(BaseModel):
-    id: int
-    content: str
-    type_name: str = "message"
-    importance: int = 5
-
-@router.post("/api/conversations/update")
-async def api_conversations_update(body: ConversationUpdateBody):
-    try:
-        from engine.core.memory import _get_db
-        conn = await asyncio.to_thread(_get_db)
-        try:
-            conn.execute("UPDATE messages SET content=? WHERE id=?", (body.content, body.id))
-            conn.commit()
-            return {"success": True}
-        finally:
-            conn.close()
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
 @router.delete("/api/conversations/session/{session_id}")
 async def api_conversations_delete_session(session_id: str, request: Request):
+    _require_admin(request)
     try:
         from engine.core.memory import delete_session_messages
-        from engine.UIUX.memory_lock import get_current_user, is_admin
-        current_user = get_current_user(request) if request is not None else None
-        is_adm = is_admin(request) if request is not None else True
         target_sid = "" if session_id == "legacy" else session_id
-        uid = current_user.get("id") if (not is_adm and current_user) else None
-        
-        affected = await asyncio.to_thread(delete_session_messages, target_sid, uid)
+        affected = await asyncio.to_thread(delete_session_messages, target_sid)
         return {"success": True, "deleted_count": affected}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@router.delete("/api/conversations/delete")
-async def api_conversations_delete(id: int):
-    try:
-        from engine.core.memory import _get_db, delete_messages_by_id
-        conn = await asyncio.to_thread(_get_db)
-        try:
-            delete_messages_by_id(conn, [id])
-            conn.commit()
-            return {"success": True}
-        finally:
-            conn.close()
     except Exception as e:
         return {"success": False, "error": str(e)}

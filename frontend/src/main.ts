@@ -6,12 +6,13 @@
  */
 
 import { createOrb, type OrbState } from "./orb";
-import { mountWelcome, type WelcomeData } from "./welcome";
+import { mountWelcome, type Welcome, type WelcomeData } from "./welcome";
 import { createVoiceInput, createAudioPlayer, createInterruptDetector } from "./voice";
 import { createSocket } from "./ws";
-import { checkFirstTimeSetup, ensureMounted } from "./settings/index";
+import { checkFirstTimeSetup, ensureMounted, openDashboardMenu } from "./settings/index";
 import { formatMarkdown } from "./markdown";
-import { escapeHtml } from "./settings/api";
+import { apiGet, escapeHtml, setMemoryToken } from "./settings/api";
+import { mountSessions, type SessionsPanel } from "./sessions";
 import "./style.css";
 import { showStreamLoader, clearStreamLoader } from "./stream-loader";
 import { isAskCard, showAskPanel } from "./ask-panel";
@@ -63,6 +64,7 @@ let ttsOpen = false;
 // The TTS said "speaking" for a sentence but no sound is out yet ("Đang chuẩn bị…"): the turn loop keeps sending
 // working/thinking meanwhile (engine/turn/loop.py _run_tool), which must not cover it, nor "Đang đọc…" while sound plays.
 let speechPreparing = false;
+let sessions: SessionsPanel | null = null; // the chat sessions panel (sessions.ts), mounted after the socket
 // The status label follows status packets only (user, 2026-10-15; backend 444477c): stream_start/text_chunk/stream_end are
 // for the typing bubble. The LLM's own idle (no source) ends working/thinking; the TTS's speaking/idle (source tts) drive the
 // reading label, which the LLM's idle and the tool's working/thinking never cover.
@@ -72,6 +74,16 @@ let speechPreparing = false;
 function afterSpeech(): void {
   if (isBusy) transition(lastWorkState, lastWorkMessage);
   else if (!ttsOpen) transition("idle");
+}
+
+/** A turn is running: the LLM (thinking, working, speaking) or the TTS reading it (spec 2026-10-23 §7). Only then the chat sessions are
+ *  locked: a switch would cut the turn, and a small model does not take a second session in its context. */
+function turnRunning(): boolean {
+  return isBusy || ttsOpen || isSpeaking || audioPlayer.isPlaying() || currentState === "thinking" || currentState === "working" || currentState === "speaking";
+}
+
+function syncSessionLock(): void {
+  sessions?.setLocked(turnRunning());
 }
 let isSpeaking = false;
 let pendingQueriesQueue: { type: "voice" | "text", text: string, file?: File, bubbleElement?: HTMLElement }[] = [];
@@ -516,11 +528,86 @@ function addChatMessage(role: "user" | "assistant", text: string): HTMLElement |
     });
   }
 
-  // No cap on the bubbles: a chat session is one conversation (a reload starts a new one), so it keeps all of it.
+  // No cap on the bubbles: a chat session keeps all of its messages; opening it again from the sessions panel draws them back (showHistory).
 
   return bubble;
 }
 
+// ---------------------------------------------------------------------------
+// Chat sessions (spec 2026-10-23): loading, switching and starting one. Locked while a turn runs (turnRunning).
+// ---------------------------------------------------------------------------
+
+let historyToken = 0; // a newer load or a new session drops the replies still on their way
+let shownSessionId: string | null = null; // the session whose messages the chat pane shows (null: a fresh one)
+// the id loadSession has just asked for: its own `session` packet must not draw the same history a second time (cleared by any packet)
+let pendingSwitchFor: string | null = null;
+const listedSessions = new Set<string>(); // sessions the list has been asked for after their first reply (stream_end)
+const CARD_PREFIX = "[INTERACTIVE_CARD_JSON]:";
+
+function clearChat(): void {
+  closeAssistantBubble();
+  chatHistory.replaceChildren();
+}
+
+/** An ask card (a question the backend waited on) is not replayed: it would open the ask panel for an old turn. */
+function isAskHistoryRow(content: string): boolean {
+  if (!content.startsWith(CARD_PREFIX)) return false;
+  try {
+    return isAskCard(JSON.parse(content.substring(CARD_PREFIX.length).trim()));
+  } catch {
+    return false;
+  }
+}
+
+/** Clears the chat and draws the messages of one session at once (markdown, no typing). */
+async function showHistory(id: string): Promise<void> {
+  const token = ++historyToken;
+  clearChat();
+  let rows: { role: string; content: string }[];
+  try {
+    rows = (await apiGet<{ messages: { role: string; content: string }[] }>(`/api/sessions/mine/${encodeURIComponent(id)}`)).messages;
+  } catch (err) {
+    console.warn("[sessions] history failed:", err);
+    return;
+  }
+  if (token !== historyToken) return; // a newer load or a new session took over meanwhile
+  for (const m of rows) {
+    if (m.role !== "user" && m.role !== "assistant") continue;
+    if (isAskHistoryRow(m.content)) continue;
+    addChatMessage(m.role, m.content);
+  }
+  scrollToBottomIfNeeded(true);
+}
+
+/** A row of the sessions panel: switch the socket to that session and draw its messages. */
+async function loadSession(id: string): Promise<void> {
+  if (turnRunning()) return;
+  shownSessionId = id;
+  pendingSwitchFor = id;
+  welcome.dismiss();
+  sessions?.setActive(id);
+  socket.switchSession(id);
+  void sessions?.refresh();
+  await showHistory(id);
+}
+
+/** "＋ Phiên mới": a new session on the server, an empty chat and the welcome layer again. */
+function newSession(): void {
+  if (turnRunning()) return;
+  shownSessionId = null;
+  historyToken++;
+  clearChat();
+  socket.switchSession(null);
+  // the opening state again: the orb stays off until the first message of the new session (as at boot, btnOrb set up above)
+  orb.setEnabled(false);
+  btnOrb.disabled = true;
+  btnOrb.classList.add("orb-off");
+  btnOrb.setAttribute("aria-pressed", "false");
+  btnOrb.title = "Bật orb";
+  if (!welcomeUp) welcome = mountWelcomeLayer(); // the layer was dismissed by the chat before; a shown one is still right
+  sessions?.setActive(null);
+  void sessions?.refresh();
+}
 
 function openImageLightbox(src: string) {
   let lightbox = document.getElementById("image-lightbox") as HTMLElement;
@@ -991,13 +1078,23 @@ btnOrb.disabled = true;
 btnOrb.classList.add("orb-off"); // the icon follows this class: off at load
 btnOrb.setAttribute("aria-pressed", "false");
 btnOrb.title = "Bật orb";
-const welcome = mountWelcome(() => {
-  btnOrb.disabled = false;
-  btnOrb.classList.remove("orb-off");
-  btnOrb.setAttribute("aria-pressed", "true");
-  btnOrb.title = "Tắt orb (ngừng vẽ, trả GPU)";
-  orb.setEnabled(true);
-});
+// The welcome layer is mounted again by newSession(); the last welcome packet from the server is replayed into the new one.
+let lastWelcome: WelcomeData | null = null;
+let welcomeUp = false;
+function mountWelcomeLayer(): Welcome {
+  welcomeUp = true;
+  const layer = mountWelcome(() => {
+    welcomeUp = false;
+    btnOrb.disabled = false;
+    btnOrb.classList.remove("orb-off");
+    btnOrb.setAttribute("aria-pressed", "true");
+    btnOrb.title = "Tắt orb (ngừng vẽ, trả GPU)";
+    orb.setEnabled(true);
+  });
+  if (lastWelcome) layer.update(lastWelcome);
+  return layer;
+}
+let welcome = mountWelcomeLayer();
 btnOrb.addEventListener("click", () => {
   const turnOn = btnOrb.classList.contains("orb-off");
   orb.setEnabled(turnOn);
@@ -1013,6 +1110,45 @@ const resumeScene = () => { orb.resume(); setAnimPaused(false); };
 const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
 const WS_URL = `${wsProto}//${window.location.host}/ws/voice`;
 const socket = createSocket(WS_URL);
+
+// Chat sessions: the server gives the id (a `session` packet), the page keeps it in memory; a reload starts with none.
+sessions = mountSessions({
+  onPick: (id) => void loadSession(id),
+  onNew: newSession,
+  onDashboard: openDashboardMenu,
+});
+socket.onSession((id, resumed) => {
+  sessions?.setActive(id);
+  (window as unknown as { __jarvisSessionId?: string }).__jarvisSessionId = id;
+  // A new socket starts with no turn: the old socket's turn is gone with it (its idle never comes), so its busy and TTS flags go
+  // too. Audio already playing keeps the lock by itself (turnRunning). Local audio is not stopped.
+  isBusy = false;
+  ttsOpen = speechPreparing = false;
+  closeAssistantBubble();
+  transition("idle");
+  if (resumed) {
+    // the packet of a switch loadSession just started has drawn these messages already; any other packet with the same id is a
+    // reconnect: a reply made during the drop must show up, so the messages are drawn again (spec 2026-10-23 §7b)
+    const fromSwitch = pendingSwitchFor === id;
+    if (!fromSwitch && !turnRunning()) void showHistory(id);
+  } else if (shownSessionId !== id) {
+    historyToken++; // a history still on its way is the old session: it must not be drawn over the new one
+    clearChat(); // the server gave another session: the chat must not keep the messages of the old one
+  }
+  pendingSwitchFor = null;
+  shownSessionId = id;
+});
+socket.onAuthRejected(() => {
+  setMemoryToken(""); // the sign-in gate asks again after the reload
+  try { localStorage.removeItem("jarvis_user"); } catch { /* storage blocked: nothing to forget */ }
+  location.reload();
+});
+// the Settings log deletes a session with no socket of its own (settings/logs.ts): the open one starts a new session
+window.addEventListener("jarvis:session-deleted", (e) => {
+  const id = (e as CustomEvent<{ id: string }>).detail?.id;
+  if (id && id === socket.getSessionId()) newSession();
+  void sessions?.refresh();
+});
 
 const audioPlayer = createAudioPlayer();
 orb.setAnalyser(audioPlayer.getAnalyser());
@@ -1066,7 +1202,16 @@ function updateInputControls(state: State) {
   }
 }
 
-function transition(newState: State, message?: string) {
+/** Every exit of a state change re-checks the session lock, after currentState already has its new value. */
+function transition(newState: State, message?: string): void {
+  try {
+    applyTransition(newState, message);
+  } finally {
+    syncSessionLock();
+  }
+}
+
+function applyTransition(newState: State, message?: string) {
   let effectiveState = newState;
   if (newState === "idle" && !isMuted && !audioPlayer.isPlaying()) {
     effectiveState = "listening";
@@ -1200,6 +1345,7 @@ audioPlayer.onFinished(() => {
   isSpeaking = false;
   speechPreparing = false;
   interruptDetector.stop();
+  syncSessionLock();
 
   if (pendingQueriesQueue.length > 0) {
     const nextQuery = pendingQueriesQueue.shift()!;
@@ -1220,6 +1366,7 @@ audioPlayer.onFinished(() => {
   } else {
     afterSpeech();
   }
+  syncSessionLock(); // after the state change above: the TTS may have gone idle before the audio ended
 });
 
 // ---------------------------------------------------------------------------
@@ -1327,6 +1474,12 @@ socket.onMessage((msg) => {
     wasStreamed = true;
     isStreamActive = false;
     closeAssistantBubble(); // the bubble only: the status label follows the status packets
+    // the first reply of a session: it now exists in the database, so the sessions panel can list it
+    const sid = socket.getSessionId();
+    if (sid && !listedSessions.has(sid)) {
+      listedSessions.add(sid);
+      void sessions?.refresh();
+    }
     // The flow steps that arrive after stream_end still go to the island (island.flowStep).
   } else if (type === "status") {
     const state = msg.state as string;
@@ -1438,11 +1591,14 @@ socket.onMessage((msg) => {
     const step = msg.step as any;
     if (step && step.id) island.flowStep(step);
   } else if (type === "welcome") {
-    welcome.update(msg as unknown as WelcomeData);
+    lastWelcome = msg as unknown as WelcomeData;
+    welcome.update(lastWelcome);
   } else if (type === "memory_updated") {
     console.log("[UI] Memory updated");
   }
 });
+// after every packet, once the packet above has changed the turn's state: the lock follows it (spec 2026-10-23 §7)
+socket.onMessage(() => syncSessionLock());
 
 // ---------------------------------------------------------------------------
 // Kick off

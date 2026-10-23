@@ -26,12 +26,13 @@
   --z-welcome: 15;    /* #welcome (new-session greeting), above the orb, under the chat */
   --z-label: 20;      /* #jarvis-label */
   --z-chat: 30;       /* #command-container */
+  --z-media: 40;      /* .media-player: only over the chat; the controls, island, reader and sessions stay above it (user 2026-10-23) */
   --z-controls: 50;   /* #controls */
   --z-cam: 60;        /* #webcam-hud */
-  --z-media: 70;      /* .media-player */
   --z-island: 80;     /* .island (#error-text), Dynamic Island */
   --z-reader: 85;     /* #reader-card (floating article preview) */
   --z-lightbox: 90;   /* #image-lightbox */
+  --z-sessions: 95;   /* #sessions (chat sessions panel / phone drawer): over the chat, under #settings-container (its home button stays on top) */
   --z-settings: 100;  /* #settings-container */
 }
 
@@ -2681,5 +2682,207 @@ html.anim-paused body > :not(#settings-container) * {
   background: rgba(14, 165, 233, 0.2);
   color: #0ea5e9;
   border-color: rgba(14, 165, 233, 0.4);
+}
+
+/* ── Chat sessions panel (src/sessions.ts, spec 2026-10-23 §2) ──────────────────────────────────────────
+   Same frame as the Dashboard menu (.sd-nav, settings/styles.css; user 2026-10-23): 200px wide, the controls' inset from the left,
+   from under the Dynamic Island (+54px) down to the command bar's bottom edge, 12px corners, faint border, #121214.
+   PC: it stands there over the main screen like the Dashboard menu did; the chat and the command bar stay centred (user 2026-10-23).
+   iPhone: the same frame is a drawer opened by the home button, closed by the scrim or a pick.
+   Solid background, no blur. Only transform and visibility move; the drawer's slide stops under the anim gate (.still). */
+#sessions {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 54px);
+  bottom: var(--container-bottom);
+  left: calc(var(--controls-inset) + env(safe-area-inset-left, 0px));
+  z-index: var(--z-sessions);
+  width: 200px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 8px;
+  background: #121214;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  transform: translateX(calc(-100% - 24px));
+  visibility: hidden;
+  transition: transform 0.2s ease, visibility 0s linear 0.2s;
+}
+
+html.sessions-drawer #sessions {
+  transform: none;
+  visibility: visible;
+  transition: transform 0.2s ease, visibility 0s;
+}
+
+#sessions.still { transition: none !important; }
+
+#sessions-scrim { display: none; }
+
+/* the phone's dim band: from under the Dynamic Island to the command bar, as the Dashboard drawer's (a painted layer at the
+   screen edge made iOS Safari tint its bars, 2026-10-18) */
+html.sessions-drawer #sessions-scrim {
+  display: block;
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 54px);
+  bottom: var(--container-bottom);
+  left: 0;
+  right: 0;
+  z-index: calc(var(--z-sessions) - 1);
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.sess-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.sess-new {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid #1f2937;
+  border-radius: 9px;
+  background: transparent;
+  color: #e5e7eb;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sess-icon {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #1f2937;
+  border-radius: 9px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+}
+
+#sessions-collapse { display: none; } /* PC only (below) */
+
+.sess-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.sess-list::-webkit-scrollbar { display: none; }
+
+.sess-group {
+  flex: none;
+  margin: 10px 4px 2px;
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.sess-row {
+  flex: none;
+  display: block;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #94a3b8;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.sess-row.on {
+  background: #111827;
+  color: #e5e7eb;
+}
+
+.sess-row-icon { display: none; }
+
+#sessions:not(.locked) .sess-row:hover,
+#sessions:not(.locked) #sessions-new:hover { background: #111827; }
+
+/* a turn runs: the rows keep their look and only the cursor says no (spec 2026-10-23 §7) */
+#sessions.locked .sess-row,
+#sessions.locked #sessions-new { cursor: not-allowed; }
+
+.sess-dash {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding: 9px 9px 0;
+  border: 0;
+  border-top: 1px solid #1f2937;
+  background: transparent;
+  color: #e5e7eb;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* PC: the panel stays on the left; folded it is a 60px icon rail like the Dashboard menu's (expand, new chat, Dashboard; the list
+   hides), and while the Dashboard is open it steps aside */
+@media (min-width: 769px) {
+  #sessions {
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.35);
+    transform: none;
+    visibility: visible;
+    transition: transform 0.2s ease, visibility 0s, width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  #sessions-collapse { display: inline-flex; }
+
+  html.sessions-collapsed #sessions { width: 60px; }
+  html.sessions-collapsed .sess-head { flex-direction: column-reverse; } /* the expand button on top, as the Dashboard rail's */
+  html.sessions-collapsed .sess-new { flex: none; width: 36px; padding: 0; justify-content: center; }
+  html.sessions-collapsed .sess-label,
+  html.sessions-collapsed .sess-group { display: none; }
+  /* folded, each chat is a bare chat icon (user 2026-10-23): no frame or fill, the open one lit; its title shows on hover */
+  html.sessions-collapsed .sess-list { align-items: center; gap: 4px; padding-top: 8px; }
+  html.sessions-collapsed .sess-row {
+    display: flex;
+    justify-content: center;
+    width: 36px;
+    padding: 8px 0;
+    background: transparent !important;
+    color: #64748b;
+  }
+  html.sessions-collapsed .sess-row.on,
+  html.sessions-collapsed #sessions:not(.locked) .sess-row:hover { color: #e5e7eb; }
+  html.sessions-collapsed .sess-row-icon { display: block; }
+  html.sessions-collapsed .sess-dash { justify-content: center; padding: 9px 0 0; }
+
+  body:has(#settings-container.open) #sessions {
+    transform: translateX(calc(-100% - 24px));
+    visibility: hidden;
+    transition: transform 0.2s ease, visibility 0s linear 0.2s;
+  }
 }
 

@@ -18,6 +18,8 @@ async function run(browser, bootSeconds) {
   });
   await page.route("**/api/**", (r) => r.fulfill({ json: { success: true, env_keys_set: { llama: true } } }));
   await page.route("**/api/restart", (r) => { restartCalls++; r.fulfill({ json: { status: "restarting" } }); });
+  await page.route("**/api/auth/me", (r) => r.fulfill({ json: { success: true, user: { id: "u1", username: "erik", display_name: "Erik", role: "member" } } }));
+  await page.addInitScript(() => localStorage.setItem("jarvis_token", "tok-restart")); // đã đăng nhập (cổng auth-gate không chặn)
   await page.goto(BASE);
   for (let i = 0; i < 50 && !first; i++) await page.waitForTimeout(100);
   await page.clock.fastForward(5000); // để các hẹn giờ khởi động của trang chạy xong trước

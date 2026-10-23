@@ -38,7 +38,7 @@ from pydantic import BaseModel
 
 # Reconnected core and tools modules
 from engine.main.welcome import send_welcome
-from engine.core.session_context import resolve_ws_session, resume_history, set_session  # noqa: F401
+from engine.core.session_context import claim_ws_session, resume_history, set_session, ws_user_for_token
 from engine.server.ws_sessions import ActiveSessions
 
 LOG_DIR = Path(__file__).parent / "logs"
@@ -750,6 +750,8 @@ app.add_middleware(SecurityFirewallMiddleware)
 # -- Include Modularized REST Endpoints ----------------------------------------
 from engine.UIUX.ui_engine import router as ui_router
 app.include_router(ui_router)
+from engine.UIUX.sessions_api import router as sessions_router
+app.include_router(sessions_router)
 
 
 # -- WebSocket Voice Handler -----------------------------------------------
@@ -781,23 +783,23 @@ async def voice_handler(ws: WebSocket):
         return
 
     await ws.accept()
+    # Token bắt buộc: thiếu hoặc sai thì đóng 1008 trước khi khởi động dispatcher (không còn mặc định là admin)
+    token = ws.query_params.get("token", "")
+    try:
+        ws_user_id = ws_user_for_token(token)
+    except Exception as exc:  # lỗi DB: 1011 để trang không coi là đăng xuất
+        log.warning(f"Không kiểm tra được token WebSocket: {exc}")
+        await ws.close(code=1011)
+        return
+    if ws_user_id is None:
+        await ws.close(code=1008)
+        return
     from engine.server.ws_dispatcher import WebSocketEventDispatcher
     dispatcher = WebSocketEventDispatcher(ws)
     await dispatcher.start()
     ws._event_dispatcher = dispatcher
     # Mỗi trang (tab) là một phiên chat riêng: tab khác không bị đóng, hội thoại không trộn. Trang gửi ID của nó
     # (?session=) nên socket nối lại (iPhone thoát app rồi vào lại) vẫn là phiên cũ, lịch sử không bị tách.
-    token = ws.query_params.get("token", "")
-    ws_user_id = "admin"
-    if token:
-        try:
-            from engine.core.memory import _get_db
-            with _get_db() as conn:
-                r = conn.execute("SELECT user_id FROM user_tokens WHERE token = ?", (token,)).fetchone()
-                if r:
-                    ws_user_id = r[0]
-        except Exception:
-            pass
     ws.user_id = ws_user_id
     try:
         from engine.core.memory import _get_db
@@ -806,22 +808,14 @@ async def voice_handler(ws: WebSocket):
             ws.tts_voice_id = (u_row["tts_voice_id"] or "").strip() if u_row else ""
     except Exception:
         ws.tts_voice_id = ""
-    from engine.core.session_context import set_current_user_id, resolve_ws_session, set_session, resume_history  # noqa: F811
+    from engine.core.session_context import set_current_user_id  # set_session, resume_history: imported at the top
     set_current_user_id(ws_user_id)
 
-    # Cô lập phiên: Nếu session_id yêu cầu đã thuộc về user khác, cấp phiên mới để không lộ tin nhắn
-    requested_session = ws.query_params.get("session")
-    ws.session_id = resolve_ws_session(requested_session)
-    try:
-        from engine.core.memory import _get_db
-        with _get_db() as conn:
-            dev = conn.execute("SELECT user_id FROM session_devices WHERE session_id = ?", (ws.session_id,)).fetchone()
-            if dev and dev["user_id"] and dev["user_id"] != ws_user_id:
-                ws.session_id = resolve_ws_session(None)
-    except Exception:
-        pass
+    # Cô lập phiên: ID trang gửi lên chỉ được dùng lại khi thuộc về người gọi, còn lại cấp phiên mới
+    ws.session_id = claim_ws_session(ws.query_params.get("session"), ws_user_id)
 
     set_session(ws.session_id)
+    await safe_ws_send_json(ws, {"type": "session", "id": ws.session_id})
     try:  # thiết bị của phiên (desktop / ios / android), cho Settings → Bộ nhớ biết "web trên iPhone"
         from engine.core.memory import record_session_device
         await asyncio.to_thread(record_session_device, ws.session_id, device_type, ws_user_id)

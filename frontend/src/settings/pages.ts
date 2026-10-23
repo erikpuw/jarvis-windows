@@ -21,7 +21,7 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
   { id: "user", label: "Người dùng", description: "Tên, cách xưng hô và tài khoản lịch.", icon: UserRound, activeIcon: UserCheck, needsKey: false },
   { id: "system", label: "Hệ thống", description: "Chi tiết phần cứng, dịch vụ và ứng dụng đang chạy.", icon: Cpu, activeIcon: Activity, needsKey: true },
   { id: "memory", label: "Bộ nhớ", description: "Xem, sửa và xoá có kiểm tra quan hệ toàn bộ dữ liệu học và bộ nhớ của JARVIS.", icon: Database, activeIcon: HardDrive, needsKey: true },
-  { id: "logs", label: "Nhật ký", description: "Lịch sử chat, Jarvis log, log bảo mật và log TTS. Một trang riêng, không kiểm tra kết nối nên không tự ghi thêm dòng vào log. Cần mật khẩu giống Bộ nhớ.", icon: FileClock, activeIcon: ScrollText, needsKey: true },
+  { id: "logs", label: "Nhật ký", description: "Lịch sử chat, Jarvis log, log bảo mật và log TTS. Một trang riêng, không kiểm tra kết nối nên không tự ghi thêm dòng vào log. Chế độ quản trị xem lịch sử chat theo từng phiên.", icon: FileClock, activeIcon: ScrollText, needsKey: true },
   { id: "agents", label: "Gọi tên (@)", description: "Gõ @tên trong command-bar để gọi đúng một công cụ; @rag hỏi kho tài liệu đã nạp.", icon: Bot, activeIcon: BotMessageSquare, needsKey: true },
   { id: "hooks", label: "Móc sự kiện", description: "Các hooks xử lý vòng đời sự kiện quét trực tiếp từ thư mục hooks/.", icon: Webhook, activeIcon: Anchor, needsKey: true },
   { id: "skills", label: "Kỹ năng", description: "Các kỹ năng chuyên môn tự động hóa quét trực tiếp từ thư mục skills/.", icon: Sparkles, activeIcon: Flame, needsKey: true },
@@ -382,18 +382,15 @@ const logsPage = (): string => `
           <button type="button" class="settings-btn" id="logs-refresh">Làm mới</button>
         </div>
         <div id="history-subbar" class="sd-subbar">
-          <div class="sd-subtabs">
-            <button type="button" class="sd-subtab active" data-hist-view="all">Toàn bộ</button>
-            <button type="button" class="sd-subtab" data-hist-view="sessions">Phiên chat</button>
-          </div>
+          <label class="sd-session-filter">Chủ phiên <select id="history-owner-filter"></select></label>
           <div id="history-back" class="sd-session-back" hidden>
             <button type="button" class="settings-btn" id="history-back-btn">← Danh sách phiên chat</button>
             <span id="history-back-title" class="sd-session-back-title"></span>
             <button type="button" class="settings-btn btn-danger" id="history-delete-session-btn" style="margin-left:auto;color:#f87171;" title="Xóa toàn bộ tin nhắn của phiên chat này">Xóa phiên</button>
           </div>
         </div>
-        <div id="history-view" class="sd-history-split" data-view="all" data-reading="0">
-          <div id="history-sessions-list" class="sd-sessions-list" hidden></div>
+        <div id="history-view" class="sd-history-split" data-reading="0">
+          <div id="history-sessions-list" class="sd-sessions-list"></div>
           <div id="history-settings-list" class="sd-history-list"></div>
         </div>
         <div id="logs-content" class="sd-log-content" hidden></div>
@@ -597,6 +594,9 @@ const NAV_GROUPS: [string, SettingsPageId[]][] = [
   ["Hệ thống", ["system", "graphfy", "info"]],
 ];
 
+/** Pages a member does not get in the Dashboard (and openSettings cannot open for them): admin-only tools, and Nhật ký (admin tabs only). */
+export const MEMBER_HIDDEN_PAGES: readonly SettingsPageId[] = ["prompts", "logs"];
+
 export function buildSettingsHTML(): string {
   const role = getCurrentUserRole();
   const navItem = (p: SettingsPageDef) =>
@@ -604,7 +604,7 @@ export function buildSettingsHTML(): string {
   const navGroups = NAV_GROUPS.map(([group, ids]) => {
     let filteredIds = ids;
     if (role !== "admin") {
-      filteredIds = ids.filter(id => id !== "prompts");
+      filteredIds = ids.filter(id => !MEMBER_HIDDEN_PAGES.includes(id));
     }
     return [group, filteredIds] as [string, SettingsPageId[]];
   }).filter(([_, ids]) => ids.length > 0);

@@ -3,7 +3,7 @@
  * Modularized into frontend/src/settings/
  */
 import { apiGet, apiPost, escapeHtml, formatNumber, formatUptime, setMemoryToken } from "./api";
-import { buildSettingsHTML, SETTINGS_PAGES, APP_VERSION, type SettingsPageId } from "./pages";
+import { buildSettingsHTML, SETTINGS_PAGES, MEMBER_HIDDEN_PAGES, APP_VERSION, type SettingsPageId } from "./pages";
 import { initMemoryCenter } from "./memory";
 import { initLogsPage } from "./logs";
 import { enterLockable, lockAll } from "./lock";
@@ -14,7 +14,7 @@ import type {
 } from "./types";
 import { makeIcon, decorateActionButton, runAction } from "../icons";
 import type { MorphIconElement } from "morphicons/element";
-import { House, X, PanelLeftClose, PanelLeft } from "lucide";
+import { House, Settings, X, PanelLeftClose, PanelLeft } from "lucide";
 import { formatMarkdown } from "../markdown";
 import { getCurrentUserRole } from "../auth-gate";
 import "./styles.css";
@@ -679,7 +679,7 @@ async function loadReadme(): Promise<void> {
   try {
     const res = await apiGet<any>("/api/system/readme");
     if (res.success && res.content) {
-      viewer.innerHTML = formatMarkdown(res.content);
+      viewer.innerHTML = formatMarkdown(res.content, { document: true });
     } else {
       viewer.innerHTML = `<div class="sd-empty sd-error-state">Không tải được tài liệu README.md: ${escapeHtml(res.error || "File không tồn tại")}</div>`;
     }
@@ -742,7 +742,20 @@ function setDrawer(open: boolean): void {
   const scrim = byId("settings-scrim");
   if (scrim) scrim.hidden = !open;
   byId("settings-menu-toggle")?.setAttribute("aria-expanded", String(open));
-  if (menuIcon && wasOpen !== open) menuIcon.morphTo(open ? X : House);
+  if (wasOpen !== open) syncMenuButton();
+}
+
+/** The phone's top-left button (user 2026-10-23): the house opens the chat sessions drawer on the main screen; while the Dashboard
+ *  is open the same spot holds a gear that brings its menu back, and ✕ while that menu is out. */
+let menuButtonState: "house" | "gear" | "close" = "house";
+function syncMenuButton(): void {
+  const navOpen = byId("settings-panel-inner")?.classList.contains("nav-open") ?? false;
+  const state = navOpen ? "close" : isOpen ? "gear" : "house";
+  const btn = byId("settings-menu-toggle");
+  if (btn) btn.title = state === "house" ? "Phiên chat" : "Bảng điều khiển";
+  if (!menuIcon || state === menuButtonState) return;
+  menuButtonState = state;
+  menuIcon.morphTo(state === "close" ? X : state === "gear" ? Settings : House);
 }
 
 function startHealthPolling(): void {
@@ -991,7 +1004,6 @@ function bindActions(): void {
       localStorage.removeItem("jarvis_user");
       localStorage.removeItem("jarvis_token");
       localStorage.removeItem("jarvis_memory_token");
-      localStorage.removeItem("jarvis_active_session_id");
       location.reload();
     }
   });
@@ -1182,12 +1194,19 @@ export function openSettings(pageId?: SettingsPageId): void {
   window.dispatchEvent(new CustomEvent("jarvis:overlay", { detail: { open: true } }));
   catalogPromise = null;
 
-  // a Dashboard menu item always names its page (no "last page" to restore: there is no general open button any more)
-  const effectivePage = (getCurrentUserRole() !== "admin" && pageId === "prompts") ? "overview" : (pageId && SETTINGS_PAGES.some(p => p.id === pageId) ? pageId : "overview");
+  const effectivePage = (getCurrentUserRole() !== "admin" && pageId && MEMBER_HIDDEN_PAGES.includes(pageId)) ? "overview" : (pageId && SETTINGS_PAGES.some(p => p.id === pageId) ? pageId : "overview");
   switchPage(effectivePage);
+  syncMenuButton();
   void loadStatus();
   void loadPreferences();
   void loadVoices();
+}
+
+/** The sessions panel's "⚙ Bảng điều khiển": the Dashboard opens over the chat on the page left last (overview the first time),
+ *  with its menu; on a phone the menu comes out as the drawer over the page. */
+export function openDashboardMenu(): void {
+  openSettings(currentPage);
+  if (isPhone()) setDrawer(true);
 }
 
 export function closeSettings(): void {
@@ -1201,6 +1220,7 @@ export function closeSettings(): void {
   exitSetupMode();
   stopHealthPolling();
   setDrawer(false);
+  syncMenuButton();
   lockAll();
   window.dispatchEvent(new CustomEvent("jarvis:overlay", { detail: { open: false } }));
 }
@@ -1242,7 +1262,13 @@ export function ensureMounted(): void {
     closeSettings();
   });
   byId("settings-menu-toggle")?.addEventListener("click", () => {
-    setDrawer(!byId("settings-panel-inner")?.classList.contains("nav-open"));
+    const navOpen = byId("settings-panel-inner")?.classList.contains("nav-open") ?? false;
+    // see syncMenuButton: house → the sessions drawer (sessions.ts); gear → the Dashboard menu; ✕ → closes that menu
+    if (!navOpen && !isOpen && isPhone()) {
+      window.dispatchEvent(new Event("jarvis:sessions-toggle"));
+      return;
+    }
+    setDrawer(!navOpen);
   });
   byId("settings-sidebar-toggle")?.addEventListener("click", () => {
     setSidebarCollapsed(!isSidebarCollapsed, isPhone() || !railOnly()); // a narrow PC window slides it out for now only

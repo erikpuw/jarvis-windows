@@ -502,19 +502,13 @@ def get_feedback_stats(days: int = 30) -> dict:
 
 init_db()
 
-def delete_session_messages(session_id: str, user_id: str | None = None) -> int:
-    """Xóa toàn bộ tin nhắn thuộc một session_id. Nếu user_id không phải admin, chỉ xóa tin nhắn của user đó."""
+def delete_session_messages(session_id: str) -> int:
+    """Xóa toàn bộ tin nhắn thuộc một session_id (chỉ admin gọi qua Nhật ký)."""
     if not session_id:
         return 0
     conn = _get_db()
     try:
-        where = "session_id = ?"
-        params: list[object] = [session_id]
-        if user_id and user_id != "admin":
-            where += " AND user_id = ?"
-            params.append(user_id)
-        
-        rows = conn.execute(f"SELECT id FROM messages WHERE {where}", params).fetchall()
+        rows = conn.execute("SELECT id FROM messages WHERE session_id = ?", (session_id,)).fetchall()
         msg_ids = [r["id"] for r in rows]
         if not msg_ids:
             return 0

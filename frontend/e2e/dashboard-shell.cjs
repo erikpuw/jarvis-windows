@@ -24,6 +24,12 @@ const rect = (page, sel) => page.evaluate((s) => {
   const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
   return { l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom), w: Math.round(r.width), visible: cs.display !== "none" && cs.visibility !== "hidden" && r.width > 0 };
 }, sel);
+// the phone's Dashboard menu: the home button opens the sessions drawer, ⚙ Bảng điều khiển opens the Dashboard with its menu
+const phoneMenu = async (p) => {
+  if (await p.isVisible("#settings-close")) { await p.click("#settings-close"); await p.waitForTimeout(400); }
+  await p.click("#settings-menu-toggle"); await p.waitForTimeout(300);
+  await p.click("#sessions-dash"); await p.waitForTimeout(450);
+};
 const paused = (page) => page.evaluate(() => document.documentElement.classList.contains("anim-paused"));
 
 (async () => {
@@ -31,14 +37,15 @@ const paused = (page) => page.evaluate(() => document.documentElement.classList.
 
   // ---------- PC ----------
   const pc = await open(browser, { viewport: { width: 1440, height: 900 } });
+  await pc.click("#sessions-dash"); await pc.waitForTimeout(500); // ⚙ Bảng điều khiển: the menu and the Overview page open
   const W = 1440;
   const nav = await rect(pc, "#settings-nav"), bar = await rect(pc, "#command-bar-inner");
-  check(nav?.visible && nav.l >= 12 && nav.l <= 20, "1. PC: menu Dashboard luôn nằm bên trái khi vừa mở trang", JSON.stringify(nav));
+  check(nav?.visible && nav.l >= 12 && nav.l <= 20, "1. PC: mở Bảng điều khiển thì menu nằm bên trái màn hình, thanh phiên nhường chỗ", JSON.stringify(nav));
   check(nav && nav.t >= 50 && nav.t <= 62, "2. mép trên menu nằm dưới Dynamic Island (≈54px)", String(nav?.t));
   check(nav && bar && Math.abs(nav.b - bar.b) <= 2, "3. mép dưới menu thẳng mép dưới thanh lệnh", `${nav?.b} / ${bar?.b}`);
   check(await pc.evaluate(() => /^Bảng điều khiển/.test(document.querySelector("#settings-nav .sd-title")?.textContent.trim() || "")), "4. đầu menu ghi Bảng điều khiển (Việt hoá 2026-10-18)");
   check(!(await pc.$("#btn-settings")), "5. cụm nút góc phải không còn nút Settings");
-  check((await rect(pc, "#settings-content"))?.visible === false && !(await paused(pc)), "6. chưa chọn mục: chưa có khung nội dung, màn chính chạy");
+  check((await rect(pc, "#settings-content"))?.visible === true && (await paused(pc)), "6. ⚙ Bảng điều khiển: trang Tổng quan mở, màn chính dừng (thiết kế mới)");
 
   await pc.click('.sd-nav-item[data-page="memory"]'); await pc.waitForTimeout(500);
   const c = await rect(pc, "#settings-content");
@@ -51,20 +58,22 @@ const paused = (page) => page.evaluate(() => document.documentElement.classList.
 
   await pc.click('.sd-nav-item[data-page="memory"]'); await pc.waitForTimeout(500);
   check((await rect(pc, "#settings-content"))?.visible === false && !(await paused(pc)), "12. bấm lại mục đang mở: đóng khung, màn chính chạy lại");
+  await pc.click("#sessions-dash"); await pc.waitForTimeout(500); // the Dashboard closed with that click: open it again
   await pc.click('.sd-nav-item[data-page="voice"]'); await pc.waitForTimeout(400);
   await pc.keyboard.press("Escape"); await pc.waitForTimeout(400);
   check((await rect(pc, "#settings-content"))?.visible === false, "13. Esc đóng khung");
+  await pc.click("#sessions-dash"); await pc.waitForTimeout(500);
   await pc.click('.sd-nav-item[data-page="voice"]'); await pc.waitForTimeout(400);
   await pc.click("#settings-close"); await pc.waitForTimeout(400);
-  check((await rect(pc, "#settings-content"))?.visible === false && (await rect(pc, "#settings-nav"))?.visible, "14. nút đóng: khung đóng, menu vẫn còn");
+  check((await rect(pc, "#settings-content"))?.visible === false && (await rect(pc, "#settings-nav"))?.visible === false, "14. nút đóng: khung đóng, menu cũng về (thiết kế mới)");
 
-  await pc.click("#settings-sidebar-toggle"); await pc.waitForTimeout(500);
+  await pc.click("#sessions-dash"); await pc.waitForTimeout(500); await pc.click("#settings-sidebar-toggle"); await pc.waitForTimeout(500);
   const mini = await rect(pc, "#settings-nav");
   check(mini && mini.w <= 64, "15. nút ở đầu menu thu menu thành dải icon", String(mini?.w));
   await pc.click('.sd-nav-item[data-page="voice"]'); await pc.waitForTimeout(500);
   const c2 = await rect(pc, "#settings-content");
   check(c2 && c2.l > mini.r && c2.l - mini.r <= 16, "16. khung nội dung giãn theo dải icon", `${c2?.l} / ${mini.r}`);
-  await pc.click("#settings-close"); await pc.click("#settings-sidebar-toggle"); await pc.waitForTimeout(300);
+  await pc.click("#settings-close"); await pc.click("#sessions-dash"); await pc.click("#settings-sidebar-toggle"); await pc.waitForTimeout(300);
 
   // the menu is grouped like the approved mockup (the old flat list was too general)
   const groups = await pc.evaluate(() => [...document.querySelectorAll("#settings-nav .sd-nav-group")].map((g) => {
@@ -91,7 +100,7 @@ const paused = (page) => page.evaluate(() => document.documentElement.classList.
   check((await rect(ph, "#settings-nav"))?.visible === false, "17. điện thoại: menu ẩn khi vừa mở trang");
   const home = await rect(ph, "#settings-menu-toggle"), ctl = await rect(ph, "#btn-controls");
   check(home?.visible && home.l <= 20 && home.t <= 24 && ctl && Math.abs(home.w - ctl.w) <= 2, "18. nút ngôi nhà góc trên trái, cùng cỡ nút điều khiển", JSON.stringify({ home, ctl }));
-  await ph.click("#settings-menu-toggle"); await ph.waitForTimeout(450);
+  await phoneMenu(ph);
   const dn = await rect(ph, "#settings-nav"), pbar = await rect(ph, "#command-bar-inner");
   check(dn?.visible && dn.t >= 50 && dn.t <= 62 && pbar && Math.abs(dn.b - pbar.b) <= 2, "19. bấm ngôi nhà: menu trượt ra, cùng mép trên/dưới", JSON.stringify(dn));
   await ph.click('.sd-nav-item[data-page="memory"]'); await ph.waitForTimeout(500);
@@ -102,13 +111,13 @@ const paused = (page) => page.evaluate(() => document.documentElement.classList.
   check((await rect(ph, "#settings-content"))?.visible === false && !(await paused(ph)), "22. đóng khung: về chat, màn chính chạy lại");
 
   // phone menu (the 60px icon rail since 2026-10-18, no head): the list box and the version at the bottom stay put, only the list scrolls
-  await ph.click("#settings-menu-toggle"); await ph.waitForTimeout(450);
+  await phoneMenu(ph);
   const navBefore = await ph.evaluate(() => ({ head: Math.round(document.querySelector("#settings-nav .sd-nav-list").getBoundingClientRect().top), foot: Math.round(document.querySelector("#settings-nav .sd-nav-footer").getBoundingClientRect().bottom) }));
   await ph.evaluate(() => { document.querySelector("#settings-nav .sd-nav-list").scrollTop = 400; document.getElementById("settings-nav").scrollTop = 400; });
   await ph.waitForTimeout(200);
   const navAfter = await ph.evaluate(() => { const n = document.getElementById("settings-nav"); return { head: Math.round(n.querySelector(".sd-nav-list").getBoundingClientRect().top), foot: Math.round(n.querySelector(".sd-nav-footer").getBoundingClientRect().bottom), navScroll: n.scrollTop, navBottom: Math.round(n.getBoundingClientRect().bottom) }; });
   check(navAfter.head === navBefore.head && navAfter.foot === navBefore.foot && navAfter.navScroll === 0 && Math.abs(navAfter.foot - navAfter.navBottom) <= 14, "25. menu điện thoại (dải icon): khung danh sách và phiên bản đứng yên, chỉ danh sách cuộn", JSON.stringify({ navBefore, navAfter }));
-  await ph.click("#settings-menu-toggle"); await ph.waitForTimeout(300);
+  await ph.click("#settings-scrim"); await ph.waitForTimeout(300);
 
   // phone: no page scrolls sideways; only its body scrolls (vertically)
   const sideways = [];

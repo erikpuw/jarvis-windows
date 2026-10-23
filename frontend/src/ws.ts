@@ -13,6 +13,14 @@ export interface JarvisSocket {
   /** Tries to connect right now (resets the backoff) unless a socket is already open or connecting. */
   retryNow(): void;
   isConnected(): boolean;
+  /** The session id last confirmed by the server, null before the first `session` packet. */
+  getSessionId(): string | null;
+  /** Asks for this session id (null = a new one), closes the current socket and reconnects at once. */
+  switchSession(id: string | null): void;
+  /** Fired on each `session` packet; resumed is true when the server kept the id this socket asked for. */
+  onSession(handler: (id: string, resumed: boolean) => void): void;
+  /** Fired when the server closes with 1008 (bad token). The socket does not reconnect after that. */
+  onAuthRejected(handler: () => void): void;
 }
 
 /** The device that opens the session, sent as ?device= and kept per session on the server (Settings → Bộ nhớ shows
@@ -31,8 +39,11 @@ export function createSocket(url: string): JarvisSocket {
   let ws: WebSocket | null = null;
   let handlers: MessageHandler[] = [];
   let reconnectHandlers: (() => void)[] = [];
+  let sessionHandlers: ((id: string, resumed: boolean) => void)[] = [];
+  let authRejectedHandlers: (() => void)[] = [];
   let reconnectDelay = 1000;
   let closed = false;
+  let authRejected = false;
   let connected = false;
   let everConnected = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -45,35 +56,22 @@ export function createSocket(url: string): JarvisSocket {
   const STALE_AFTER_MS = 60000;
 
   const deviceType = getDeviceType();
-  // Persistent chat session per browser: keeps conversations intact on reload, matching ChatGPT/Claude.
-  function getPersistentSessionId(): string {
-    try {
-      const stored = localStorage.getItem("jarvis_active_session_id");
-      if (stored && stored.startsWith("web-") && stored.length >= 8) {
-        return stored;
-      }
-      const fresh = "web-" + Array.from(crypto.getRandomValues(new Uint8Array(4)), (b) => b.toString(16).padStart(2, "0")).join("");
-      localStorage.setItem("jarvis_active_session_id", fresh);
-      return fresh;
-    } catch {
-      return "web-" + Array.from(crypto.getRandomValues(new Uint8Array(4)), (b) => b.toString(16).padStart(2, "0")).join("");
-    }
-  }
-
-  const sessionId = getPersistentSessionId();
+  // Session id kept in memory only: the server assigns it (`session` packet) and a reload starts a new one.
+  // requestedSessionId goes into the next connect URL; sessionId is what the server last confirmed.
+  let requestedSessionId: string | null = null;
+  let sessionId: string | null = null;
 
   function buildUrl(baseUrl: string): string {
-    const sep = baseUrl.includes('?') ? '&' : '?';
-    const device = baseUrl.includes('device=') ? '' : `device=${deviceType}&`;
-    let tokenParam = '';
+    const params: string[] = [];
+    if (!baseUrl.includes('device=')) params.push(`device=${deviceType}`);
+    if (requestedSessionId) params.push(`session=${requestedSessionId}`);
     try {
       const token = localStorage.getItem("jarvis_token") || localStorage.getItem("jarvis_memory_token") || '';
-      if (token) tokenParam = `&token=${encodeURIComponent(token)}`;
+      if (token) params.push(`token=${encodeURIComponent(token)}`);
     } catch {}
-    return `${baseUrl}${sep}${device}session=${sessionId}${tokenParam}`;
+    if (params.length === 0) return baseUrl;
+    return `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}${params.join('&')}`;
   }
-
-  const finalUrl = buildUrl(url);
 
   function clearReconnectTimer() {
     if (reconnectTimer !== null) {
@@ -109,7 +107,7 @@ export function createSocket(url: string): JarvisSocket {
   }
 
   function scheduleReconnect() {
-    if (closed) return;
+    if (closed || authRejected) return;
     clearReconnectTimer();
     console.log(`[ws] reconnecting in ${reconnectDelay}ms`);
     reconnectTimer = setTimeout(() => {
@@ -120,7 +118,7 @@ export function createSocket(url: string): JarvisSocket {
   }
 
   function connect() {
-    if (closed) return;
+    if (closed || authRejected) return;
     // Single-flight. A pending reconnect timer plus a manual reconnect used to
     // open two live sockets that shared one handler list, so every message was
     // handled twice — duplicated audio and duplicated chat bubbles.
@@ -129,7 +127,9 @@ export function createSocket(url: string): JarvisSocket {
     clearReconnectTimer();
     connecting = true;
 
-    const socket = new WebSocket(finalUrl);
+    // The session this socket asked for; the server's `session` packet tells whether it was kept.
+    const asked = requestedSessionId;
+    const socket = new WebSocket(buildUrl(url));
     ws = socket;
 
     socket.onopen = () => {
@@ -151,10 +151,16 @@ export function createSocket(url: string): JarvisSocket {
     };
 
     socket.onmessage = (event) => {
+      if (ws !== socket) return;  // a packet still in flight on a detached socket must not touch the new session
       lastMessageAt = Date.now();
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === "pong") return;  // transport-level, not for handlers
+        if (msg.type === "session" && typeof msg.id === "string") {
+          sessionId = msg.id;
+          requestedSessionId = msg.id;
+          for (const h of sessionHandlers) h(msg.id, msg.id === asked);
+        }
         for (const h of handlers) h(msg);
       } catch {
         console.warn("[ws] bad message", event.data);
@@ -167,6 +173,13 @@ export function createSocket(url: string): JarvisSocket {
       connected = false;
       stopHeartbeat();
 
+      // 1008 = the server refused the token. Retrying would only repeat the refusal.
+      if (event.code === 1008) {
+        authRejected = true;
+        console.warn("[ws] refused by server (1008) — not reconnecting");
+        for (const h of authRejectedHandlers) h();
+        return;
+      }
       if (!closed) scheduleReconnect();
     };
 
@@ -203,6 +216,29 @@ export function createSocket(url: string): JarvisSocket {
     onReconnect(handler) {
       reconnectHandlers.push(handler);
     },
+    onSession(handler) {
+      sessionHandlers.push(handler);
+    },
+    onAuthRejected(handler) {
+      authRejectedHandlers.push(handler);
+    },
+    getSessionId() {
+      return sessionId;
+    },
+    switchSession(id) {
+      requestedSessionId = id;
+      if (closed) return;
+      // Detach the old socket first: its late onclose sees ws !== socket and does nothing.
+      const old = ws;
+      ws = null;
+      connecting = false;
+      connected = false;
+      stopHeartbeat();
+      clearReconnectTimer();
+      reconnectDelay = 1000;
+      old?.close();
+      connect();
+    },
     close() {
       closed = true;
       clearReconnectTimer();
@@ -218,20 +254,4 @@ export function createSocket(url: string): JarvisSocket {
       return connected;
     },
   };
-}
-
-export function getActiveSessionId(): string {
-  try {
-    const s = localStorage.getItem("jarvis_active_session_id");
-    if (s && s.startsWith("web-")) return s;
-  } catch {}
-  return "web-default";
-}
-
-export function startNewSessionId(): string {
-  const fresh = "web-" + Array.from(crypto.getRandomValues(new Uint8Array(4)), (b) => b.toString(16).padStart(2, "0")).join("");
-  try {
-    localStorage.setItem("jarvis_active_session_id", fresh);
-  } catch {}
-  return fresh;
 }

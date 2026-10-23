@@ -14,6 +14,12 @@ async function open(browser, viewport) {
   await page.waitForTimeout(1500);
   return page;
 }
+// the phone's Dashboard menu: the home button opens the sessions drawer, ⚙ Bảng điều khiển opens the Dashboard with its menu
+const phoneMenu = async (p) => {
+  if (await p.isVisible("#settings-close")) { await p.click("#settings-close"); await p.waitForTimeout(400); }
+  await p.click("#settings-menu-toggle"); await p.waitForTimeout(300);
+  await p.click("#sessions-dash"); await p.waitForTimeout(450);
+};
 const footer = (page) => page.evaluate(() => {
   const nav = document.querySelector(".sd-nav").getBoundingClientRect();
   const name = document.querySelector(".sd-brand-name"), label = document.querySelector(".sd-version-label"), dot = document.querySelector(".sd-version-dot");
@@ -29,6 +35,8 @@ const footer = (page) => page.evaluate(() => {
 
   // 1. PC collapsed: dot over the version, no "JARVIS"
   const pc = await open(browser, { width: 1440, height: 900 });
+  await pc.click("#sessions-dash"); // the menu stands only while the Dashboard is open (the sessions panel holds the left column otherwise)
+  await pc.waitForTimeout(500);
   await pc.click("#settings-sidebar-toggle");
   await pc.waitForTimeout(500);
   const fp = await footer(pc);
@@ -43,8 +51,7 @@ const footer = (page) => page.evaluate(() => {
 
   // 3-4. phone: the drawer is the icon rail; an icon still opens its page
   const ph = await open(browser, { width: 390, height: 844 });
-  await ph.click("#settings-menu-toggle");
-  await ph.waitForTimeout(500);
+  await phoneMenu(ph);
   const fm = await footer(ph);
   check(fm.navW <= 64 && !fm.navLabels && !fm.name && fm.label && !fm.clipped && fm.inside && fm.stacked,
     "3. điện thoại: ngăn kéo là dải icon 60px, chân menu chấm xanh + phiên bản", JSON.stringify(fm));
@@ -60,11 +67,11 @@ const footer = (page) => page.evaluate(() => {
   // out; saved under its own key, the PC's choice untouched
   await ph.click("#settings-sidebar-toggle"); await ph.waitForTimeout(400);
   await ph.screenshot({ path: (process.env.SHOTS || require("os").tmpdir()) + "/rail-phone-wide.png" });
-  await ph.click("#settings-menu-toggle"); await ph.waitForTimeout(400);
-  await ph.click("#settings-menu-toggle"); await ph.waitForTimeout(500);
+  await phoneMenu(ph);
+  await phoneMenu(ph);
   const again = await footer(ph);
   await ph.reload(); await ph.waitForTimeout(1500);
-  await ph.click("#settings-menu-toggle"); await ph.waitForTimeout(500);
+  await phoneMenu(ph);
   const reloaded = await footer(ph);
   const keys = await ph.evaluate(() => ({ phone: localStorage.getItem("jarvis.settings.sidebar_collapsed_phone"), pc: localStorage.getItem("jarvis.settings.sidebar_collapsed") }));
   check(again.navW >= 180 && reloaded.navW >= 180 && keys.phone === "0" && keys.pc === null,

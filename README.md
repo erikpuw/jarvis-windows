@@ -77,6 +77,14 @@ Kiểm thử không nạp model: `rtk python -m pytest -q tests/test_jev_recover
 - **Thời tiết & Lịch vạn niên**: Dự báo thời tiết thời gian thực (Báo Mới, Open-Meteo, wttr.in), cảnh báo mưa theo giờ, tra cứu ngày âm lịch và ngày hoàng đạo.
 - **Kiểm soát Windows & Thị giác máy tính**: Hỗ trợ chụp màn hình (`read_screen`), phân tích hình ảnh đính kèm (`read_image`), và điều khiển ứng dụng Windows an toàn.
 
+### 8. Phiên chat & thanh bên
+- **Thanh bên phiên (desktop)**: Bên trái có nút `＋ Phiên mới`, danh sách phiên của bạn nhóm theo `Hôm nay` / `Hôm qua` / `Cũ hơn`, và `⚙ Bảng điều khiển` ở cuối. Trên điện thoại, nút nhà mở thanh bên dạng ngăn kéo.
+- **Mở phiên mới hoặc phiên cũ**: Mở app là một cuộc trò chuyện trống; phiên do server tạo (id `web-xxxxxxxx`, gắn với tài khoản đăng nhập) và xuất hiện sau tin nhắn đầu tiên. Chọn phiên cũ sẽ tải lại tin nhắn và tiếp tục (LLM nhận 20 tin gần nhất). Không đổi phiên khi LLM đang trả lời hoặc TTS đang đọc.
+- **Tiêu đề phiên**: Lấy từ tin nhắn đầu tiên của bạn, cắt bằng code tối đa 48 ký tự, không dùng LLM.
+- **WebSocket `/ws/voice` cần token**: Phải gửi `?token=` của tài khoản đã đăng nhập; thiếu hoặc sai token thì server đóng kết nối với mã 1008. Client không có token (app Flutter mobile, script) phải tự gửi tham số này.
+- **Nhật ký (Settings)**: Lịch sử chat chỉ Admin xem, theo từng phiên (chủ phiên + tiêu đề, lọc theo user). Thành viên không còn thấy mục Nhật ký.
+- **API**: `GET /api/sessions/mine` và `GET /api/sessions/mine/{id}` cho người dùng đăng nhập; `/api/conversations/sessions` và `/session/{id}` chỉ Admin.
+
 ---
 
 ## 🏗️ Kiến trúc hệ thống

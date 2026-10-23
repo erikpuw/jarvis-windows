@@ -433,15 +433,15 @@ def test_shell_state_lists_the_taskbar_rows_for_the_model():
     assert "Microsoft Edge - 1 running window" in seen[1] and "[1] Button" in seen[1]
 
 
-def test_shutdown_style_buttons_in_the_shell_still_ask_when_confirm_is_off(monkeypatch):
+def test_shutdown_buttons_in_the_shell_are_blocked_without_asking(monkeypatch):
     monkeypatch.setenv("CUA_CONFIRM", "off")
     shell = FakeShell({"shell_state": SHELL_STATE})
-    out, _, shell, asked = _run_shell([
+    _, _, shell, asked = _run_shell([
         {"tool": "shell_state", "args": {}},
         {"tool": "shell_click", "args": {"element_index": 2}},
-    ], shell, confirm_answers=(False,))
-    assert len(asked) == 1 and "Shut down" in asked[0] and out.startswith("Lỗi")
-    assert [c[0] for c in shell.calls] == ["shell_state"]
+        {"finish": "xong"},
+    ], shell)
+    assert asked == [] and [c[0] for c in shell.calls] == ["shell_state"]
 
 
 def test_shell_click_and_set_text_need_an_element_index():
@@ -770,3 +770,69 @@ def test_session_sends_element_token_for_new_driver():
     asyncio.run(s.call("get_window_state", {"pid": 1, "window_id": 2, "query": "x"}))
     assert sent[0] == ("click", {"pid": 1, "window_id": 2, "element_token": "s00000007:30"})
     assert sent[1] == ("get_window_state", {"pid": 1, "window_id": 2, "query": "x"})
+
+
+# ---------------------------------------------------------------------------
+# chặn cứng tắt máy / khởi động lại / đăng xuất; xoá luôn phải hỏi
+# ---------------------------------------------------------------------------
+
+def _labelled(label):
+    return {"is_error": False, "text": "", "data": {"snapshot_id": "s00000001", "elements": [
+        {"element_index": 3, "role": "Button", "label": label, "actions": ["invoke"]}]}}
+
+
+@pytest.mark.parametrize("label", ["Shut down", "Power", "Restart", "Restart now", "Sign out", "Tắt máy", "Khởi động lại"])
+def test_power_buttons_are_blocked_without_asking_even_when_confirm_is_off(monkeypatch, label):
+    monkeypatch.setenv("CUA_CONFIRM", "off")
+    out, cua, asked = _run([READ, CLICK3, {"finish": "xong"}], FakeCua({"get_window_state": _labelled(label)}))
+    assert [c[0] for c in cua.calls] == ["get_window_state"] and asked == []
+
+
+@pytest.mark.parametrize("tool,args", [
+    ("launch_app", {"name": "shutdown /s /t 0"}),
+    ("launch_app", {"name": "shutdown.exe"}),
+    ("type_text", {"pid": 1, "window_id": 2, "element_index": 3, "text": "shutdown -s -t 0"}),
+    ("set_value", {"pid": 1, "window_id": 2, "element_index": 3, "value": "Stop-Computer"}),
+    ("hotkey", {"pid": 1, "keys": ["alt", "f4"]}),
+])
+def test_power_commands_typed_or_launched_are_blocked(monkeypatch, tool, args):
+    monkeypatch.setenv("CUA_CONFIRM", "off")
+    out, cua, asked = _run([READ, {"tool": tool, "args": args}, {"finish": "xong"}], FakeCua({"get_window_state": STATE}))
+    assert [c[0] for c in cua.calls] == ["get_window_state"] and asked == []
+
+
+def test_a_blocked_power_action_tells_the_model_to_stop(monkeypatch):
+    monkeypatch.setenv("CUA_CONFIRM", "off")
+    seen = []
+    script = iter([READ, {"tool": "launch_app", "args": {"name": "shutdown.exe"}}, {"finish": "xong"}])
+
+    async def ask(messages):
+        seen.append(messages[-1]["content"])
+        return json.dumps(next(script))
+
+    asyncio.run(dc.run_cua_task("x", None, None, ask_llm=ask, confirm=None,
+                                session_factory=lambda: FakeCua({"get_window_state": STATE})))
+    assert "tắt máy" in seen[2].lower() or "chặn" in seen[2].lower()
+
+
+def test_delete_key_and_delete_commands_ask_even_when_confirm_is_off(monkeypatch):
+    monkeypatch.setenv("CUA_CONFIRM", "off")
+    for tool, args in (("press_key", {"pid": 1, "key": "Delete"}), ("hotkey", {"pid": 1, "keys": ["shift", "delete"]}),
+                       ("type_text", {"pid": 1, "window_id": 2, "element_index": 3, "text": "del /s /q C:/x"}),
+                       ("type_text", {"pid": 1, "window_id": 2, "element_index": 3, "text": "Remove-Item -Recurse x"})):
+        out, cua, asked = _run([READ, {"tool": tool, "args": args}], FakeCua({"get_window_state": STATE}),
+                               confirm_answers=(False,))
+        assert len(asked) == 1 and out.startswith("Lỗi"), (tool, args)
+        assert [c[0] for c in cua.calls] == ["get_window_state"]
+
+
+async def _yes(_m):
+    return True
+
+
+def test_replayed_steps_are_blocked_for_power_actions_too():
+    from engine.tools.desktop_control.cua_runner import _replay
+    steps = [{"action": "shell_click", "target": {"role": "Button", "label": "Shut down"}}]
+    shell = FakeShell({"shell_state": SHELL_STATE})
+    out, why = asyncio.run(_replay(steps, FakeCua(), shell, _yes, "off", None))
+    assert out and out.startswith("Lỗi") and [c[0] for c in shell.calls] == ["shell_state"]

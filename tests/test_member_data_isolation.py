@@ -319,16 +319,13 @@ def test_delete_session_messages():
             c = conn.execute("SELECT COUNT(*) FROM messages WHERE session_id = ?", (test_sid,)).fetchone()[0]
             assert c == 2
 
-        # Member deletes session -> should only delete member's message
+        # Member deletes session -> 403, nothing removed (Nhật ký is admin only)
         del_mem = client.delete(f"/api/conversations/session/{test_sid}", headers={"Authorization": f"Bearer {token_mem}"})
-        assert del_mem.status_code == 200
-        assert del_mem.json()["success"] is True
+        assert del_mem.status_code == 403
 
         with _get_db() as conn:
-            # Member message gone, admin message remains
             rem = conn.execute("SELECT user_id FROM messages WHERE session_id = ?", (test_sid,)).fetchall()
-            assert len(rem) == 1
-            assert rem[0]["user_id"] == "admin"
+            assert len(rem) == 2
 
         # Admin deletes session -> deletes all remaining messages in session
         del_adm = client.delete(f"/api/conversations/session/{test_sid}", headers={"Authorization": f"Bearer {token_admin}"})

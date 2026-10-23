@@ -40,34 +40,51 @@ export function getCurrentUserRole(): "admin" | "member" {
 }
 
 /**
+ * Retries /api/auth/me only when the server is unreachable (network error) or failing (5xx), so a restart keeps the user logged in.
+ * Resolves with the user, or null when the server answers clearly (any other non-OK status, or a body without user) → log out.
+ */
+async function waitForValidToken(token: string): Promise<AuthUser | null> {
+  for (;;) {
+    let res: Response;
+    try {
+      res = await fetch("/api/auth/me", {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "X-Memory-Token": token,
+        },
+      });
+    } catch (e) {
+      console.warn("[auth-gate] Existing token check failed, retrying:", e);
+      await new Promise((r) => setTimeout(r, 2000));
+      continue;
+    }
+    if (res.status >= 500) {
+      await new Promise((r) => setTimeout(r, 2000));
+      continue;
+    }
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => ({}));
+    if (body.success && body.user) {
+      currentUser = body.user;
+      localStorage.setItem("jarvis_user", JSON.stringify(currentUser));
+      return currentUser as AuthUser;
+    }
+    return null;
+  }
+}
+
+/**
  * Checks if user is already authenticated. If yes, resolves immediately.
  * If not, renders the fullscreen glassmorphic gate covering the entire page until login succeeds.
  */
 export async function ensureAuthenticated(): Promise<AuthUser> {
   const existingToken = getMemoryToken();
   if (existingToken) {
-    try {
-      const res = await fetch("/api/auth/me", {
-        headers: {
-          "Authorization": `Bearer ${existingToken}`,
-          "X-Memory-Token": existingToken,
-        },
-      });
-      if (res.ok) {
-        const body = await res.json();
-        if (body.success && body.user) {
-          currentUser = body.user;
-          localStorage.setItem("jarvis_user", JSON.stringify(currentUser));
-          return currentUser as AuthUser;
-        }
-      }
-    } catch (e) {
-      console.warn("[auth-gate] Existing token check failed:", e);
-    }
-    // Token is invalid/expired
+    const user = await waitForValidToken(existingToken);
+    if (user) return user;
+    // Server rejected the token (any non-OK answer below 500): log out
     setMemoryToken("");
     localStorage.removeItem("jarvis_user");
-    localStorage.removeItem("jarvis_active_session_id");
   }
 
   // Not authenticated: render fullscreen cover
@@ -237,11 +254,10 @@ export async function ensureAuthenticated(): Promise<AuthUser> {
           throw new Error(data.error || "Đăng nhập không thành công");
         }
 
-        // Login success: save tokens and ensure fresh chat session
+        // Login success: save tokens
         setMemoryToken(data.token);
         currentUser = data.user;
         localStorage.setItem("jarvis_user", JSON.stringify(currentUser));
-        localStorage.removeItem("jarvis_active_session_id");
 
         // Smooth exit animation
         overlay.classList.add("fade-out");
