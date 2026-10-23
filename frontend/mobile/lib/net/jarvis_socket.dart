@@ -17,11 +17,12 @@ class JarvisSocket {
     this._cfg, {
     required this.device,
     this.tokenProvider,
+    this.onRejected,
     WebSocketChannel Function(Uri)? connector,
     Random? random,
   }) : _connector = connector ?? IOWebSocketChannel.connect,
        _random = random ?? Random.secure() {
-    _sessionId = _newSessionId(_random!);
+    _sessionId = _newSessionId(_random);
   }
 
   static const _heartbeat = Duration(seconds: 20);
@@ -32,10 +33,14 @@ class JarvisSocket {
   final ServerConfig _cfg;
   final String device;
   final WebSocketChannel Function(Uri) _connector;
-  final Random? _random;
+  final Random _random;
   late String _sessionId;
   String get sessionId => _sessionId;
   final String Function()? tokenProvider;
+
+  /// The server closed with 1008 (token missing or refused); the socket stays closed until [connect] is called again.
+  final VoidCallback? onRejected;
+  bool _rejected = false;
 
   final _messages = StreamController<Map<String, dynamic>>.broadcast();
   final _state = ValueNotifier(SocketState.closed);
@@ -60,8 +65,10 @@ class JarvisSocket {
     return next > _maxDelay ? _maxDelay : next;
   }
 
+  /// Called on purpose (start, login, reconnect timer): it also lifts a 1008 refusal, as after a new sign-in.
   void connect() {
     if (_disposed || _state.value != SocketState.closed) return;
+    _rejected = false;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _state.value = SocketState.connecting;
@@ -127,6 +134,12 @@ class JarvisSocket {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
     _state.value = SocketState.closed;
+    // ws.ts: 1008 = the server refused the token. Retrying would only repeat the refusal; the app signs out instead.
+    if (ch.closeCode == 1008) {
+      _rejected = true;
+      onRejected?.call();
+      return;
+    }
     _scheduleReconnect();
   }
 
@@ -156,7 +169,7 @@ class JarvisSocket {
   /// An open socket that has been silent for a heartbeat is treated as dead: the OS often cuts the link while the app sleeps
   /// without ever reporting it, and a send would go into the void.
   void reconnectNow() {
-    if (_disposed) return;
+    if (_disposed || _rejected) return;
     final ch = _channel;
     if (_state.value == SocketState.open &&
         ch != null &&
@@ -186,7 +199,7 @@ class JarvisSocket {
     if (_disposed) return;
     disconnect();
     if (resetSession) {
-      _sessionId = _newSessionId(_random ?? Random.secure());
+      _sessionId = _newSessionId(_random);
     }
     _delay = _minDelay;
     connect();

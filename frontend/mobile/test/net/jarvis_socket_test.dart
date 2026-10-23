@@ -36,8 +36,9 @@ class FakeChannel extends StreamChannelMixin implements WebSocketChannel {
   Future<void> get ready => Future.value();
   @override
   String? get protocol => null;
+  int? code; // what the server closed with (set before closing incoming)
   @override
-  int? get closeCode => null;
+  int? get closeCode => code;
   @override
   String? get closeReason => null;
 }
@@ -212,6 +213,39 @@ void main() {
       fa.elapse(const Duration(seconds: 25));
       sock.reconnectNow();
       fa.flushMicrotasks();
+      expect(made.length, 2);
+      sock.dispose();
+    });
+  });
+
+  test('1008 (token refused) stops reconnecting and reports it; a later connect works', () {
+    fakeAsync((fa) {
+      final made = <FakeChannel>[];
+      var rejected = 0;
+      final sock = JarvisSocket(
+        ServerConfig(),
+        device: 'ios',
+        onRejected: () => rejected++,
+        connector: (u) {
+          final c = FakeChannel();
+          made.add(c);
+          return c;
+        },
+      );
+      sock.connect();
+      fa.flushMicrotasks();
+      made[0]
+        ..code = 1008
+        ..incoming.close();
+      fa.flushMicrotasks();
+      expect(sock.state.value, SocketState.closed);
+      expect(rejected, 1);
+      fa.elapse(const Duration(minutes: 2));
+      expect(made.length, 1); // ws.ts: retrying would only repeat the refusal
+      sock.reconnectNow();
+      expect(made.length, 1);
+      // signed in again: the app connects on purpose
+      sock.connect();
       expect(made.length, 2);
       sock.dispose();
     });

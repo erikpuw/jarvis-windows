@@ -107,6 +107,8 @@ class _JarvisAppState extends State<JarvisApp> with WidgetsBindingObserver {
         widget.cfg,
         device: Platform.isIOS ? 'ios' : 'android',
         tokenProvider: () => _api.memoryToken,
+        // the server refused the token (expired / revoked): back to the login screen, as the web does
+        onRejected: () => _auth.logout(),
       );
   late final ChatController _chat = ChatController(
     _socket,
