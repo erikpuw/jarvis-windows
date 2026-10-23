@@ -906,6 +906,7 @@ class _MemoryPageState extends State<MemoryPage> {
       );
     }
     return ListView.separated(
+      padding: EdgeInsets.zero,
       itemCount: _items.length,
       separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (_, i) {

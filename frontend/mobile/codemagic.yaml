@@ -15,7 +15,7 @@ workflows:
       - name: Build IPA gốc với Shorebird
         script: |
           cd "$CM_BUILD_DIR/frontend/mobile"
-          shorebird release ios --no-codesign
+          shorebird release ios --no-codesign -- --no-tree-shake-icons
           mkdir -p Payload
           cp -r build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app Payload/
           zip -qr JARVIS-unsigned.ipa Payload

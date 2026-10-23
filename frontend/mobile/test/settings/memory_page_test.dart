@@ -75,6 +75,59 @@ Future<void> _tapText(WidgetTester t, String text) async {
 }
 
 void main() {
+  testWidgets('record lists do not repeat the shell safe area padding', (
+    t,
+  ) async {
+    await pumpPage(
+      t,
+      const MediaQuery(
+        data: MediaQueryData(padding: EdgeInsets.only(top: 59, bottom: 34)),
+        child: MemoryPage(),
+      ),
+      routed({
+        ..._base(),
+        'GET /api/outcomes/list': (_) => jsonOk({
+          'success': true,
+          'items': [
+            {'id': 1, 'query': 'test', 'status': 'success'},
+          ],
+          'total': 1,
+        }),
+        'GET /api/conversations': (_) => jsonOk({
+          'success': true,
+          'items': [
+            {'id': 1, 'role': 'user', 'content': 'test'},
+          ],
+          'total': 1,
+        }),
+      }),
+    );
+    await t.pumpAndSettle();
+    for (final (category, record) in [
+      ('learning', '42'),
+      ('workflow', '7'),
+      ('outcome', '1'),
+      ('correction', '3'),
+      ('conversation', '1'),
+      ('gym', 'profile_1'),
+      ('evolution', 'style'),
+      ('user', 'admin'),
+    ]) {
+      await _cat(t, category);
+      expect(
+        t.getTopLeft(find.byKey(Key('rec:$record'))).dy,
+        t.getTopLeft(find.byType(ListView)).dy,
+      );
+      final padding = t.widget<SliverPadding>(
+        find.descendant(
+          of: find.byType(ListView),
+          matching: find.byType(SliverPadding),
+        ),
+      );
+      expect(padding.padding.resolve(TextDirection.ltr).bottom, 0);
+    }
+  });
+
   testWidgets('category tabs morph their icon in place; icons are morphicons', (
     t,
   ) async {

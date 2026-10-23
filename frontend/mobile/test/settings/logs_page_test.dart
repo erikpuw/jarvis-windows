@@ -49,6 +49,32 @@ Color? _colorOf(WidgetTester t, String text) =>
     t.widget<Text>(find.text(text)).style?.color;
 
 void main() {
+  testWidgets('history and log lists do not repeat shell safe area padding', (
+    t,
+  ) async {
+    await pumpPage(
+      t,
+      const MediaQuery(
+        data: MediaQueryData(padding: EdgeInsets.only(top: 59, bottom: 34)),
+        child: LogsPage(),
+      ),
+      routed(_base()),
+    );
+    await t.pumpAndSettle();
+    for (final category in ['history', 'jarvis', 'security', 'tts']) {
+      await t.ensureVisible(find.byKey(Key('cat:$category')));
+      await t.tap(find.byKey(Key('cat:$category')));
+      await t.pumpAndSettle();
+      final padding = t.widget<SliverPadding>(
+        find.descendant(
+          of: find.byType(ListView),
+          matching: find.byType(SliverPadding),
+        ),
+      );
+      expect(padding.padding.resolve(TextDirection.ltr), EdgeInsets.zero);
+    }
+  });
+
   testWidgets('the four tabs draw morphicons', (t) async {
     await _pump(t);
     for (final g in [

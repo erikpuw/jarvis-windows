@@ -10,6 +10,7 @@
 - **Phân quyền người dùng & Cài đặt**: Tự động ẩn trang lời nhắc hệ thống, Nhật ký và các danh mục admin đối với tài khoản Thành viên; Quản trị viên toàn quyền quản lý tài khoản và 8 danh mục bộ nhớ.
 - **Ghi nhớ trạng thái Cài đặt**: Tự động lưu và khôi phục trang cài đặt cuối cùng, tab nhật ký và danh mục bộ nhớ đang mở.
 - **Xóa phiên chat & Quản lý người dùng**: Hỗ trợ xóa lịch sử từng phiên hội thoại và xóa tài khoản thành viên trực tiếp trong cài đặt.
+- **Badge trong tài liệu**: badge Shields dùng endpoint PNG tương đương, cao 20 px để chữ không bị phóng to/cắt trên app. SVG từ nguồn khác vẫn dùng `flutter_svg`, giữ kích thước gốc và xếp cùng dòng.
 
 ## Phiên chat
 
@@ -43,6 +44,26 @@ rtk flutter build apk --debug --android-skip-build-dependency-validation
 ```
 File APK xuất ra tại:
 `mobile/build/app/outputs/flutter-apk/app-debug.apk`
+
+## Shorebird: giữ font icon ổn định giữa release và patch
+
+Flutter mặc định chỉ đóng gói các glyph đang dùng. Thêm hoặc bỏ icon có thể làm thay đổi `lucide.ttf`, trong khi Shorebird không đưa thay đổi font vào patch. Dùng `--no-tree-shake-icons` cho **cả release nền và mọi patch** để giữ nguyên font khi danh sách icon thay đổi; kích thước app sẽ tăng do giữ đủ glyph. Giữ cùng phiên bản `lucide_icons_flutter` trong `pubspec.lock` giữa release và patch.
+
+Release cũ đã tree-shake font phải được thay bằng **release nền mới**, tăng version/build trong `pubspec.yaml` và cài APK/IPA mới một lần. Chỉ thêm cờ vào patch của release cũ không thể cập nhật font đã cài. Không dùng `--allow-asset-diffs` để che cảnh báo.
+
+Chạy trong `mobile/` sau khi đã cập nhật version cho release mới:
+
+```powershell
+rtk shorebird release android --artifact apk -- --no-tree-shake-icons --android-skip-build-dependency-validation
+```
+
+Các lần vá sau dùng đúng phiên bản release nền đó, ví dụ thay `<release-version>` bằng version đã phát hành (`x.y.z+build`):
+
+```powershell
+rtk shorebird patch android --release-version <release-version> -- --no-tree-shake-icons --android-skip-build-dependency-validation
+```
+
+Workflow iOS trong `codemagic.yaml` cũng truyền cùng cờ cho release và patch. Thay đổi font/package/asset thật sự vẫn cần release mới; cờ này chỉ loại bỏ khác biệt do tree-shaking icon.
 
 ## Build iOS qua Codemagic (Không cần Mac)
 1. Đẩy repository lên GitHub.
