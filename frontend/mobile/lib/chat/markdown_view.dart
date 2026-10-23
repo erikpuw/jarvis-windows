@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:highlight/highlight.dart' as hi;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:markdown_widget/markdown_widget.dart';
@@ -15,11 +16,8 @@ const _link = Color(0xFF0EA5E9);
 const _inlineCode = Color(0xFF38BDF8);
 const _mono = ['Menlo', 'SF Mono', 'Cascadia Code', 'Consolas', 'monospace'];
 
-TextStyle get _tableText => TextStyle(
-  fontSize: _fsSmall,
-  height: _lineHeight,
-  color: _code,
-);
+TextStyle get _tableText =>
+    TextStyle(fontSize: _fsSmall, height: _lineHeight, color: _code);
 
 // highlight.js `github-dark.css` (markdown.ts imports it), keyed by the class names of the `highlight` package.
 const _red = TextStyle(color: Color(0xFFFF7B72));
@@ -367,7 +365,10 @@ class MarkdownView extends StatelessWidget {
         PreConfig(
           builder: (code, lang) => _CodeBlock(code: code, lang: lang),
         ),
-        ImgConfig(builder: (url, attrs) => _Img(resolveUrl(url), attrs['alt'])),
+        ImgConfig(
+          builder: (url, attrs) =>
+              _Img(resolveUrl(url), attrs['alt'], document: document),
+        ),
         TableConfig(
           defaultColumnWidth: const MaxColumnWidth(
             FixedColumnWidth(140),
@@ -538,11 +539,8 @@ class _ListNode extends ListNode {
   _ListNode(super.config, super.visitor);
 
   @override
-  TextStyle? get style => TextStyle(
-    fontSize: _fs,
-    height: 1.45,
-    color: JTokens.chatText,
-  );
+  TextStyle? get style =>
+      TextStyle(fontSize: _fs, height: 1.45, color: JTokens.chatText);
 }
 
 /// Bold text matching web CSS (white, 600 weight instead of 700 bold).
@@ -587,9 +585,7 @@ class _TableNode extends TableNode {
         if (span.toPlainText().trim().isEmpty && !_hasImage(cell)) continue;
         parts.add(
           Container(
-            constraints: head
-                ? BoxConstraints(minHeight: _fsSmall * 3)
-                : null,
+            constraints: head ? BoxConstraints(minHeight: _fsSmall * 3) : null,
             alignment: Alignment.center,
             child: ProxyRichText(
               span,
@@ -652,32 +648,65 @@ class _Card extends StatelessWidget {
 }
 
 class _Img extends StatelessWidget {
-  const _Img(this.url, this.alt);
+  const _Img(this.url, this.alt, {required this.document});
   final String url;
   final String? alt;
+  final bool document;
 
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.fromLTRB(0, 6, 4, 6),
-    constraints: const BoxConstraints(maxWidth: 180, maxHeight: 140),
-    decoration: BoxDecoration(
-      color: const Color(0x0AFFFFFF),
-      border: Border.all(color: const Color(0x1AFFFFFF)),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    clipBehavior: Clip.antiAlias,
-    child: Image.network(
-      url,
-      fit: BoxFit.cover,
-      errorBuilder: (_, _, _) => Padding(
-        padding: const EdgeInsets.all(8),
-        child: Text(
-          alt ?? '',
-          style: TextStyle(color: JTokens.muted, fontSize: _fsSmall),
-        ),
+  Widget build(BuildContext context) {
+    Widget failed(BuildContext context, Object error, StackTrace? stack) =>
+        Padding(
+          padding: const EdgeInsets.all(8),
+          child: Text(
+            alt ?? '',
+            style: TextStyle(color: JTokens.muted, fontSize: _fsSmall),
+          ),
+        );
+    final uri = Uri.tryParse(url);
+    final isShieldsBadge =
+        uri?.host.toLowerCase() == 'img.shields.io' &&
+        uri!.path.toLowerCase().endsWith('.svg');
+    // Shields' PNG endpoint preserves badge text without SVG text-transform differences.
+    final imageUrl = isShieldsBadge
+        ? uri
+              .replace(
+                path: '${uri.path.substring(0, uri.path.length - 4)}.png',
+              )
+              .toString()
+        : url;
+    final isSvg =
+        !isShieldsBadge && (uri?.path.toLowerCase().endsWith('.svg') ?? false);
+    final image = isSvg
+        ? SvgPicture.network(
+            url,
+            fit: BoxFit.contain,
+            semanticsLabel: alt,
+            errorBuilder: failed,
+          )
+        : Image.network(
+            imageUrl,
+            height: isShieldsBadge ? 20 : null,
+            fit: isShieldsBadge ? BoxFit.contain : BoxFit.cover,
+            semanticLabel: alt,
+            errorBuilder: failed,
+          );
+    // Keep inline document images at their intrinsic size without a photo frame.
+    if (document && (isSvg || isShieldsBadge)) {
+      return Padding(padding: const EdgeInsets.only(right: 4), child: image);
+    }
+    return Container(
+      margin: const EdgeInsets.fromLTRB(0, 6, 4, 6),
+      constraints: const BoxConstraints(maxWidth: 180, maxHeight: 140),
+      decoration: BoxDecoration(
+        color: const Color(0x0AFFFFFF),
+        border: Border.all(color: const Color(0x1AFFFFFF)),
+        borderRadius: BorderRadius.circular(8),
       ),
-    ),
-  );
+      clipBehavior: Clip.antiAlias,
+      child: image,
+    );
+  }
 }
 
 class _CodeBlock extends StatefulWidget {

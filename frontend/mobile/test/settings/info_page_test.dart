@@ -1,7 +1,7 @@
 // Thông tin (pages.ts infoPage + index.ts loadReadme): the version bar, the README through the markdown view, its error lines.
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -71,7 +71,15 @@ void main() {
   testWidgets('external README badges keep their URL without a server prefix', (
     t,
   ) async {
-    const url = 'https://img.shields.io/badge/Python-3.11-blue';
+    const url = 'https://example.com/badge/Python-3.11-blue.svg';
+    await t.runAsync(
+      () => svg.cache.putIfAbsent(
+        const SvgNetworkLoader(url).cacheKey(null),
+        () => const SvgStringLoader(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="20"><rect width="120" height="20" fill="#007ec6"/><text x="4" y="14" font-size="11" fill="white">Python 3.11</text></svg>',
+        ).loadBytes(null),
+      ),
+    );
     await _pump(
       t,
       extra: {
@@ -80,8 +88,8 @@ void main() {
       },
     );
     expect(t.takeException(), isNull);
-    final image = t.widget<Image>(find.byType(Image));
-    expect((image.image as NetworkImage).url, url);
+    final image = t.widget<SvgPicture>(find.byType(SvgPicture));
+    expect((image.bytesLoader as SvgNetworkLoader).url, url);
   });
 
   testWidgets('version bar, README rendered as markdown', (t) async {

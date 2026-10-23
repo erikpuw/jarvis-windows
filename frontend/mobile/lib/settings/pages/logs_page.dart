@@ -535,6 +535,7 @@ class _LogsPageState extends State<LogsPage> {
     final rows = _sessions;
     if (rows == null) return _note(_sessionsNote ?? '');
     return ListView.separated(
+      padding: EdgeInsets.zero,
       itemCount: rows.length,
       separatorBuilder: (_, _) => const SizedBox(height: 4),
       itemBuilder: (_, i) {
@@ -721,6 +722,7 @@ class _LogsPageState extends State<LogsPage> {
       final lines = text.split('\n');
       content = ListView.builder(
         controller: _scroll,
+        padding: EdgeInsets.zero,
         itemCount: lines.length,
         itemBuilder: (_, i) {
           final line = lines[i];
