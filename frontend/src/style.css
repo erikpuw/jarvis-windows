@@ -11,6 +11,7 @@
   --controls-size: 36px;
   --container-bottom: 18px;
   --cmd-padding: 4px 4px;
+  --cmd-row: 30px; /* one row of the command bar = the send button's ring (34px on a phone): +, the text line and send centre on it */
   --cmd-bg: rgba(8, 8, 12, 0.4);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   /* Type scale (PC). Phone values: the max-width 768px :root block. Clock digits stay literal. */
@@ -1025,15 +1026,17 @@ html.anim-paused body > :not(#settings-container) * {
   font-family: inherit;
   resize: none;
   /* Prevent manual resizing */
-  height: calc(1.35em + 4px);
-  /* Initial height: one line (adjustInputHeight() keeps it in step with the text scale) */
+  height: var(--cmd-row);
+  /* Initial height: one row (adjustInputHeight() keeps it in step with the text scale) */
   max-height: 140px;
   /* Limit maximum vertical height */
   overflow-y: auto;
   /* Show scrollbar when exceeding max-height */
   scrollbar-width: none;
   /* Hide scrollbar on Firefox */
-  padding: 2px 0;
+  /* the line sits in the middle of the row: the bar aligns its items to the bottom (a long question grows upward, + and send
+     stay on the last line), so each item is one row tall and centres its own content (2026-10-24: + and text sat low) */
+  padding: calc((var(--cmd-row) - 1.35em) / 2) 0;
   line-height: 1.35;
 }
 
@@ -1069,6 +1072,7 @@ html.anim-paused body > :not(#settings-container) * {
   border: none;
   padding: 0;
   margin: 0;
+  height: var(--cmd-row); /* one row: the + centres on the text line and the send button */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1125,6 +1129,7 @@ html.anim-paused body > :not(#settings-container) * {
 
   :root {
     --controls-inset: 12px;
+    --cmd-row: 34px; /* = #cmd-send-wrap on a phone */
   }
 
   /* 40px touch target around the 14px icon; negative margin keeps the layout unchanged. */
@@ -1132,6 +1137,11 @@ html.anim-paused body > :not(#settings-container) * {
   #cmd-send {
     padding: 13px;
     margin: -13px;
+  }
+
+  /* border-box: the row's height plus the 26px of touch padding, or the + sank 13px below the text line */
+  #btn-upload {
+    height: calc(var(--cmd-row) + 26px);
   }
 
   #jarvis-label {

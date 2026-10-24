@@ -23,16 +23,18 @@ const centres = (page) => page.evaluate(() => {
   for (const [vp, tag] of [[{ width: 390, height: 844 }, "điện thoại"], [{ width: 1440, height: 900 }, "PC"]]) {
     const page = await browser.newPage({ viewport: vp });
     await page.routeWebSocket(/\/ws/, () => {});
-    await page.route("**/api/**", (r) => r.fulfill({ json: { success: true, env_keys_set: { llama: true } } }));
+    // signed in (auth-gate.ts): a stored token that /api/auth/me accepts
+    await page.addInitScript(() => { try { localStorage.setItem("jarvis_token", "test"); } catch {} });
+    await page.route("**/api/**", (r) => r.fulfill({ json: { success: true, env_keys_set: { llama: true }, user: { id: "u1", username: "tester", role: "admin" } } }));
     await page.goto(BASE);
     await page.waitForTimeout(1500);
     const one = await centres(page);
     const off = (a, b) => Math.abs(a - b) <= 1;
     check(off(one.plus, one.send) && off(one.line, one.send) && off(one.send, one.bar), `1. ${tag}: một dòng — dấu +, chữ, nút gửi cùng đường giữa khung`, JSON.stringify(one));
-    await page.fill("#command-input", "câu hỏi rất dài ".repeat(30));
+    await page.evaluate(() => { const i = document.getElementById("command-input"); i.value = "câu hỏi rất dài ".repeat(30); i.dispatchEvent(new Event("input", { bubbles: true })); });
     await page.waitForTimeout(300);
-    const many = await centres(page);
-    check(off(many.plus, many.send) && off(many.lastLine, many.send) && many.send > one.send + 10, `2. ${tag}: nhiều dòng — dấu + và nút gửi nằm cùng dòng cuối`, JSON.stringify(many));
+    const many = await centres(page); // the bar grows upward: the bottom row (+, last line, send) stays put
+    check(off(many.plus, many.send) && off(many.lastLine, many.send) && many.bar < one.bar - 10, `2. ${tag}: nhiều dòng — dấu + và nút gửi nằm cùng dòng cuối`, JSON.stringify(many));
     await page.close();
   }
   await browser.close();
