@@ -119,7 +119,7 @@ def sync(dry_run: bool = False) -> int:
         if dry_run:
             print(f"[DRY-RUN] Sẽ xoá: {rel}")
         else:
-            (TARGET_DIR / rel_path).unlink(missing_ok=True)
+            git("rm", "-q", "--", rel, cwd=TARGET_DIR)  # git rm, không unlink: check_imports đọc danh sách từ index
             print(f"Deleted: {rel}")
         removed += 1
 

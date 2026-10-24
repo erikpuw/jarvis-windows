@@ -18,6 +18,7 @@ def test_sync_copies_new_and_deletes_files_gone_from_source(tmp_path, monkeypatc
         (dst / rel).write_text("x = 1\n", encoding="utf-8")
     subprocess.run(["git", "init", "-q"], cwd=dst, check=True)
     subprocess.run(["git", "add", "-A"], cwd=dst, check=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"], cwd=dst, check=True)
     monkeypatch.setattr(S, "SOURCE_DIR", src)
     monkeypatch.setattr(S, "TARGET_DIR", dst)
     assert S.sync() == 0
