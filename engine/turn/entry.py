@@ -19,9 +19,9 @@ def skill_request(text: str) -> bool:
     return bool(_SKILL_REQUEST.search(text or ""))
 
 
-def tool_mention(text: str) -> tuple[str, str] | None:
+def tool_mention(text: str, user_id: str | None = None) -> tuple[str, str] | None:
     m = _TOOL_MENTION.match((text or "").strip())
-    if not m or registry.get(m.group(1).lower()) is None:
+    if not m or not registry.allowed(m.group(1).lower(), user_id):
         return None
     return m.group(1).lower(), m.group(2).strip()
 
@@ -81,7 +81,8 @@ async def handle_turn(text: str, ctx) -> str:
         out = await handle(SimpleNamespace(query=rag), ctx)
         await ctx.flow_tracker.track("Hoàn thành", "completed")
         return out
-    mention = tool_mention(clean)
+    user_id = getattr(ctx, "user_id", None)
+    mention = tool_mention(clean, user_id)
     if mention:
         return await loop.run_loop(mention[1] or clean, ctx, only=mention[0])
     if skill_request(clean):
@@ -92,13 +93,7 @@ async def handle_turn(text: str, ctx) -> str:
         if wf:
             return await loop.run_loop(clean, ctx, replay=wf)
         from engine.turn import skills
-        skill = await asyncio.to_thread(skills.match, clean, set(registry.chat_names(None)))
+        skill = await asyncio.to_thread(skills.match, clean, set(registry.chat_names(None, user_id=user_id)))
         if skill:
             return await loop.run_loop(clean, ctx, skill=skill)
-        from engine.turn import jev_gate
-        if await asyncio.to_thread(jev_gate.is_available):
-            is_chat, conf = await asyncio.to_thread(jev_gate.classify_chat, clean)
-            if is_chat:
-                log.info("[TURN] Jev fast-path chat bypass (conf=%.1f%%)", conf * 100)
-                return await loop.run_loop(clean, ctx, skip_tool_round=True)
     return await loop.run_loop(clean, ctx)

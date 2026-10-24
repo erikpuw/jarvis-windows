@@ -128,6 +128,15 @@ def style_lines(text: str) -> list[str]:
     return out[:_STYLE_MAX_BULLETS]  # cùng trần STYLE_SCHEMA: trần 8 cũ cắt mất luật emoji (2026-10-14)
 
 
+_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _style_source(text: str) -> str:
+    """Bài học đưa vào lượt viết STYLE, đã cắt câu nói về xưng hô/tool: model viết chung câu đó với luật khác trên một
+    dòng thì style_lines bỏ cả dòng (log 2026-10-24: "xưng hô … đồng thời giảm 'nha'" → mất luật "nha")."""
+    return " ".join(s for s in _SENTENCE.split(text or "") if not _STYLE_BANNED.search(s)).strip()
+
+
 def _is_off_topic_style_rule(line: str) -> bool:
     """Kiểm tra xem luật có lạc đề khỏi phong cách giao tiếp/giọng điệu (STYLE) không.
     STYLE chỉ quản lý cách nói năng, xưng hô, giọng điệu, thái độ, emoji, độ dài.
@@ -305,10 +314,11 @@ async def _run_cognitive_evolution(user_id: str | None = None) -> dict:
             await asyncio.to_thread(_write_evolution_log, cleaned, user_id=uid)
         # kèm ngày (bài trái ý: theo bài mới hơn), không kèm nhãn loại: "[preference] giọng miền Nam" bị model coi là
         # sở thích đời sống, bỏ khỏi STYLE (probe 2026-10-13)
-        plain = "\n".join(f"#{i['id']} [{datetime.fromtimestamp(i['created_at']):%Y-%m-%d}] {i['content']}"
-                          for i in sorted(remaining, key=lambda i: i["created_at"], reverse=True))
+        sourced = [(i, _style_source(i["content"])) for i in sorted(remaining, key=lambda i: i["created_at"], reverse=True)]
+        sourced = [(i, s) for i, s in sourced if s]
+        plain = "\n".join(f"#{i['id']} [{datetime.fromtimestamp(i['created_at']):%Y-%m-%d}] {s}" for i, s in sourced)
         styled = await _ask(build_style_prompt(plain), "evolution_style", STYLE_SCHEMA)
-        sources = [i["content"] for i in remaining]
+        sources = [s for _, s in sourced]
         kept = []
         for s in styled.get("style") or []:
             line = f"- {strip_emojis(str(s)).strip()}"
@@ -317,7 +327,10 @@ async def _run_cognitive_evolution(user_id: str | None = None) -> dict:
                 log.warning("🧬 Bỏ luật không hợp lệ (%s): %s", why, line)
             else:
                 kept.append(line)
-        kept = style_lines("\n".join(kept))[:_STYLE_MAX_BULLETS]
+        valid, kept = kept, style_lines("\n".join(kept))
+        for line in valid:
+            if line not in kept:
+                log.warning("🧬 Bỏ luật (xưng hô/công cụ, trùng hoặc quá %d luật): %s", _STYLE_MAX_BULLETS, line)
         if kept:
             target_style.parent.mkdir(parents=True, exist_ok=True)
             _write_text_atomic(target_style, "# Self Evolution Style Rules\n" + "\n".join(kept) + "\n")

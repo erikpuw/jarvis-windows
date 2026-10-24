@@ -152,6 +152,15 @@ def names() -> list[str]:
     return list(_TOOLS)
 
 
+def allowed(name: str, user_id: str | None = None) -> bool:
+    """Tool có tồn tại với người này không: tool admin_only coi như không có với user thường (@, /)."""
+    spec = get(name)
+    if spec is None or not spec.admin_only:
+        return spec is not None
+    from engine.core.session_context import is_user_admin
+    return is_user_admin(user_id)
+
+
 def _accepts(spec: ToolSpec, attachment_context) -> bool:
     if attachment_context is None:
         return False

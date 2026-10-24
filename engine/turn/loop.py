@@ -412,7 +412,7 @@ async def _run_tool(ctx, out, tool_ctx, tool: str, args: dict, say: str, cua_rep
 
 
 async def run_loop(text: str, ctx, only: str | None = None, replay: dict | None = None,
-                   skill: dict | None = None, skip_tool_round: bool = False) -> str:
+                   skill: dict | None = None) -> str:
     """skill (entry, engine/turn/skills.match): vòng i bị ép đúng tool bước i, xong bước cuối → vòng trả lời."""
     att = ctx.attachment_context
     names = [only] if only else registry.chat_names(att, user_id=getattr(ctx, "user_id", None))
@@ -459,7 +459,7 @@ async def run_loop(text: str, ctx, only: str | None = None, replay: dict | None 
             if ran_step[0]["outcome"] != "success":
                 break
     round_no, answer, summary = 0, True, None
-    while not skip_tool_round and not replay and round_no < (len(plan) or MAX_ROUNDS) and not (only and round_no):  # @tool: một vòng
+    while not replay and round_no < (len(plan) or MAX_ROUNDS) and not (only and round_no):  # @tool: một vòng
         round_no += 1
         sch = schema.build(att, only=plan[round_no - 1] if plan else only if round_no == 1 else None, user_id=getattr(ctx, "user_id", None))
         # skill: vòng chọn không cần kết quả bước trước (tool bị ép, tham số từ lời ngài + việc của bước; kết quả đã có

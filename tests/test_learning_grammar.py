@@ -29,7 +29,7 @@ def _fake_llm(monkeypatch, responses, calls):
     monkeypatch.setattr(ls, "call_llm", fake)
 
 
-FIX = {"kind": "tool_fix", "query": "giá thịt bò", "wrong_tool": "market_price", "right_tool": "search_products",
+FIX = {"kind": "tool_fix", "wrong_tool": "market_price", "right_tool": "search_products",
        "evidence": "giá thịt bò phải dùng search_products"}
 
 
@@ -98,13 +98,60 @@ def test_tool_fix_evidence_must_come_after_the_request(engine, monkeypatch):
     Evidence phải nằm trong lời ngài SAU câu yêu cầu gốc."""
     import engine.core.memory as memory
     engine.record_outcome("market_price", "giá iphone 16", "success", "ok", [])
-    fake = {"kind": "tool_fix", "query": "giá iphone 16", "wrong_tool": "market_price",
+    fake = {"kind": "tool_fix", "wrong_tool": "market_price",
             "right_tool": "search_products", "evidence": "giá iphone 16"}
     _fake_llm(monkeypatch, [{"proposals": [fake]}], [])
     monkeypatch.setattr(memory, "get_messages", lambda limit=100, session_id="": [
         {"role": "user", "content": "giá iphone 16"}, {"role": "assistant", "content": "Giá thị trường…"}])
     asyncio.run(engine.process_conversation_learning("giá iphone 16", "Giá thị trường…"))
     assert engine.list_correction_records()["total"] == 0
+
+
+def test_tool_fix_takes_the_wrong_turn_from_outcomes_and_fails_it(engine, monkeypatch):
+    """Log 2026-10-23: "…qua tin tức bệnh não mô cầu" chạy play_media, ghi success; ngài sửa → search_news.
+    Câu gốc do code lấy (lượt gần nhất chạy tool sai), lượt đó thành failed, lượt khác giữ nguyên."""
+    q = "chuyển món khác đi đổi món, qua tin tức bệnh não mô cầu"
+    msg = "sai rồi, tin tức phải dùng search_news"
+    engine.record_outcome("play_media", "mở bài thầy dùi", "success", "đang phát", [])
+    engine.record_outcome("play_media", q, "success", "đang phát", [])
+    _history(monkeypatch, ("user", "mở bài thầy dùi"), ("assistant", "Đang phát."), ("user", q),
+             ("assistant", "Đang phát tin tức."), ("user", msg))
+    fix = {"kind": "tool_fix", "wrong_tool": "play_media", "right_tool": "search_news",
+           "evidence": "tin tức phải dùng search_news"}
+    _fake_llm(monkeypatch, [{"proposals": [fix]}], [])
+    res = asyncio.run(engine.process_conversation_learning(msg, "Dạ."))
+    assert res["stored"] == 1 and res["items"][0]["query"] == q
+    c = engine._get_learning_db()
+    status = dict(c.execute("SELECT query, status FROM outcomes").fetchall())
+    fixes = [tuple(r) for r in c.execute("SELECT query, wrong_tool, right_tool FROM corrections")]
+    c.close()
+    assert fixes == [(q, "play_media", "search_news")]
+    assert status == {q: "failed", "mở bài thầy dùi": "success"}
+
+
+def test_plain_complaint_after_a_tool_turn_learns_only_tool_fix(engine, monkeypatch):
+    """Ngài 2026-10-24: "ơ kìa … đâu có nghe nhạc nữa" (không có "sai rồi") ngay sau lượt dùng tool → vào learning,
+    nhưng chỉ nhận tool_fix (probe: mở cửa cho mọi loại thì 9/12 câu thường bị ghi bài học/sở thích/tool_rule)."""
+    q = "chuyển món khác đi đổi món, qua tin tức bệnh não mô cầu"
+    msg = "ơ kìa tin tức bệnh não mô cầu mà, đâu có nghe nhạc nữa"
+    engine.record_outcome("play_media", q, "success", "đang phát", [])
+    _history(monkeypatch, ("user", q), ("assistant", "Đang phát tin tức."), ("user", msg))
+    fix = {"kind": "tool_fix", "wrong_tool": "play_media", "right_tool": "search_news", "evidence": "tin tức bệnh não mô cầu mà"}
+    lesson = {"kind": "lesson", "key": "x", "content": "Không phát nhạc khi ngài hỏi tin tức.", "evidence": "đâu có nghe nhạc nữa"}
+    _fake_llm(monkeypatch, [{"proposals": [fix, lesson]}, *_new(1)], [])
+    res = asyncio.run(engine.process_conversation_learning(msg, "Dạ."))
+    assert [p["kind"] for p in res["items"]] == ["tool_fix"]
+    assert engine.list_correction_records()["total"] == 1 and engine.list_learning_records(limit=10)["total"] == 0
+
+
+def test_plain_chat_after_a_tool_turn_stores_nothing_but_tool_fix(engine, monkeypatch):
+    """Câu thường sau lượt dùng tool (probe: "không cần đâu" → bài học, "còn sài gòn thì sao" → tool_rule): bỏ hết."""
+    engine.record_outcome("weather", "thời tiết hà nội", "success", "28 độ", [])
+    _history(monkeypatch, ("user", "thời tiết hà nội"), ("assistant", "Hà Nội 28 độ."), ("user", "còn sài gòn thì sao"))
+    rule = {"kind": "tool_rule", "topic": "thời tiết", "right_tool": "weather", "evidence": "còn sài gòn thì sao"}
+    _fake_llm(monkeypatch, [{"proposals": [rule]}], [])
+    res = asyncio.run(engine.process_conversation_learning("còn sài gòn thì sao", "Dạ."))
+    assert res["stored"] == 0 and engine.tool_rules() == {}
 
 
 def _history(monkeypatch, *pairs):

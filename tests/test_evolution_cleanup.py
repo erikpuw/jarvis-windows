@@ -184,3 +184,25 @@ def test_style_keeps_every_rule_the_model_may_write():
     cap = STYLE_SCHEMA["properties"]["style"]["maxItems"]
     lines = "\n".join(f"- Luật số {i} về cách nói." for i in range(cap))
     assert len(ev.style_lines(lines)) == cap
+
+
+def test_pronoun_sentences_are_cut_before_style_so_mixed_rules_survive(le, monkeypatch):
+    """Log 2026-10-24: "ít dùng 'nha'" bị gộp vào bài xưng hô #5 → model viết một dòng STYLE "xưng hô … đồng thời giảm
+    'nha'" → style_lines bỏ cả dòng (có chữ "xưng"), không log. Câu xưng hô bị cắt trước khi viết STYLE; dòng bị lọc có log."""
+    c = le._get_learning_db()
+    c.execute("INSERT INTO learnings(id,type,semantic_key,content,created_at) VALUES(5,'lesson','cach_xung_ho',?,300)",
+              ("Khi nói chuyện với ngài, Jarvis nên dùng cách xưng hô thân mật. Khi tự xưng, Jarvis chỉ dùng 'tôi'. "
+               "Đặc biệt, nên giảm tần suất sử dụng từ 'nha' để câu chuyện tự nhiên hơn.",))
+    c.commit()
+    c.close()
+    calls, warned = [], []
+    # ghi thẳng, không qua caplog: chạy cả bộ thì logger "jarvis" có thể đã tắt propagate (CI 2026-10-24)
+    monkeypatch.setattr(evolution.log, "warning", lambda msg, *a: warned.append(msg % a))
+    _llm(monkeypatch, {"remove": [], "merge": []},
+         ["Giảm tần suất sử dụng từ 'nha' để câu chuyện tự nhiên hơn.", "Dùng cách xưng hô thân mật với ngài."], calls)
+    asyncio.run(evolution._run_cognitive_evolution())
+    lessons = calls[-1]["prompt"].rsplit("<bai_hoc>", 1)[1].split("</bai_hoc>")[0]
+    assert "giảm tần suất sử dụng từ 'nha'" in lessons and "xưng" not in lessons
+    style = evolution.STYLE_FILE.read_text(encoding="utf-8")
+    assert "nha" in style and "xưng" not in style
+    assert any("xưng hô thân mật" in w for w in warned)

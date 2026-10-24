@@ -154,3 +154,52 @@ def test_sample_queries_capped_at_20(engine):
         engine.save_workflow(f"mở notepad {i}", CHAIN, "ok")
     samples = json.loads(engine.list_workflow_records()["items"][0]["sample_queries"])
     assert len(samples) == 20 and samples[-1] == "mở notepad 24"
+
+
+@pytest.mark.parametrize("text,args", [
+    ("Mở Calculator.", {"app_name": "Calculator"}),
+    ("Đừng mở Calculator, chỉ giải thích.", {"app_name": "Calculator"}),
+    ('Dịch câu "mở Calculator".', {"app_name": "Calculator"}),
+    ("Tôi chỉ đang quan sát hệ thống.", {}),
+])
+def test_pause_audits_success_without_creating_workflow(engine, monkeypatch, text, args):
+    from engine.turn import outcome
+
+    monkeypatch.setattr(learning, "get_learning_engine", lambda: engine)
+
+    async def no_model(**kwargs):
+        pytest.fail("Lưu outcome không được gọi thêm model")
+
+    monkeypatch.setattr("engine.server.llm_server.call_llm", no_model)
+    outcome.save_turn(text, [{"tool": "open_app", "args": args, "outcome": "success", "result": "ok"}], "ok")
+    assert engine.list_outcome_records()["items"][0]["status"] == "success"
+    assert engine.list_workflow_records()["total"] == 0
+
+
+def test_pause_preserves_old_workflow_without_reinforcement(engine, monkeypatch):
+    from engine.turn import outcome
+
+    monkeypatch.setattr(learning, "get_learning_engine", lambda: engine)
+    wid = engine.save_workflow("mở notepad", CHAIN, "ok")
+    before = engine.list_workflow_records()["items"]
+    page = learning.WORKFLOWS_WIKI_DIR / "open_app.md"
+    wiki = page.read_bytes()
+    outcome.save_turn("mở notepad", [{**CHAIN[0], "outcome": "success", "result": "ok"}], "ok", replay_id=wid)
+    assert engine.find_workflow("mở notepad")["id"] == wid
+    assert engine.list_workflow_records()["items"] == before
+    assert page.read_bytes() == wiki
+    assert json.loads(engine.list_outcome_records()["items"][0]["traces"])[0]["replay"] == wid
+
+
+@pytest.mark.parametrize("statuses,expected", [
+    (["failed"], "failed"), (["no_result"], "failed"), (["success", "failed"], "partial"),
+])
+def test_pause_preserves_execution_status(engine, monkeypatch, statuses, expected):
+    from engine.turn import outcome
+
+    monkeypatch.setattr(learning, "get_learning_engine", lambda: engine)
+    outcome.save_turn("x", [{"tool": "open_app", "outcome": status} for status in statuses], "x")
+    item = engine.list_outcome_records()["items"][0]
+    assert item["status"] == expected
+    assert [step["outcome"] for step in json.loads(item["traces"])] == statuses
+    assert engine.list_workflow_records()["total"] == 0

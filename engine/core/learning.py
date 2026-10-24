@@ -979,9 +979,10 @@ class LearningEngine:
 
         # Ngài 2026-10-14: chỉ học khi ngài dạy rõ (ghi nhớ, học đi, từ giờ…) hoặc sửa tool; trò chuyện, chê trách → không học.
         # Lượt trước vừa học: cho qua để ngài rút lại (retract) điều vừa ghi.
-        if not (self._is_explicit_learning_request(user_message) or _CORRECTION.search(user_message.lower())
-                or self._just_learned):
-            return {"stored": 0, "discarded": True, "items": []}
+        explicit = bool(self._is_explicit_learning_request(user_message) or _CORRECTION.search(user_message.lower())
+                        or self._just_learned)
+        # Ngài 2026-10-24: lời phản đối thường ("ơ kìa … đâu có nghe nhạc nữa") ngay sau lượt dùng tool cũng được xét,
+        # nhưng chỉ nhận tool_fix (probe: regex bắt 3/12 lời phản đối; mở cửa cho mọi loại thì 9/12 câu thường bị ghi bậy)
 
         # 3–5 lượt gần nhất từ DB (cùng nguồn với chat), lượt hiện tại luôn ở cuối
         turns: list[dict] = []
@@ -1002,7 +1003,11 @@ class LearningEngine:
             else:
                 turns += current
         turns = turns[-10:]
-        user_text = "\n".join(t["content"] for t in turns if t["role"] == "user")
+        if not explicit:  # chỉ khi câu ngay trước câu này đã chạy tool
+            asked = [t["content"] for t in turns if t.get("role") == "user"]
+            if len(asked) < 2 or normalize_query(asked[-2]) not in await asyncio.to_thread(self._recent_queries_with):
+                return {"stored": 0, "discarded": True, "items": []}
+        user_text ="\n".join(t["content"] for t in turns if t["role"] == "user")
         transcript = "\n".join(
             f"{'User' if t['role'] == 'user' else 'Assistant'}: {str(t['content']).strip()}" for t in turns
         )
@@ -1056,6 +1061,8 @@ class LearningEngine:
             if not isinstance(proposal, dict):
                 continue
             kind = proposal.get("kind", "")
+            if not explicit and kind != "tool_fix":
+                continue
             content = proposal.get("content", "")
             key = self._normalise_key(str(proposal.get("key", "")))
             evidence = proposal.get("evidence", "")
@@ -1067,16 +1074,18 @@ class LearningEngine:
                 continue
             if kind == "tool_fix":
                 # evidence phải là lời ngài nói SAU câu yêu cầu gốc (review 2026-10-14: model bịa tool_fix lấy chính câu hỏi
-                # làm evidence); kind user_fact để _validate_proposal_evidence chỉ so lời ngài
+                # làm evidence); kind user_fact để _validate_proposal_evidence chỉ so lời ngài.
+                # Câu gốc do code chọn: lượt gần nhất trước lời sửa đã chạy wrong_tool (log 2026-10-23: model ghi query
+                # "tin tức" thay vì nguyên câu "…qua tin tức bệnh não mô cầu" → không khớp outcome, lời sửa bị bỏ)
                 users = [t["content"] for t in turns if t.get("role") == "user"]
-                q = normalize_query(str(proposal.get("query", "")))
-                at = next((i for i, u in enumerate(users) if normalize_query(u) == q), None)
+                wrong = str(proposal.get("wrong_tool", ""))
+                ran = await asyncio.to_thread(self._recent_queries_with, wrong)
+                at = next((i for i in range(len(users) - 2, -1, -1) if normalize_query(users[i]) in ran), None)
                 later = " ".join(users[at + 1:]) if at is not None else ""
                 if later and self._validate_proposal_evidence({**proposal, "kind": "user_fact"}, later) and await asyncio.to_thread(
-                        self.record_correction, str(proposal.get("query", "")),
-                        str(proposal.get("wrong_tool", "")), str(proposal.get("right_tool", ""))):
+                        self.record_correction, users[at], wrong, str(proposal.get("right_tool", ""))):
                     stored += 1
-                    accepted.append(proposal)
+                    accepted.append({**proposal, "query": users[at]})
                 continue
             if kind == "tool_rule":
                 if self._validate_proposal_evidence({**proposal, "kind": "user_fact"}, user_last_message) and \
@@ -1492,27 +1501,39 @@ class LearningEngine:
                 return {"id": row["id"], "tools": row["tools"], "tool_chain": json.loads(row["tool_chain"])}
         return None
 
+    def _recent_queries_with(self, tool: str | None = None) -> set[str]:
+        """Câu (đã chuẩn hoá) của các lượt 24 giờ qua có chạy tool này (None: tool bất kỳ)."""
+        conn = self._get_learning_db()
+        try:
+            rows = conn.execute("SELECT query, tools FROM outcomes WHERE created_at >= ?",
+                                (time.time() - _CORRECTION_WINDOW,)).fetchall()
+        finally:
+            conn.close()
+        return {normalize_query(r["query"]) for r in rows if tool is None or tool in r["tools"].split("+")}
+
     def record_correction(self, query: str, wrong_tool: str, right_tool: str) -> bool:
-        """Ngài sửa chọn tool (spec 2026-10-13 §1): chỉ lưu khi outcomes 24 giờ qua có đúng câu đó chạy wrong_tool."""
+        """Ngài sửa chọn tool (spec 2026-10-13 §1): chỉ lưu khi outcomes 24 giờ qua có đúng câu đó chạy wrong_tool.
+        Lượt bị sửa thành failed: outcomes là nguồn của workflow, save_note, price_history (log 2026-10-23)."""
         from engine.tools import registry
         q = normalize_query(query)
         if not q or wrong_tool == right_tool or right_tool not in registry.names():
             return False
         conn = self._get_learning_db()
         try:
-            recent = conn.execute("SELECT query, tools, created_at FROM outcomes WHERE created_at >= ?",
+            recent = conn.execute("SELECT id, query, tools, created_at FROM outcomes WHERE created_at >= ?",
                                   (time.time() - _CORRECTION_WINDOW,)).fetchall()
-            if not any(normalize_query(r["query"]) == q and wrong_tool in r["tools"].split("+") for r in recent):
+            wrong_runs = [r for r in recent if normalize_query(r["query"]) == q and wrong_tool in r["tools"].split("+")]
+            if not wrong_runs:
                 log.info("⏭️ tool_fix bỏ: không có lượt '%s' dùng %s trong 24 giờ", q, wrong_tool)
                 return False
+            conn.executemany("UPDATE outcomes SET status='failed' WHERE id=?", [(r["id"],) for r in wrong_runs])
             now = time.time()
             row = conn.execute("SELECT id, updated_at FROM corrections WHERE query_norm=? AND wrong_tool=? AND right_tool=?",
                                (q, wrong_tool, right_tool)).fetchone()
             if row:
                 # count = số lần TÁI PHẠM: phải có lượt mới dùng tool sai sau lần sửa trước (review 2026-10-14: transcript học
                 # đọc lại lời sửa cũ → count 2 → ép tool dù ngài chỉ sửa một lần)
-                if not any(normalize_query(r["query"]) == q and wrong_tool in r["tools"].split("+")
-                           and r["created_at"] > row["updated_at"] for r in recent):
+                if not any(r["created_at"] > row["updated_at"] for r in wrong_runs):
                     return False
                 conn.execute("UPDATE corrections SET count=count+1, updated_at=? WHERE id=?", (now, row["id"]))
             else:

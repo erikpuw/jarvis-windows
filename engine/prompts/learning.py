@@ -15,9 +15,10 @@ def propose_schema(tool_names: list[str]) -> dict:
     learn = {"type": "object", "properties": {"kind": {"enum": ["lesson", "preference", "user_fact"]}, "key": _TEXT,
                                               "content": _TEXT, "evidence": _TEXT},
              "required": ["kind", "key", "content", "evidence"], "additionalProperties": False}
-    fix = {"type": "object", "properties": {"kind": {"const": "tool_fix"}, "query": _TEXT, "wrong_tool": tools,
-                                            "right_tool": tools, "evidence": _TEXT},
-           "required": ["kind", "query", "wrong_tool", "right_tool", "evidence"], "additionalProperties": False}
+    # không có "query": câu gốc do code lấy từ outcomes (model chép sai câu, log 2026-10-23)
+    fix = {"type": "object", "properties": {"kind": {"const": "tool_fix"}, "wrong_tool": tools, "right_tool": tools,
+                                            "evidence": _TEXT},
+           "required": ["kind", "wrong_tool", "right_tool", "evidence"], "additionalProperties": False}
     rule = {"type": "object", "properties": {"kind": {"const": "tool_rule"}, "topic": _TEXT, "right_tool": tools,
                                              "evidence": _TEXT},
             "required": ["kind", "topic", "right_tool", "evidence"], "additionalProperties": False}

@@ -34,4 +34,4 @@ def test_propose_prompt_routes_how_jarvis_behaves_to_behaviour_lesson():
     from pathlib import Path
     text = (Path(__file__).resolve().parents[1] / "prompt" / "learning_propose.md").read_text(encoding="utf-8")
     assert "lesson: cách Jarvis nói, trả lời, cư xử" in text  # prompt 2026-10-14: chỉ học điều ngài dạy
-    assert "preference / user_fact: sở thích hoặc sự thật lâu dài về chính ngài" in text
+    assert "- preference: điều ngài thích" in text and "- user_fact: sự thật về con người ngài" in text  # tách 2026-10-24

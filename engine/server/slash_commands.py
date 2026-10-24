@@ -41,15 +41,9 @@ def resolve_slash_command(text: str, user_id: str | None = None) -> dict | None:
     value = parts[1].strip() if len(parts) > 1 else ""
     if name in ("", "help", "commands", "trogiup"):
         return {"kind": "info", "command": "help", "text": format_tools_help(user_id)}
-    spec = registry.get(name)
-    if spec is None:
+    if not registry.allowed(name, user_id):  # tool admin_only với user thường: như không có lệnh này
         return {"kind": "not_found", "command": name,
                 "text": f"Không tìm thấy lệnh `/{name}`. Gõ `/help` để xem các lệnh."}
-    if spec.admin_only:
-        from engine.core.session_context import is_user_admin
-        if not is_user_admin(user_id):
-            return {"kind": "info", "command": name,
-                    "text": "Lỗi bảo mật: Chỉ Quản trị viên (Admin) mới có quyền sử dụng lệnh này."}
     if not value and _required(name):
         return {"kind": "prompt", "command": name,
                 "text": f"Gõ nội dung cho `/{name}` ({', '.join(_required(name))}), ví dụ: "

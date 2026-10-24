@@ -107,10 +107,10 @@ def test_check_mail_permission_isolation_for_member():
         adm_tools = R.chat_names(user_id="admin")
         assert "check_mail" in adm_tools
 
-        # Slash command /check_mail blocked
+        # Slash command /check_mail: như không có lệnh (không lộ tool tồn tại, ngài 2026-10-24)
         slash_res = resolve_slash_command("/check_mail", user_id="user-member-test")
-        assert slash_res["kind"] == "info"
-        assert "Chỉ Quản trị viên" in slash_res["text"]
+        assert slash_res["kind"] == "not_found"
+        assert "Chỉ Quản trị viên" not in slash_res["text"]
 
         # format_tools_help filters out check_mail for member
         help_mem = format_tools_help(user_id="user-member-test")

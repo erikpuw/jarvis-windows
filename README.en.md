@@ -24,16 +24,16 @@
 
 **JARVIS** is an offline-capable, local-first AI assistant designed for Windows, communicating with large language models (LLMs) via `llama.cpp` using an OpenAI-compatible API. JARVIS eliminates reliance on third-party cloud services for personal data: conversation history, knowledge documents, fitness logs, and self-learning preferences are securely stored locally within SQLite and an Obsidian Vault.
 
-The system is built on a **Flat Tool Routing** architecture, enhanced with a specialized **Jev Fast-Path (0.8B)** decision model for zero-latency general conversation, alongside strict **Multi-User Role-Based Access Control (RBAC)** isolating Admin and Member workspaces.
+The system is built on a **Flat Tool Routing** architecture, with the main LLM handling chat/tool decisions and strict **Multi-User Role-Based Access Control (RBAC)** isolating Admin and Member workspaces.
 
 ---
 
 ## ✨ Key Features
 
-### 1. Flat Tool Routing & Jev Fast-Path
-- **Non-Personified Decision Loop (Grammar JSON)**: Enforces strict structured JSON outputs `{"tool", "say", "args"}` via `llama.cpp` grammars, eliminating hallucination during tool invocation.
-- **Jev Fast-Path Chat Bypass**: Specialized decision model `Jev-Style-0.8B-Decision-v3` (GGUF) running on port 8083 or in-process. For everyday conversational dialogue (greetings, chitchat, encyclopedic questions), Jev skips the primary LLM's tool-selection round, cutting ~3.5s of latency for instant replies.
-- **Flexible Shortcuts**: Rapid execution with `/tool_name`, `@tool_name`, or automated attached-file routing.
+### 1. Flat Tool Routing with the Main LLM
+- **Gemma4 Router & Grammar JSON**: The main LLM selects `tool=none` for chat or a registered tool with `{"tool", "say", "args"}`. Grammar constrains the output structure; it does not guarantee that the chosen action matches the request.
+- **Workflow & Skill Fast Paths**: Saved workflow replay and matched skills keep their existing priority. Other requests reach the main model router.
+- **Flexible Shortcuts**: `/tool_name`, `@tool_name`, `@rag` and attachment routing keep their existing behavior.
 
 ### 2. Multi-User RBAC & Perimeter Security
 - **Role Isolation (Admin vs. Member)**: Persistent user accounts stored in SQLite `users` table.
@@ -84,8 +84,8 @@ The system is built on a **Flat Tool Routing** architecture, enhanced with a spe
 └──────────────┬──────────────────────────┬──────────────┘
                │                          │
 ┌──────────────▼─────────────┐ ┌──────────▼──────────────┐
-│       Jev Fast-Path        │ │    Turn Execution Loop  │
-│  (Instant Chat Bypass)     │ │  - Round 1: Tool Choice │
+│    Workflow / Skill       │ │    Turn Execution Loop  │
+│  Replay / Tool Sequences  │ │  - Round 1: Tool Choice │
 └────────────────────────────┘ │  - Round 2: Answer Gen  │
                                └──────────┬──────────────┘
                                           │
@@ -95,7 +95,7 @@ The system is built on a **Flat Tool Routing** architecture, enhanced with a spe
 │       Tool Catalog         │ │    Memory & Evolution    │ │      Local AI Model Services    │
 │ - RAG (@rag, Documents)    │ │ - SQLite / FTS5          │ │ - LLM / llama.cpp (:8080)       │
 │ - Gym Tracker (@gym)       │ │ - Obsidian Wiki Vault    │ │ - Embedding Server (:8081)      │
-│ - Retail / Pharmacy Search │ │ - Learning & STYLE.md    │ │ - Jev Fast-Path Engine (:8083)  │
+│ - Retail / Pharmacy Search │ │ - Learning & STYLE.md    │ │                                │
 │ - Windows Vision / Control │ │ - Isolated data/users/   │ │ - Voice TTS (Edge / VieNeu)     │
 │ - MCP Hub (Gmail...)       │ │ - Dream Cycle / Self-Heal│ │                                 │
 └────────────────────────────┘ └──────────────────────────┘ └─────────────────────────────────┘
@@ -134,11 +134,6 @@ npm run dev
 ```
 
 Open `https://localhost:8340`. If using VieNeu streaming, run `python run_vieneu.py` in a separate terminal; otherwise, Edge-TTS is used by default.
-
-To run the dedicated Jev Fast-Path decision engine:
-```powershell
-python run_jev.py --cpu
-```
 
 ### Configuration (`.env`)
 

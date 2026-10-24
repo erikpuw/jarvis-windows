@@ -24,35 +24,27 @@
 
 **JARVIS** là hệ thống trợ lý AI chạy cục bộ trên máy tính cá nhân (Windows), kết nối trực tiếp với mô hình ngôn ngữ lớn (LLM) qua `llama.cpp` (API chuẩn OpenAI). JARVIS không phụ thuộc vào dịch vụ đám mây bên thứ ba cho dữ liệu cá nhân: toàn bộ lịch sử trò chuyện, tài liệu tri thức, nhật ký tập luyện và phong cách tự học đều được lưu trữ an toàn trong SQLite và Obsidian Vault cục bộ.
 
-Hệ thống được thiết kế theo kiến trúc **định tuyến công cụ phẳng (Flat Tool Routing)**, hỗ trợ mô hình quyết định chuyên biệt **Jev Fast-Path (0.8B)** giúp phản hồi hội thoại siêu tốc, cùng cơ chế **phân quyền đa người dùng (Multi-User RBAC)** cách ly dữ liệu triệt để giữa Quản trị viên (Admin) và Thành viên (Member).
+Hệ thống được thiết kế theo kiến trúc **định tuyến công cụ phẳng (Flat Tool Routing)**, dùng LLM chính để quyết định chat/công cụ, cùng cơ chế **phân quyền đa người dùng (Multi-User RBAC)** cách ly dữ liệu triệt để giữa Quản trị viên (Admin) và Thành viên (Member).
 
 ---
 
 ## ✨ Tính năng nổi bật
 
-### 1. Định tuyến công cụ phẳng & Jev Fast-Path
-- **Quyết định không nhân cách (Grammar JSON)**: Ép cấu trúc đầu ra `{"tool", "say", "args"}` qua grammar của `llama.cpp`, loại bỏ hoàn toàn hiện tượng ảo giác (hallucination) khi gọi công cụ.
-- **Jev Fast-Path Chat Bypass**: Mô hình quyết định chuyên biệt `Jev-Style-0.8B-Decision-v3` (GGUF) chạy thường trực trên cổng 8083 hoặc in-process. Với các câu giao tiếp thông thường (chào hỏi, tâm sự, bách khoa), Jev kích hoạt Fast-path bỏ qua vòng chọn tool của LLM chính, giảm ngay ~3.5 giây độ trễ và trả lời trực tiếp.
-- **Lối tắt linh hoạt**: Hỗ trợ gọi nhanh công cụ bằng tiền tố `/tên_tool`, nhắc lệnh `@tên_tool` hoặc phân tích nhanh tệp đính kèm.
-
-#### JEV trên CPU
-
-JEV mặc định chạy CPU (không đặt `JEV_USE_CPU` = CPU), dành VRAM cho LLM và TTS. Đặt `JEV_USE_CPU=0` để chạy GPU. Đo trên máy dev: CPU ~0,85 giây/câu, GPU ~40 ms/câu. Model và ngưỡng chat bypass 0,85 không đổi.
-
-Gate ưu tiên dịch vụ `run_jev.py` (cổng 8083). Chỉ khi `run_jev.py` không chạy, gate mới nạp model trong tiến trình. Dịch vụ có chạy nhưng lỗi hoặc bận thì lượt đó đi router thường, không nạp model thứ hai; health được kiểm tra lại sau 5 giây. Lỗi phân loại luôn trả về router thường, không bypass.
-
-Tự hồi phục: `jev-score` chết thì gate và `run_jev.py` tự nạp lại (nạp lỗi thì thử lại sau 5 giây); `/health` chỉ báo `ok` khi tiến trình còn sống. Một câu không có trả lời sau 10 giây thì `jev-score` bị dừng và nạp lại, lượt đó đi router thường.
-
-Kiểm thử không nạp model: `rtk python -m pytest -q tests/test_jev_recovery.py tests/test_jev_gate.py tests/test_jev_gate_module.py tests/test_jev_fastpath_integration.py tests/test_jev_scoring_analysis.py tests/turn/test_jev.py`. Các test live chỉ chạy khi đặt `JEV_LIVE_TESTS=1`. Thay đổi source chỉ có hiệu lực với tiến trình đã khởi động lại.
+### 1. Định tuyến công cụ phẳng bằng LLM chính
+- **Router Gemma4 & Grammar JSON**: LLM chính chọn `tool=none` để chat hoặc chọn công cụ đã đăng ký với cấu trúc `{"tool", "say", "args"}`. Grammar ràng buộc cấu trúc đầu ra; không bảo đảm hành động được chọn luôn đúng ý người dùng.
+- **Fast-path Workflow & Skill**: Giữ thứ tự ưu tiên replay workflow đã lưu và skill phù hợp. Các lượt còn lại đi qua router của LLM chính.
+- **Lối tắt linh hoạt**: Giữ `/tên_tool`, `@tên_tool`, `@rag` và xử lý tệp đính kèm như hiện tại.
 
 ### 2. Bảo mật đa người dùng & Phân quyền chặt chẽ (RBAC)
 - **Tách biệt Admin & Member**: Bảng `users` trong cơ sở dữ liệu định danh từng người dùng.
-- **MCP Gmail Admin-only**: Chặn truy cập hòm thư Gmail của Admin ở mọi tầng (MCP Hub, Tool Registry, Tool Schema, Slash Commands, REST API) đối với tài khoản Member.
+- **MCP Gmail Admin-only**: Chặn truy cập hòm thư Gmail của Admin ở mọi tầng (MCP Hub, Tool Registry, Tool Schema, Slash Commands, REST API) đối với tài khoản Member. Với Member, `@check_mail`, `/check_mail` và skill có bước mail coi như không có tool này (không báo "chỉ Admin").
 - **Bảo vệ Prompt hệ thống**: Toàn bộ chỉ dẫn hệ thống (`prompt/jarvis.md`) được bảo vệ bằng rào chắn Admin; Member không có quyền đọc hay sửa.
 - **Telegram Bot đa người dùng**: Hỗ trợ liên kết tài khoản an toàn qua lệnh `/link <token>` hoặc cấu hình `telegram_chat_id`. Nhận diện tự động quyền hạn, chặn truy cập trái phép và cách ly hoàn toàn lịch sử chat giữa các người dùng Telegram.
 
 ### 3. Tự học & Tiến hóa nhận thức độc lập (Learning & Evolution)
 - **Học có chọn lọc (Learning Engine)**: Chỉ ghi nhận bài học khi người dùng hướng dẫn rõ ràng ("ghi nhớ", "từ giờ", "lần sau dùng..."). Không tự suy diễn từ câu chuyện phiếm.
+- **Sửa công cụ dùng sai**: Ngay sau một lượt dùng tool, lời phản đối thường ("ơ kìa, tin tức mà, đâu có nghe nhạc") cũng được xét nhưng chỉ ghi `tool_fix`. Câu gốc lấy từ `outcomes`; lượt bị sửa đổi thành `failed`.
+- **Tạm dừng tự học workflow**: Lượt chạy tool vẫn ghi `outcomes` với trạng thái, tham số và kết quả thực thi. Không tự tạo workflow mới hoặc tăng `validation_count`, kể cả khi tool báo thành công. Workflow cũ vẫn được giữ và phát lại như trước; chưa được rà soát lại tính đúng đắn. Không thêm lượt gọi model kiểm chứng và không đổi Choice/fast-path.
 - **Tiến hóa phong cách (Evolution Engine)**: Tự động tổng hợp và tinh chỉnh các quy tắc giao tiếp thành tệp `STYLE.md`.
 - **Cách ly dữ liệu người dùng tuyệt đối**: Bài học, sở thích và tiến hóa của Thành viên được lưu trữ và chiếu riêng vào `data/users/{user_id}/` (`Learning.md`, `Preferences.md`, `STYLE.md`, `Evolution.md`), hoàn toàn không ảnh hưởng hay ghi đè lên dữ liệu của Admin.
 
@@ -102,8 +94,8 @@ Kiểm thử không nạp model: `rtk python -m pytest -q tests/test_jev_recover
 └──────────────┬──────────────────────────┬──────────────┘
                │                          │
 ┌──────────────▼─────────────┐ ┌──────────▼──────────────┐
-│       Jev Fast-Path        │ │  Vòng lặp Turn Loop     │
-│  (Chat tức thì, bypass LLM)│ │  - Vòng 1: Chọn Tool    │
+│    Workflow / Skill       │ │  Vòng lặp Turn Loop     │
+│  Replay / chuỗi công cụ   │ │  - Vòng 1: Chọn Tool    │
 └────────────────────────────┘ │  - Vòng 2: Phản hồi     │
                                └──────────┬──────────────┘
                                           │
@@ -113,7 +105,7 @@ Kiểm thử không nạp model: `rtk python -m pytest -q tests/test_jev_recover
 │     Hệ thống Công cụ       │ │   Bộ nhớ & Tiến hóa      │ │     Mô hình & Dịch vụ Local     │
 │ - RAG (@rag, Documents)    │ │ - SQLite / FTS5          │ │ - LLM / llama.cpp (:8080)       │
 │ - Gym Tracker (@gym)       │ │ - Obsidian Wiki Vault    │ │ - Embedding Server (:8081)      │
-│ - Siêu thị / Dược phẩm     │ │ - Learning & STYLE.md    │ │ - Jev Fast-Path Engine (:8083)  │
+│ - Siêu thị / Dược phẩm     │ │ - Learning & STYLE.md    │ │                                │
 │ - Windows Vision / Control │ │ - Cách ly data/users/    │ │ - Voice TTS (Edge / VieNeu)     │
 │ - MCP Hub (Gmail...)       │ │ - Dream Cycle / Self-Heal│ │                                 │
 └────────────────────────────┘ └──────────────────────────┘ └─────────────────────────────────┘
@@ -152,11 +144,6 @@ npm run dev
 ```
 
 Mở `https://localhost:8340`. Nếu dùng VieNeu streaming, chạy thêm `python run_vieneu.py` ở terminal riêng; nếu không, dùng Edge-TTS.
-
-Nếu chạy thêm mô hình quyết định chuyên biệt Jev Fast-Path:
-```powershell
-python run_jev.py --cpu
-```
 
 ### Cấu hình `.env`
 
