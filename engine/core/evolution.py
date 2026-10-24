@@ -36,7 +36,7 @@ _last_inputs_by_user: dict[str, tuple[str, str]] = {}
 # ---- Settings → Bộ nhớ → Evolution: đọc và sửa tay hai file tiến hóa ngay trong giao diện ----
 EVOLUTION_FILES = (
     ("style", "STYLE.md — luật giọng điệu đang áp dụng"),
-    ("log", "Evolution.md — bài học đã gỡ/gộp"),
+    ("log", "Evolution.md — bài học đã gỡ/gộp, nhật ký STYLE mỗi lần chạy"),
 )
 STYLE_MAX_CHARS = 4000  # STYLE.md vào system prompt mỗi lượt chat: người sửa tay cũng không được làm nó phình vô hạn
 
@@ -190,18 +190,26 @@ def _bad_rule(line: str, sources: list[str]) -> str | None:
     return "không có bài học nào làm căn cứ"
 
 
-def _write_evolution_log(cleaned: list[str], user_id: str | None = None) -> None:
-    """Evolution.md: mục đã gỡ/gộp kèm nội dung cũ để khôi phục. Luật đang áp dụng nằm ở STYLE.md, không chép lại."""
+_RUN_HEADING = re.compile(r"^## \d{4}-\d{2}-\d{2}")  # khối mỗi lần chạy; Dream xoay vòng theo ngày ở tiêu đề
+
+
+def _write_evolution_log(cleaned: list[str], user_id: str | None = None, run_block: str = "") -> None:
+    """Evolution.md: "Đã dọn" = mục đã gỡ/gộp kèm nội dung cũ để khôi phục; sau đó mỗi lần chạy đổi STYLE một khối
+    "## <ngày giờ> · STYLE" (thêm / bỏ / bị lọc). Luật đang áp dụng nằm ở STYLE.md, không chép lại."""
     try:
         target_log = _evolution_path("log", user_id=user_id) or EVOLUTION_LOG
         text = target_log.read_text(encoding="utf-8") if target_log.exists() else ""
-        old, area = [], None
+        old, runs, area = [], [], None
         for line in text.splitlines():
             if line.startswith("## "):
-                area = line[3:].strip()
+                area = "run" if _RUN_HEADING.match(line) else line[3:].strip()
+            if area == "run":
+                runs.append(line)
             elif line.startswith("- ") and area == "Đã dọn":
                 old.append(line)
+        blocks = [b for b in ("\n".join(runs).strip(), run_block.strip()) if b]
         out = "# Jarvis Evolution Log\n\n<!-- JARVIS-MANAGED-EVOLUTION -->\n\n## Đã dọn\n" + "\n".join(old + cleaned) + "\n"
+        out += "".join(f"\n{b}\n" for b in blocks)
         target_log.parent.mkdir(parents=True, exist_ok=True)
         target_log.write_text(out, encoding="utf-8")
         log.info("🧬 Đã cập nhật Evolution.md (%s)", target_log)
@@ -319,24 +327,35 @@ async def _run_cognitive_evolution(user_id: str | None = None) -> dict:
         plain = "\n".join(f"#{i['id']} [{datetime.fromtimestamp(i['created_at']):%Y-%m-%d}] {s}" for i, s in sourced)
         styled = await _ask(build_style_prompt(plain), "evolution_style", STYLE_SCHEMA)
         sources = [s for _, s in sourced]
-        kept = []
+        kept, filtered = [], []
         for s in styled.get("style") or []:
             line = f"- {strip_emojis(str(s)).strip()}"
             why = _bad_rule(line, sources) if str(s).strip() else "rỗng"
             if why:
                 log.warning("🧬 Bỏ luật không hợp lệ (%s): %s", why, line)
+                filtered.append((why, line))
             else:
                 kept.append(line)
         valid, kept = kept, style_lines("\n".join(kept))
         for line in valid:
             if line not in kept:
-                log.warning("🧬 Bỏ luật (xưng hô/công cụ, trùng hoặc quá %d luật): %s", _STYLE_MAX_BULLETS, line)
+                why = f"xưng hô/công cụ, trùng hoặc quá {_STYLE_MAX_BULLETS} luật"
+                log.warning("🧬 Bỏ luật (%s): %s", why, line)
+                filtered.append((why, line))
+        before = style_lines(current_style)
         if kept:
             target_style.parent.mkdir(parents=True, exist_ok=True)
             _write_text_atomic(target_style, "# Self Evolution Style Rules\n" + "\n".join(kept) + "\n")
             log.info(f"🧬 Đã cập nhật style rules: {target_style}")
         elif current_style:
             log.info("🧬 Model không trả luật hợp lệ: giữ STYLE.md hiện tại.")
+        # nhật ký mỗi lần chạy trong wiki (ngài 2026-10-24): chỉ khi STYLE đổi hoặc có luật bị lọc
+        after = kept or before
+        lines = ([f"- Thêm: {l[2:]}" for l in after if l not in before] + [f"- Bỏ: {l[2:]}" for l in before if l not in after]
+                 + [f"- Bị lọc ({why}): {l[2:]}" for why, l in filtered])
+        if lines:
+            await asyncio.to_thread(_write_evolution_log, [], uid,
+                                    f"## {datetime.now():%Y-%m-%d %H:%M} · STYLE\n" + "\n".join(lines))
         _last_inputs_by_user[uid] = (_items_text(remaining),
                                      target_style.read_text(encoding="utf-8").strip() if target_style.exists() else "")
         results["success"] = True

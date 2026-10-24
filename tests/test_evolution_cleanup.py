@@ -1,6 +1,7 @@
 """Evolution dọn bài học có rào chắn + STYLE.md (spec 2026-10-13 §3.3). DB tạm, STYLE/Evolution tạm (conftest)."""
 import asyncio
 import json
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -206,3 +207,34 @@ def test_pronoun_sentences_are_cut_before_style_so_mixed_rules_survive(le, monke
     style = evolution.STYLE_FILE.read_text(encoding="utf-8")
     assert "nha" in style and "xưng" not in style
     assert any("xưng hô thân mật" in w for w in warned)
+
+
+def test_each_run_logs_style_added_removed_and_filtered(le, monkeypatch):
+    """Ngài 2026-10-24: Evolution.md (wiki) ghi mỗi lần chạy: luật thêm vào / bỏ khỏi STYLE và luật bị lọc kèm lý do,
+    khối có ngày trong tiêu đề (Dream xoay vòng theo ngày); lần ghi "Đã dọn" sau đó không làm mất khối."""
+    evolution.STYLE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    evolution.STYLE_FILE.write_text("# Self Evolution Style Rules\n- Trả lời chi tiết toàn diện mọi câu hỏi.\n",
+                                    encoding="utf-8")
+    _llm(monkeypatch, {"remove": [], "merge": []},
+         ["Dùng emoji cho cuộc trò chuyện sinh động.", "Dùng cách xưng hô thân mật với ngài.",
+          "Luôn gọi công cụ market_price khi ngài hỏi giá."], [])
+    asyncio.run(evolution._run_cognitive_evolution())
+    evolution._write_evolution_log(["- [gỡ #9, trùng] X."])
+    log_text = evolution.EVOLUTION_LOG.read_text(encoding="utf-8")
+    block = log_text[log_text.index("· STYLE"):]
+    assert re.search(r"^## \d{4}-\d{2}-\d{2} \d{2}:\d{2} · STYLE", log_text, re.M)
+    assert "- Thêm: Dùng emoji cho cuộc trò chuyện sinh động." in block
+    assert "- Bỏ: Trả lời chi tiết toàn diện mọi câu hỏi." in block
+    assert re.search(r"^- Bị lọc \(.+\): Dùng cách xưng hô thân mật với ngài\.$", block, re.M)
+    assert re.search(r"^- Bị lọc \(.+\): Luôn gọi công cụ market_price", block, re.M)
+    assert "[gỡ #9, trùng] X." in log_text
+
+
+def test_unchanged_style_writes_no_run_block(le, monkeypatch):
+    evolution.STYLE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    evolution.STYLE_FILE.write_text("# Self Evolution Style Rules\n- Dùng emoji cho cuộc trò chuyện sinh động.\n",
+                                    encoding="utf-8")
+    _llm(monkeypatch, {"remove": [], "merge": []}, ["Dùng emoji cho cuộc trò chuyện sinh động."], [])
+    asyncio.run(evolution._run_cognitive_evolution())
+    assert "· STYLE" not in (evolution.EVOLUTION_LOG.read_text(encoding="utf-8")
+                             if evolution.EVOLUTION_LOG.exists() else "")

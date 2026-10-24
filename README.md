@@ -45,7 +45,7 @@ Hệ thống được thiết kế theo kiến trúc **định tuyến công c�
 - **Học có chọn lọc (Learning Engine)**: Chỉ ghi nhận bài học khi người dùng hướng dẫn rõ ràng ("ghi nhớ", "từ giờ", "lần sau dùng..."). Không tự suy diễn từ câu chuyện phiếm.
 - **Sửa công cụ dùng sai**: Ngay sau một lượt dùng tool, lời phản đối thường ("ơ kìa, tin tức mà, đâu có nghe nhạc") cũng được xét nhưng chỉ ghi `tool_fix`. Câu gốc lấy từ `outcomes`; lượt bị sửa đổi thành `failed`.
 - **Tạm dừng tự học workflow**: Lượt chạy tool vẫn ghi `outcomes` với trạng thái, tham số và kết quả thực thi. Không tự tạo workflow mới hoặc tăng `validation_count`, kể cả khi tool báo thành công. Workflow cũ vẫn được giữ và phát lại như trước; chưa được rà soát lại tính đúng đắn. Không thêm lượt gọi model kiểm chứng và không đổi Choice/fast-path.
-- **Tiến hóa phong cách (Evolution Engine)**: Tự động tổng hợp và tinh chỉnh các quy tắc giao tiếp thành tệp `STYLE.md`.
+- **Tiến hóa phong cách (Evolution Engine)**: Tự động tổng hợp và tinh chỉnh các quy tắc giao tiếp thành tệp `STYLE.md`. Mỗi lần `STYLE.md` đổi, wiki `System/Evolution.md` ghi một khối theo ngày: luật thêm, luật bỏ, luật bị lọc kèm lý do.
 - **Cách ly dữ liệu người dùng tuyệt đối**: Bài học, sở thích và tiến hóa của Thành viên được lưu trữ và chiếu riêng vào `data/users/{user_id}/` (`Learning.md`, `Preferences.md`, `STYLE.md`, `Evolution.md`), hoàn toàn không ảnh hưởng hay ghi đè lên dữ liệu của Admin.
 
 ### 4. Kho Tri Thức Cục Bộ & RAG (`@rag`)
