@@ -4,7 +4,7 @@
 - KHÓA BẢO VỆ: Chỉ cho phép chạy trên nhánh 'feat/mobile-ios', TUYỆT ĐỐI không chạm vào 'main'.
 - Chỉ chép file mà git ở nguồn đang theo dõi (cả ios/ lẫn android/), nên rác build và file sinh tự động
   (.dart_tool/, build/, .gradle/, ephemeral/, *.iml, local.properties...) không bao giờ bị chép sang.
-- File đích đang được git theo dõi nhưng đã bị xóa ở nguồn sẽ bị xóa theo (test/mã cũ không nằm lại).
+- File đích đang được git theo dõi nhưng đã bị xóa ở nguồn (kể cả xóa chưa commit) sẽ bị xóa theo (test/mã cũ không nằm lại).
 - Chỉ cập nhật những file thực sự có thay đổi nội dung.
 - Sau khi chép: chạy scripts/verify_mobile_ios.py; XANH thì git add + commit, ĐỎ thì không commit.
   Push + tạo Pull Request vẫn tự làm tay (lệnh in ra ở cuối).
@@ -65,12 +65,11 @@ def sync(source_dir: Path, target_dir: Path, dry_run: bool = False) -> int:
     print(f"📦 Nguồn: {source_dir}")
     print(f"🎯 Đích:  {target_dir}\n")
 
-    source_files = tracked_files(source_dir)
+    # git theo dõi VÀ còn trên đĩa: xoá ở nguồn (kể cả chưa commit) thì đích xoá theo, như sync_from_jarvis (2026-10-24)
+    source_files = {rel for rel in tracked_files(source_dir) if (source_dir / rel).is_file()}
     copied = 0
     for rel in sorted(source_files):
         src_path = source_dir / rel
-        if not src_path.is_file():  # đã xóa ở nguồn nhưng chưa commit
-            continue
         dst_path = target_dir / rel
         if dst_path.is_file() and src_path.read_bytes() == dst_path.read_bytes():
             continue

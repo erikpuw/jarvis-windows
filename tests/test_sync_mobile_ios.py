@@ -49,3 +49,16 @@ def test_dry_run_changes_nothing(tmp_path):
 
     assert (dst / "lib/main.dart").read_text(encoding="utf-8") == "old"
     assert (dst / "lib/stale.dart").exists()
+
+
+def test_file_deleted_at_source_but_not_committed_is_removed_too(tmp_path):
+    """Xoá ở jarvis-mobile (chưa commit) thì repo GitHub cũng xoá theo, như sync_from_jarvis (theo đĩa, không theo index)."""
+    src = _repo(tmp_path / "src", {"lib/main.dart": "x", "lib/old_feature.dart": "x"},
+                track=["lib/main.dart", "lib/old_feature.dart"])
+    (src / "lib/old_feature.dart").unlink()
+    dst = _repo(tmp_path / "dst", {"lib/main.dart": "x", "lib/old_feature.dart": "x"},
+                track=["lib/main.dart", "lib/old_feature.dart"])
+
+    assert sync(src, dst) == 0
+
+    assert not (dst / "lib/old_feature.dart").exists() and (dst / "lib/main.dart").exists()
