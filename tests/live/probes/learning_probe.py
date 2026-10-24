@@ -22,22 +22,30 @@ SHOULD = [  # (id, lịch sử trước đó, câu của ngài) — phải lưu 
      "lại gợi ý nữa, hãy hạn chế gợi ý và ghi nhớ giúp tôi nhé"),
     ("explicit-short", [("assistant", "Dạ, tôi sẽ trả lời chi tiết từng bước ạ, thưa ngài. Bước một là…")],
      "từ giờ trả lời ngắn gọn thôi, đừng giải thích dài dòng nữa"),
-    ("fact-job", [], "tôi là lập trình viên, đang làm dự án trợ lý ảo chạy bằng Gemma 4 trên llama.cpp"),
-    ("fact-pc", [], "máy tôi dùng card đồ hoạ RTX 4070, chạy Windows 11"),
-    ("pref-food", [], "tôi thích ăn phở bò tái, hay ăn sáng ở quán gần nhà"),
+    # ngài 2026-10-24: chỉ câu DẠY (ghi nhớ, nhớ giùm, từ giờ, lần sau…) mới học; chê/khen/kể không có chữ dạy → không học
+    ("fact-job", [], "ghi nhớ: tôi là lập trình viên, đang làm dự án trợ lý ảo chạy bằng Gemma 4 trên llama.cpp"),
+    ("fact-pc", [], "nhớ giùm máy tôi dùng card đồ hoạ RTX 4070, chạy Windows 11"),
+    ("pref-food", [], "ghi nhớ tôi thích ăn phở bò tái, hay ăn sáng ở quán gần nhà"),
     ("complain-style", [("assistant", "Ôi trời ơi, tôi xin lỗi ngài rất nhiều! Tôi hứa sẽ không bao giờ tái phạm nữa đâu ạ!")],
-     "đừng xin lỗi dài dòng như vậy, một câu thôi là đủ rồi"),
+     "từ giờ đừng xin lỗi dài dòng như vậy, một câu thôi là đủ rồi"),
     ("praise", [("assistant", "Giá vàng SJC hôm nay là 80 triệu, nguồn ghi rõ thời điểm cập nhật."), ],
-     "đúng rồi, trả lời có nêu nguồn và thời điểm như vậy là chuẩn, cứ giữ nhé"),
+     "đúng rồi, trả lời có nêu nguồn và thời điểm như vậy là chuẩn, lần sau cứ giữ nhé"),
     ("complain-reask", [("user", "phát bài hôm qua đó"), ("assistant", "Ngài muốn nghe bài nào ạ?")],
-     "tôi nói rồi mà, đừng hỏi lại câu đó nữa, cứ làm theo bài gần nhất"),
+     "ghi nhớ: tôi nói rồi thì đừng hỏi lại câu đó nữa, cứ làm theo bài gần nhất"),
     ("criticize-ramble", [("assistant", "Dạ thưa ngài, câu này có nhiều khía cạnh lắm ạ: lịch sử, bối cảnh, ý nghĩa, rồi còn…")],
-     "trả lời gì mà lan man quá vậy"),
-    ("tone-request", [], "nói chuyện với tôi bằng giọng miền Nam cho thân thiện nha"),
+     "học hỏi đi, trả lời gì mà lan man quá vậy"),
+    ("tone-request", [], "từ giờ nói chuyện với tôi bằng giọng miền Nam cho thân thiện nha"),
 ]
 # Luật cách Jarvis nói/cư xử phải là behaviour_lesson (vào <style>), không phải preference/user_fact (vào <about_user>).
 EXPECT_KIND = {"tone-request": "behaviour_lesson", "complain-style": "behaviour_lesson", "criticize-ramble": "behaviour_lesson"}
 SHOULD_NOT = [  # phải lưu 0 mục
+    # chê / khen / kể không có chữ dạy, và hai câu log 2026-10-24 sinh bài học #9, #10
+    ("complain-no-teach", [("assistant", "Ôi trời ơi, tôi xin lỗi ngài rất nhiều!")], "đừng xin lỗi dài dòng như vậy nữa"),
+    ("ramble-no-teach", [("assistant", "Dạ thưa ngài, câu này có nhiều khía cạnh lắm ạ…")], "trả lời gì mà lan man quá vậy"),
+    ("fact-no-teach", [], "tôi là lập trình viên, đang làm dự án trợ lý ảo"),
+    ("trend-complaint", [("user", "tìm thông tin xu hướng mới nhất"), ("assistant", "Tin thời sự mới nhất…")],
+     "sai rồi không đúng luôn, xu hướng là tin hot nhất, cái Jarvis đang nói là tin tức không phải xu hướng"),
+    ("stop-tools", [("assistant", "Tôi tìm thêm tin xu hướng cho ngài nhé.")], "sai rôi, thôi ngưng đi đừng gọi công cụ nữa"),
     ("mood-tired", [], "Jarvis ơi, tôi mệt lắm đó"),
     ("mood-lazy", [], "tôi lười mở notepad quá"),
     ("greet", [], "xin chào jarvis"),

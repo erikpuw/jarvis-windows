@@ -173,14 +173,14 @@ def test_explicit_learning_request_patterns(engine):
         "Từ giờ không hỏi lại nữa",
         "Từ nay tôi chỉ dùng lệnh này",
         "Về sau làm cách này",
-        "Hạn chế gợi ý quá mức",
-        "Đừng hỏi lại nữa",
-        "Không được gợi ý nữa",
     ]
 
     for text in patterns:
         result = engine._is_explicit_learning_request(text)
         assert result is True, f"Failed to detect: {text}"
+    # ngài 2026-10-24: chê / lệnh tạm không phải dạy ("đừng gọi công cụ nữa" thành bài học #10) — chỉ còn tool_fix
+    for text in ("Hạn chế gợi ý quá mức", "Đừng hỏi lại nữa", "Không được gợi ý nữa", "sai rồi"):
+        assert engine._is_explicit_learning_request(text) is False, text
 
 
 def test_explicit_learning_with_skip_critique_still_stores(engine, monkeypatch):

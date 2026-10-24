@@ -154,6 +154,29 @@ def test_plain_chat_after_a_tool_turn_stores_nothing_but_tool_fix(engine, monkey
     assert res["stored"] == 0 and engine.tool_rules() == {}
 
 
+@pytest.mark.parametrize("msg", ["sai rồi không đúng luôn, cái Jarvis đang nói là tin tức không phải xu hướng",
+                                 "sai rôi, thôi ngưng đi đừng gọi công cụ nữa", "hạn chế gợi ý đi"])
+def test_complaints_never_create_lessons(engine, monkeypatch, msg):
+    """Log 2026-10-24: "…sai rồi" → bài học #9 (xu hướng ≠ tin tức) lọt vào STYLE.md; "đừng gọi công cụ nữa" → #10 (lệnh
+    một lần thành luật). Ngài 2026-10-14: chỉ học khi ngài dạy rõ; chê trách chỉ được sửa tool (tool_fix)."""
+    engine.record_outcome("search_news", "tìm thông tin xu hướng mới nhất", "success", "tin", [])
+    _history(monkeypatch, ("user", "tìm thông tin xu hướng mới nhất"), ("assistant", "Tin mới nhất…"), ("user", msg))
+    lesson = {"kind": "lesson", "key": "xu_huong", "content": "Phân biệt xu hướng với tin tức.", "evidence": msg[:20]}
+    rule = {"kind": "tool_rule", "topic": "xu hướng", "right_tool": "search_news", "evidence": msg[:20]}
+    _fake_llm(monkeypatch, [{"proposals": [lesson, rule]}, *_new(2)], [])
+    res = asyncio.run(engine.process_conversation_learning(msg, "Dạ."))
+    assert res["stored"] == 0 and engine.list_learning_records(limit=10)["total"] == 0 and engine.tool_rules() == {}
+
+
+def test_right_after_learning_a_complaint_may_only_retract(engine, monkeypatch):
+    """Lượt vừa học: cửa mở để ngài rút lại (retract), không để câu chê tạo bài học mới."""
+    engine._just_learned = {1: "x"}
+    lesson = {"kind": "lesson", "key": "moi", "content": "Một luật mới.", "evidence": "không phải vậy"}
+    _fake_llm(monkeypatch, [{"proposals": [lesson]}, *_new(1)], [])
+    res = asyncio.run(engine.process_conversation_learning("không phải vậy", "Dạ."))
+    assert res["stored"] == 0
+
+
 def _history(monkeypatch, *pairs):
     msgs = [{"role": r, "content": c} for r, c in pairs]
     monkeypatch.setattr(memory, "get_messages", lambda limit=100, session_id="": msgs)

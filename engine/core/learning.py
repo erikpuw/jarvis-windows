@@ -57,6 +57,8 @@ def _cosine(a, b) -> float | None:
 _CORRECTION_WINDOW = 86400  # lời sửa phải đến trong 24 giờ sau lượt dùng sai tool (spec 2026-10-13 §1)
 MAX_PROPOSALS = 4  # một lượt dạy 3-4 luật (log 2026-10-14 19:30: tối đa 2 làm rơi luật thứ 3)
 _CORRECTION = re.compile(r"sai rồi|nhầm rồi|phải dùng|phải tra|dùng \S+ (?:đi|mới đúng)")
+# Chê / lệnh tạm (trước 2026-10-24 tính là "dạy"): mở cửa learning nhưng chỉ nhận tool_fix
+_COMPLAINT = re.compile(r"hạn chế|đừng\s+.{0,40}?\s+nữa|không được\s+.{0,40}?\s+nữa")
 DEDUPE_SIM = 0.90  # embed_probe 2026-10-13: cùng ý ≥ 0.86, khác ý ≤ 0.82 (EmbeddingGemma 2)
 
 
@@ -717,7 +719,9 @@ class LearningEngine:
 
     @staticmethod
     def _is_explicit_learning_request(text: str) -> bool:
-        """Kiểm tra xem tin nhắn có yêu cầu học rõ ràng không (ghi nhớ, học, hạn chế, đổi hành vi)."""
+        """Ngài DẠY rõ ràng (ghi nhớ, học, từ giờ, lần sau…): chỉ câu này mới tạo bài học / sở thích / sự thật / luật tool.
+        Câu chê, lệnh tạm ("đừng … nữa", "hạn chế", "sai rồi") không phải dạy: log 2026-10-24 "đừng gọi công cụ nữa"
+        thành bài học lâu dài #10 — những câu đó đi _COMPLAINT, chỉ được sửa tool (tool_fix)."""
         if not text:
             return False
         t_low = text.lower()
@@ -733,9 +737,6 @@ class LearningEngine:
             r"từ giờ",
             r"từ nay",
             r"về sau",
-            r"hạn chế",
-            r"đừng\s+.{0,40}?\s+nữa",
-            r"không được\s+.{0,40}?\s+nữa",
         ]
         for pattern in patterns:
             if re.search(pattern, t_low):
@@ -978,11 +979,15 @@ class LearningEngine:
             return {"stored": 0, "discarded": True, "items": []}
 
         # Ngài 2026-10-14: chỉ học khi ngài dạy rõ (ghi nhớ, học đi, từ giờ…) hoặc sửa tool; trò chuyện, chê trách → không học.
-        # Lượt trước vừa học: cho qua để ngài rút lại (retract) điều vừa ghi.
-        explicit = bool(self._is_explicit_learning_request(user_message) or _CORRECTION.search(user_message.lower())
-                        or self._just_learned)
-        # Ngài 2026-10-24: lời phản đối thường ("ơ kìa … đâu có nghe nhạc nữa") ngay sau lượt dùng tool cũng được xét,
-        # nhưng chỉ nhận tool_fix (probe: regex bắt 3/12 lời phản đối; mở cửa cho mọi loại thì 9/12 câu thường bị ghi bậy)
+        # teach = dạy: học mọi loại. Còn lại chỉ tool_fix (+ retract nếu lượt trước vừa học), và chỉ khi: câu sửa/chê
+        # (_CORRECTION, _COMPLAINT), lượt trước vừa học, hoặc câu ngay sau lượt dùng tool ("ơ kìa … đâu có nghe nhạc
+        # nữa"; probe: regex bắt 3/12, mở cho mọi loại thì 9/12 câu thường bị ghi bậy). Log 2026-10-24: "sai rồi" và
+        # "đừng … nữa" từng cho học mọi loại → bài học #9, #10 lọt vào STYLE.md.
+        low = user_message.lower()
+        teach = self._is_explicit_learning_request(user_message)
+        can_retract = bool(self._just_learned)
+        nudged = teach or can_retract or bool(_CORRECTION.search(low) or _COMPLAINT.search(low))
+        allowed = None if teach else {"tool_fix"} | ({"retract"} if can_retract else set())
 
         # 3–5 lượt gần nhất từ DB (cùng nguồn với chat), lượt hiện tại luôn ở cuối
         turns: list[dict] = []
@@ -1003,7 +1008,7 @@ class LearningEngine:
             else:
                 turns += current
         turns = turns[-10:]
-        if not explicit:  # chỉ khi câu ngay trước câu này đã chạy tool
+        if not nudged:  # chỉ khi câu ngay trước câu này đã chạy tool
             asked = [t["content"] for t in turns if t.get("role") == "user"]
             if len(asked) < 2 or normalize_query(asked[-2]) not in await asyncio.to_thread(self._recent_queries_with):
                 return {"stored": 0, "discarded": True, "items": []}
@@ -1055,13 +1060,11 @@ class LearningEngine:
         stored = 0
         accepted: list[dict] = []
 
-        is_explicit = self._is_explicit_learning_request(user_last_message)
-
         for proposal in raw_proposals[:MAX_PROPOSALS]:
             if not isinstance(proposal, dict):
                 continue
             kind = proposal.get("kind", "")
-            if not explicit and kind != "tool_fix":
+            if allowed is not None and kind not in allowed:
                 continue
             content = proposal.get("content", "")
             key = self._normalise_key(str(proposal.get("key", "")))
@@ -1136,7 +1139,7 @@ class LearningEngine:
 
             # Xử lý quyết định phản biện & chống trùng lặp:
             if decision == "skip":
-                if is_explicit:
+                if teach:
                     # Người dùng yêu cầu ghi nhớ rõ ràng và trong DB chưa có bài nào tương tự ⇒ vẫn ghi nhận
                     decision = "new"
                     log.info("Critique skip bị bỏ qua: ngài yêu cầu học rõ ràng (trùng ý đã loại bằng cosine)")
