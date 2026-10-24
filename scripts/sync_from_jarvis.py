@@ -64,6 +64,17 @@ def should_skip(rel_path: Path) -> bool:
     return False
 
 
+def update_from_origin(branch: str, cwd: Path) -> bool:
+    """Kéo nhánh từ GitHub trước khi sync (chỉ fast-forward): merge PR mobile trên GitHub làm main trên đó đi trước,
+    commit sync làm trên main cũ thì push bị từ chối (2026-10-24, hai lần). False = hai bên đã rẽ nhánh."""
+    git("fetch", "-q", "origin", cwd=cwd)
+    try:
+        git("merge", "--ff-only", "-q", f"origin/{branch}", cwd=cwd)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
 def same_content(a: bytes, b: bytes) -> bool:
     """Bằng nhau, hoặc là văn bản chỉ khác CRLF/LF (jarvis lưu LF, jarvis-windows bật autocrlf)."""
     if a == b:
@@ -140,6 +151,10 @@ def main(dry_run: bool) -> int:
     if not dry_run and git("status", "--porcelain"):
         print(f"❌ Repo {TARGET_DIR} đang có thay đổi chưa commit, dừng để không commit lẫn.")
         print("👉 Commit chúng trước, hoặc bỏ đi bằng: git restore .")
+        return 1
+    if not dry_run and not update_from_origin(TARGET_BRANCH, TARGET_DIR):
+        print(f"❌ {TARGET_BRANCH} ở máy và trên GitHub đã rẽ nhánh, không kéo thẳng về được.")
+        print(f"👉 cd {TARGET_DIR} ; git pull --rebase origin {TARGET_BRANCH} ; chạy lại script này.")
         return 1
     if git("status", "--porcelain", cwd=SOURCE_DIR):
         print(f"⚠️  Nguồn {SOURCE_DIR} có thay đổi CHƯA commit, chúng cũng sẽ được chép sang.\n")
