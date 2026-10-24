@@ -62,3 +62,17 @@ def test_file_deleted_at_source_but_not_committed_is_removed_too(tmp_path):
     assert sync(src, dst) == 0
 
     assert not (dst / "lib/old_feature.dart").exists() and (dst / "lib/main.dart").exists()
+
+
+def test_line_ending_only_difference_is_not_copied(tmp_path):
+    """autocrlf=true: chuyển nhánh ghi CRLF ra đĩa; so từng byte thì chép lại 18 tệp, git add chuẩn hoá về như cũ, commit
+    rỗng làm script đổ lỗi (2026-10-24). Khác mỗi CRLF/LF thì không chép."""
+    src = _repo(tmp_path / "src", {"lib/main.dart": ""}, track=["lib/main.dart"])
+    (src / "lib/main.dart").write_bytes(b"a\nb\n")  # write_text trên Windows đã tự đổi sang CRLF
+    dst = _repo(tmp_path / "dst", {}, track=[])
+    (dst / "lib").mkdir()
+    (dst / "lib/main.dart").write_bytes(b"a\r\nb\r\n")
+
+    assert sync(src, dst) == 0
+
+    assert (dst / "lib/main.dart").read_bytes() == b"a\r\nb\r\n"

@@ -61,6 +61,16 @@ def tracked_files(directory: Path) -> set[str]:
     return {p for p in out.split("\0") if p}
 
 
+def same_content(a: bytes, b: bytes) -> bool:
+    """Bằng nhau, hoặc văn bản chỉ khác CRLF/LF: autocrlf=true ghi CRLF ra đĩa khi chuyển nhánh, so từng byte thì chép
+    lại cả loạt tệp không đổi rồi commit rỗng (2026-10-24). Cùng cách với sync_from_jarvis.same_content."""
+    if a == b:
+        return True
+    if b"\0" in a or b"\0" in b:  # tệp nhị phân: so từng byte
+        return False
+    return a.replace(b"\r\n", b"\n") == b.replace(b"\r\n", b"\n")
+
+
 def sync(source_dir: Path, target_dir: Path, dry_run: bool = False) -> int:
     print(f"📦 Nguồn: {source_dir}")
     print(f"🎯 Đích:  {target_dir}\n")
@@ -71,7 +81,7 @@ def sync(source_dir: Path, target_dir: Path, dry_run: bool = False) -> int:
     for rel in sorted(source_files):
         src_path = source_dir / rel
         dst_path = target_dir / rel
-        if dst_path.is_file() and src_path.read_bytes() == dst_path.read_bytes():
+        if dst_path.is_file() and same_content(src_path.read_bytes(), dst_path.read_bytes()):
             continue
         if dry_run:
             print(f"[DRY-RUN] Sẽ chép: {rel}")
@@ -129,6 +139,9 @@ def main(dry_run: bool) -> int:
         return 1
 
     git("add", "-A")
+    if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=REPO_DIR).returncode == 0:
+        print("✅ Sau khi git chuẩn hoá xuống dòng không còn gì khác, không cần commit.")
+        return 0
     git("commit", "-q", "-m", f"feat(mobile): sync tu jarvis-mobile {datetime.now():%Y-%m-%d %H:%M}")
     print(f"✅ Đã commit: {git('log', '--oneline', '-1')}")
     print("\n📤 BƯỚC CUỐI (tự làm tay):")
