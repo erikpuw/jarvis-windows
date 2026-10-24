@@ -4,7 +4,8 @@ chạy CI local, xanh thì tự commit. Push lên GitHub vẫn tự làm tay (l�
 Tự động:
 - KHÓA BẢO VỆ: chỉ chạy trên nhánh 'main' của jarvis-windows, repo phải sạch (không có thay đổi chưa commit).
 - Bỏ qua rác: __pycache__, .git, .env, data/, logs/, node_modules/, frontend/dist, *.pem, mobile/
-- Giữ nguyên các tệp cấu hình CI quan trọng: ruff.toml, requirements-ci.txt, .github/, .gitignore
+- Giữ nguyên các tệp cấu hình CI quan trọng: ruff.toml, requirements-ci.txt, .github/, .gitignore (PRESERVE_TARGET_FILES)
+- Tệp git đang theo dõi mà nguồn không còn thì xoá (trừ tệp được bảo vệ)
 - Sau khi chép: chạy scripts/verify_ci.py; XANH thì git add + commit, ĐỎ thì không commit.
 
 Cách dùng (đường dẫn đã cố định, nhưng nên đứng ở repo GitHub cho khỏi nhầm):
@@ -34,8 +35,11 @@ EXCLUDE_FILES = {
     ".env", "cert.pem", "key.pem"
 }
 
+# Tệp chỉ có ở repo GitHub: không bị chép đè, không bị xoá khi nguồn không có
 PRESERVE_TARGET_FILES = {
-    "ruff.toml", "requirements-ci.txt", ".gitignore"
+    "ruff.toml", "requirements-ci.txt", ".gitignore", ".env.example", "CHANGELOG.md", "CHANGELOG.en.md",
+    "codemagic.yaml", "sync_from_jarvis.py", "sync_mobile_ios.py", "verify_ci.py", "verify_mobile_ios.py",
+    "test_sync_mobile_ios.py", "test_sync_from_jarvis.py"
 }
 
 PRESERVE_TARGET_DIRS = {
@@ -105,8 +109,22 @@ def sync(dry_run: bool = False) -> int:
             print(f"Copied: {rel_path}")
         copied += 1
 
+    # Tệp nguồn đã xoá thì xoá ở đây (2026-10-24: gỡ Jev ở jarvis nhưng engine/turn/jev + test Jev còn lại, CI đỏ).
+    # Chỉ tệp git đang theo dõi; -z để tên tiếng Việt không bị git bọc ngoặc kép.
+    removed = 0
+    for rel in filter(None, git("ls-files", "-z", cwd=TARGET_DIR).split("\0")):
+        rel_path = Path(rel)
+        if should_skip(rel_path) or (SOURCE_DIR / rel_path).exists():
+            continue
+        if dry_run:
+            print(f"[DRY-RUN] Sẽ xoá: {rel}")
+        else:
+            (TARGET_DIR / rel_path).unlink(missing_ok=True)
+            print(f"Deleted: {rel}")
+        removed += 1
+
     action = "Sẽ chép" if dry_run else "Đã đồng bộ"
-    print(f"\n✨ {action} {copied} tệp (bỏ qua {skipped} tệp rác/CI được bảo vệ).")
+    print(f"\n✨ {action} {copied} tệp, xoá {removed} tệp nguồn không còn (bỏ qua {skipped} tệp rác/CI được bảo vệ).")
     return 0
 
 

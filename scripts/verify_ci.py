@@ -10,8 +10,6 @@ import sys
 import tempfile
 
 REPO_DIR = Path(__file__).resolve().parents[1]
-# Thư mục tạm riêng: pytest mặc định tạo symlink pytest-current, trên Windows có lúc kẹt quyền làm pytest báo lỗi
-PYTEST_TMP = Path(tempfile.gettempdir()) / "jarvis-verify-ci"
 
 
 def run_step(name: str, cmd: list[str]) -> bool:
@@ -25,12 +23,15 @@ def run_step(name: str, cmd: list[str]) -> bool:
 
 
 def main() -> int:
+    # Thư mục tạm mới mỗi lần: pytest-current mặc định, rồi thư mục cố định jarvis-verify-ci (2026-10-24, chạy bằng quyền
+    # admin để lại ACL "Access is denied") đều từng kẹt quyền làm ~1000 test lỗi setup
+    pytest_tmp = Path(tempfile.mkdtemp(prefix="jarvis-verify-ci-"))
     steps = [
         ("1. Ruff Lint", ["ruff", "check", "."]),
         ("2. Compile Python", [sys.executable, "-m", "compileall", "-q", "server.py", "engine", "hooks", "plugins"]),
         ("3. Kiểm tra import nội bộ", [sys.executable, ".github/scripts/check_imports.py"]),
         ("4. Pytest (loại trừ tests/live)", [sys.executable, "-m", "pytest", "tests", "-q", "--ignore=tests/live", "--ignore-glob=tests/test_live_*",
-                                            f"--basetemp={PYTEST_TMP}"]),
+                                            f"--basetemp={pytest_tmp}"]),
     ]
 
     for name, cmd in steps:
