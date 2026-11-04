@@ -5,7 +5,7 @@
 **Just A Rather Very Intelligent System**  
 *A versatile, local-first Vietnamese voice AI assistant with multi-user security and autonomous cognitive evolution.*
 
-**Version:** [v10.0.1](VERSION) · **Original Project:** [Ethan](https://ethanplus.ai)
+**Project:** JARVIS · **Version:** [v10.0.1](VERSION)
 
 [Tiếng Việt](README.md) · **English**
 
@@ -22,7 +22,7 @@
 
 ## 📌 Overview
 
-**JARVIS** is an offline-capable, local-first AI assistant designed for Windows, communicating with large language models (LLMs) via `llama.cpp` using an OpenAI-compatible API. JARVIS eliminates reliance on third-party cloud services for personal data: conversation history, knowledge documents, fitness logs, and self-learning preferences are securely stored locally within SQLite and an Obsidian Vault.
+**JARVIS** is an independent, offline-capable, local-first AI assistant project designed for Windows, communicating with large language models (LLMs) via `llama.cpp` using an OpenAI-compatible API. JARVIS eliminates reliance on third-party cloud services for personal data: conversation history, knowledge documents, fitness logs, and self-learning preferences are securely stored locally within SQLite and an Obsidian Vault.
 
 The system is built on a **Flat Tool Routing** architecture, with the main LLM handling chat/tool decisions and strict **Multi-User Role-Based Access Control (RBAC)** isolating Admin and Member workspaces.
 
@@ -34,6 +34,7 @@ The system is built on a **Flat Tool Routing** architecture, with the main LLM h
 - **Gemma4 Router & Grammar JSON**: The main LLM selects `tool=none` for chat or a registered tool with `{"tool", "say", "args"}`. Grammar constrains the output structure; it does not guarantee that the chosen action matches the request.
 - **Workflow & Skill Fast Paths**: Saved workflow replay and matched skills keep their existing priority. Other requests reach the main model router.
 - **Flexible Shortcuts**: `/tool_name`, `@tool_name`, `@rag` and attachment routing keep their existing behavior.
+- **Jev-Style 2B (input layer, first in every turn)**: a small CPU decision model picks chat vs tool with one `choice` question and instructions written for Jev alone (`engine/turn/jev/jev_route.json`, not shared with Gemma's descriptions). At confidence >= 0.8: a chat pick skips Gemma's tool round; a tool pick limits Gemma to {that tool, none} (it can veto, not switch tools); below 0.8 or with no Jev server the Gemma round runs as before. Jev vs Gemma picks go to `logs/jev_picks.jsonl`, see `python -m engine.turn.jev`. Run it separately with `E:\Run_Model\run_jev-v2.cmd` (CPU) or `run_jev-v2-gpu.cmd` (`python run_jev.py --gpu`, `jev-run-v2-gpu` runner) (`run_jev.py`, port 8083): it loads the model fully before opening the port and prints colored logs (green = chat, cyan = tool, yellow = confidence < 0.8) with running % chat / % tools. Binaries `E:\Run_Model\jev-run-v2` (exe + DLL only; the rest lives in `engine/turn/jev`), GGUF `E:\Run_Model\model` (override with `JEV_RUN_DIR`, `JEV_GGUF`, `JEV_PORT`). If JARVIS can't reach the server it skips Jev and turns run as before.
 
 ### 2. Multi-User RBAC & Perimeter Security
 - **Role Isolation (Admin vs. Member)**: Persistent user accounts stored in SQLite `users` table.
@@ -180,8 +181,7 @@ python -m pytest tests/test_vieneu_health_and_memory.py -v
 
 ---
 
-## 🔒 Acknowledgments, License & Disclaimer
+## 🔒 License & Disclaimer
 
-- **Original Project**: Built upon, extended, and deeply customized from **[Ethan](https://ethanplus.ai)**.
 - **License**: Distributed under the [MIT License](LICENSE).
 - This is an independent open-source enthusiast project and is not affiliated with, endorsed by, or connected to Marvel Entertainment, The Walt Disney Company, or any of their subsidiaries. The name JARVIS is used solely for creative and technological inspiration.
